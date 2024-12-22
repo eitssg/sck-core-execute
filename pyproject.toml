@@ -1,0 +1,55 @@
+[build-system]
+requires = [ "poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0",]
+build-backend = "poetry_dynamic_versioning.backend"
+
+[tool.poetry]
+name = "core-execute"
+version = "0.1.0"
+description = "Core Automation Engine execute Lambda function"
+authors = [ "James Barwick <jbarwick@me.com>",]
+license = "GPL-3.0-only"
+readme = "README.md"
+
+[[tool.poetry.source]]
+name = "nexus"
+url = "https://monster-jj.jvj28.com:9091/repository/pypi/simple/"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "explicit"
+
+[tool.poetry-dynamic-versioning]
+enable = true
+bump = true
+ignore-untracked = true
+style = "semver"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+PyYAML = "^6.0.2"
+pyyaml-include = "^2.1"
+
+[tool.poetry.dependencies.core-framework]
+path = "../core-framework"
+develop = true
+
+[tool.poetry.dependencies.core-db]
+path = "../core-db"
+develop = true
+
+[tool.poetry-dynamic-versioning.files."core_execute/_version.py"]
+persistent-substitution = true
+initial-content = "  \"\"\"\n  This is the version informatooin for this template\n  \"\"\"\n  __version__ = \"0.0.0\"\n  __version_tuple__ = (0, 0, 0)\n"
+
+[tool.poetry.group.dev.dependencies]
+boto3 = "^1.34.157"
+botocore = "^1.34.157"
+pytest = "^8.3.2"
+flake8 = "^7.1.1"
+cfn-lint = "^1.18.4"
+pytest-asyncio = "^0.24.0"
+black = "^24.10.0"
+boto3-stubs = "^1.35.76"
+pytest-dotenv = "^0.5.2"
+types-pyyaml = "^6.0.12.20240917"
