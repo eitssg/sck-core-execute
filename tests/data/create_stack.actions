@@ -1,4 +1,4 @@
-- Label: action-definition-label
+- Label: action-aws-createstack-label
   Type: "AWS::CreateStack"
   DependsOn:
   - put-a-label-here
@@ -16,5 +16,4 @@
         (converted to JSON)"
     TimeoutInMinutes: 15
     OnFailure: "The action to take on failure (optional)"
-  Scope: "Based on your deployment details, it one of 'portfolio', 'app', 'branch',
-    or 'build'"
+  Scope: "build"

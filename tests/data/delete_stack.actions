@@ -1,0 +1,11 @@
+- Label: action-aws-deletestack-label
+  Type: "AWS::DeleteStack"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    StackName: "The name of the stack to delete (required)"
+    Region: "ap-southeast-1"
+    SuccessStatuses:
+    - "The stack statuses that indicate success (optional). Defaults to []"
+  Scope: "build"

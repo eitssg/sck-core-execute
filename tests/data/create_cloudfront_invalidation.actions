@@ -1,0 +1,11 @@
+- Label: action-aws-createcloudfrontinvalidation-label
+  Type: "AWS::CreateCloudFrontInvalidationAction"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    DistributionId: "The CloudFront distribution ID (required)"
+    Paths:
+    - "The paths to invalidate (optional). Defaults to ['*']"
+  Scope: "build"

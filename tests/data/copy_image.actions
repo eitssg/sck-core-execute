@@ -1,0 +1,13 @@
+- Label: action-aws-copyimage-label
+  Type: "AWS::CopyImage"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    Tags:
+      any: "The tags to apply to the image (optional)"
+    DestinationImageName: "The name of the destination image (required)"
+    ImageName: "The name of the source image (required)"
+    KmsKeyArn: "The KMS key ARN to use for encryption (required)"
+  Scope: "build"

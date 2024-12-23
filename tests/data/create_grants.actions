@@ -1,0 +1,15 @@
+- Label: action-aws-kms-creategrants-label
+  Type: "AWS::KMS::CreateGrants"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    KmsKeyArn: "The ARN of the KMS key to create grants for (optionally required)"
+    KmsKeyId: "The ID of the KMS key to create grants for (optionally required)"
+    GrantPrincipals:
+    - "The principals to grant access to (required)"
+    Operations:
+    - "The operations to grant access for (required)"
+    IgnoreFailedGrants: false
+  Scope: "build"

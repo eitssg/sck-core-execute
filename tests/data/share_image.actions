@@ -1,0 +1,13 @@
+- Label: action-aws-shareimage-label
+  Type: "AWS::ShareImage"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    ImageName: "The name of the image to share (required)"
+    AccountsToShare:
+    - "The accounts to share the image with (required)"
+    Siblings:
+    - "The accounts that are allowed to share the image (required)"
+  Scope: "build"

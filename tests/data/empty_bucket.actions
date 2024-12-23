@@ -1,0 +1,9 @@
+- Label: action-aws-emptybucket-label
+  Type: "AWS::EmptyBucket"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    BucketName: "The name of the bucket to empty (required)"
+  Scope: "build"

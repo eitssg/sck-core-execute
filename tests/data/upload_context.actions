@@ -1,0 +1,10 @@
+- Label: action-aws-uploadcontext-label
+  Type: "AWS::UnprotectELBAction"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    BucketName: "The name of the bucket to upload the context to (required)"
+    Prefix: "The prefix to use for the context file (required)"
+  Scope: "build"

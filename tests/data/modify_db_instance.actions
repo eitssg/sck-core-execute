@@ -1,0 +1,10 @@
+- Label: action-aws-rds-modifydbinstance-label
+  Type: "AWS::RDS::ModifyDbInstance"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    ApiParams:
+      any: "The parameters to pass to the modify_db_instance call (required)"
+  Scope: "build"

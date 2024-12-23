@@ -1,0 +1,9 @@
+- Label: action-aws-deleteimage-label
+  Type: "AWS::DeleteImage"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    ImageName: "The name of the image to delete (required)"
+  Scope: "build"

@@ -1,0 +1,10 @@
+- Label: action-system-setvariables-label
+  Type: "SYSTEM::SetVariables"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    Variables:
+      any: "The variables to set (required)"
+  Scope: "build"

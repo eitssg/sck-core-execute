@@ -1,0 +1,12 @@
+- Label: action-aws-putevent-label
+  Type: "AWS::GetStackReferences"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    Type: "The type of event to put (required) defaults to 'STATUS'"
+    Status: "The status of the event (required)"
+    Message: "The message to associate with the event (optional) defaults to ''"
+    Identity: "The identity of the event (optional)"
+  Scope: "build"

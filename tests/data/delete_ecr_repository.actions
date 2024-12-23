@@ -1,0 +1,9 @@
+- Label: action-aws-deleteecrrepository-label
+  Type: "AWS::DeleteEcrRepository"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    RepositoryName: "The name of the ECR repository to delete (required)"
+  Scope: "build"

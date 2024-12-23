@@ -1,0 +1,8 @@
+- Label: action-system-noop-label
+  Type: "SYSTEM::NoOp"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+  Scope: "build"

@@ -1,0 +1,11 @@
+- Label: action-aws-getstackreferences-label
+  Type: "AWS::GetStackReferences"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    StackName: "The name of the stack to check for references (required)"
+    Region: "ap-southeast-1"
+    OutputName: "The name of the output to check for references (optional) defaults
+      to 'DefaultExport'"
+  Scope: "build"

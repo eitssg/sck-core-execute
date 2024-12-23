@@ -1,0 +1,16 @@
+- Label: action-aws-putmetricdata-label
+  Type: "AWS::PutMetricData"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    Namespace: "The namespace for the metric data (required)"
+    Metrics:
+    - MetricName: "The name of the metric (required)"
+      Value: "The value of the metric (required)"
+      Unit: "The unit of the metric (optional, defaults to 'None')"
+      DimensionSets:
+      - Name: "The name of the dimension (required)"
+        Value: "The value of the dimension (required)"
+  Scope: "build"

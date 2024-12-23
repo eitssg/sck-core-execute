@@ -268,6 +268,12 @@ def action_template(**kwargs):
 
         template = get_template_for_paramters()
 
+        # Temporary hardcoding of parameters for my own testing
+        template.Label = f"action-{action_name.lower().replace("::","-")}-label"
+        template.Params.Account = "154798051514"
+        template.Params.Region = "ap-southeast-1"
+        template.Scope = "build"
+
         actions_list = [template.model_dump()]
 
         save_actions(kwargs.get("filename", None), actions_list, format=kwargs.get("format", "yaml"))
@@ -278,6 +284,7 @@ def action_template(**kwargs):
         return {"actions": actions_list}
 
     except Exception as e:
+        print(e)
         print(
             "Cannot load action: {}.  Use 'core-execute action list' to get a lisst of actions".format(
                 action_name

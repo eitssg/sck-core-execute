@@ -1,0 +1,9 @@
+- Label: action-aws-unprotectelb-label
+  Type: "AWS::UnprotectELB"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    LoadBalancer: "The ARN of the load balancer to unprotect (required)"
+  Scope: "build"

@@ -1,0 +1,14 @@
+- Label: action-aws-duplicateimagetoaccount-label
+  Type: "AWS::DuplicateImageToAccount"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    Tags:
+      any: "The tags to apply to the image (optional)"
+    ImageName: "The name of the image to duplicate (required)"
+    KmsKeyArn: "The KMS key ARN to use for encryption (required)"
+    AccountsToShare:
+    - "The accounts to share the image with (required)"
+  Scope: "build"

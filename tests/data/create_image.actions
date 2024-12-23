@@ -1,0 +1,10 @@
+- Label: action-aws-createimage-label
+  Type: "AWS::CreateImageAction"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "154798051514"
+    Region: "ap-southeast-1"
+    ImageName: "The name of the image to create (required)"
+    InstanceId: "The instance ID to create the image from (required)"
+  Scope: "build"
