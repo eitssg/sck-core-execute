@@ -269,14 +269,18 @@ def action_template(**kwargs):
         template = get_template_for_paramters()
 
         # Temporary hardcoding of parameters for my own testing
-        template.Label = f"action-{action_name.lower().replace("::","-")}-label"
+        template.Label = f"action-{action_name.lower().replace("::", "-")}-label"
         template.Params.Account = "154798051514"
         template.Params.Region = "ap-southeast-1"
         template.Scope = "build"
 
         actions_list = [template.model_dump()]
 
-        save_actions(kwargs.get("filename", None), actions_list, format=kwargs.get("format", "yaml"))
+        save_actions(
+            kwargs.get("filename", None),
+            actions_list,
+            format=kwargs.get("format", "yaml"),
+        )
 
         if kwargs.get("out"):
             print_actions_list(actions_list, format=kwargs.get("format", "yaml"))
