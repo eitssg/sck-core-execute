@@ -13,6 +13,8 @@ import traceback
 import core_framework as util
 
 from core_framework.models import TaskPayload
+from core_db.response import Response
+from core_db.registry.client.actions import ClientActions
 
 from core_execute.handler import handler
 from dotenv import load_dotenv
@@ -20,14 +22,53 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def emulate_state_machine(**kwargs):
+
+    task_payload = TaskPayload.from_arguments(**kwargs)
+
+    client_vars = ClientActions.get(
+        client=task_payload.DeploymentDetails.Client
+    )
+
+    return {"task_payload": task_payload.model_dump(), "client_vars": client_vars.data}
+
+
+def action_deploy(**kwargs):
+    """Deploy the application"""
+
+    result = emulate_state_machine(**kwargs)
+    return {"result": result}
+
+
+def action_release(**kwargs):
+    """Release the application"""
+
+    result = emulate_state_machine(**kwargs)
+    return {"result": result}
+
+
+def action_terdown(**kwargs):
+    """Tear down the application"""
+
+    result = emulate_state_machine(**kwargs)
+    return {"result": result}
+
+
+RUN_ACTIONS = {
+    "deploy": action_deploy,
+    "release": action_release,
+    "terdown": action_terdown,
+}
+
+
 def run_action(**kwargs) -> dict:
     """Run the action"""
 
-    task_payload = generate_task_payload(**kwargs)
+    action = kwargs.get("task")
+    if action in RUN_ACTIONS:
+        result = RUN_ACTIONS[action](**kwargs)
 
-    handler(**task_payload.model_dump())
-
-    return {"result": "success"}
+    return {"result": result}
 
 
 def run_state(**kwargs) -> dict:
@@ -53,7 +94,7 @@ def run_info(**kwargs) -> dict:
         "app_data": {
             "app_path": task_payload.Package.AppPath,
             "temp_dir": task_payload.Package.TempDir,
-        }
+        },
     }
 
 
@@ -61,6 +102,7 @@ COMMAND: dict[str, Callable] = {
     "action": run_action,
     "state": run_state,
     "info": run_info,
+    "run": run_action,
 }
 
 
@@ -112,7 +154,13 @@ def add_action_subparser(subparsers):
     parser = subparsers.add_parser("action", help="Manage the {task}.actions")
     parser.set_defaults(command="action")
 
-    parser.add_argument("subcommand", choices=['list', 'create', 'delete'], type=str, metavar="command", help="The action command")
+    parser.add_argument(
+        "subcommand",
+        choices=["list", "create", "delete"],
+        type=str,
+        metavar="command",
+        help="The action command",
+    )
 
     add_common_parameters(parser)
 
@@ -125,6 +173,21 @@ def add_state_subparser(subparsers):
 
     parser.add_argument("name", type=str, help="The state name")
     parser.add_argument("args", type=str, help="The state arguments")
+
+    add_common_parameters(parser)
+
+
+def add_run_subparser(subparsers):
+    """Add the run subparser"""
+
+    parser = subparsers.add_parser(
+        "run", help="Run the {task}.  One of [deploy, release, teardown]"
+    )
+    parser.set_defaults(command="run")
+
+    parser.add_argument(
+        "task", type=str, help="Run a command [deploy, release, teardown]"
+    )
 
     add_common_parameters(parser)
 
@@ -187,6 +250,7 @@ def parse_args() -> dict:
     add_action_subparser(subparsers)
     add_state_subparser(subparsers)
     add_info_subparser(subparsers)
+    add_run_subparser(subparsers)
 
     data = vars(parser.parse_args())
 
@@ -206,7 +270,8 @@ def execute():
         print(json.dumps(result, indent=2))
 
     except Exception as e:
-        traceback.print_exc()
+        print(e)
+        #traceback.print_exc()
         sys.exit(1)
 
 
