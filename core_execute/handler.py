@@ -6,7 +6,13 @@ from core_framework.models import TaskPayload
 
 from .actionlib.helper import Helper
 
-from .execute import run_state_machine, timeout_imminent, load_actions, load_state, save_state
+from .execute import (
+    run_state_machine,
+    timeout_imminent,
+    load_actions,
+    load_state,
+    save_state,
+)
 
 
 def handler(event: dict, context: Any | None = None) -> None:
@@ -25,6 +31,11 @@ def handler(event: dict, context: Any | None = None) -> None:
         # Task payload is a model object should have been crated with TaskPayload.model_dump()
         task_payload = TaskPayload(**event)
 
+    except Exception as e:
+        log.error("Error parsing event: {}", e)
+        raise
+
+    try:
         # Setup logging
         log.setup(task_payload.Identity)
 
@@ -37,15 +48,18 @@ def handler(event: dict, context: Any | None = None) -> None:
         action_helper = Helper(definitions, context_state, task_payload)
 
         # Run the execution state machine ( but we can only stay rnning for X minutes (see deployment spec))
-        flow_control = "execute"
-        while flow_control == "execute" and not timeout_imminent(context):
-            flow_control = run_state_machine(action_helper, context)
+        while task_payload.FlowControl == "execute" and not timeout_imminent(context):
+            task_payload.FlowControl = run_state_machine(action_helper, context)
 
         # Save state
         save_state(task_payload, context_state)
 
-        log.debug("Exiting (FlowControl = {})", flow_control)
+        log.debug("Exiting (FlowControl = {})", task_payload.FlowControl)
+
+        return task_payload.model_dump()
 
     except Exception as e:
         log.error("Error in handler: {}", e)
-        raise
+
+        task_payload.FlowControl = "error"
+        return task_payload.model_dump()
