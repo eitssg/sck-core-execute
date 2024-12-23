@@ -9,7 +9,7 @@ from .actionlib.helper import Helper
 from .execute import run_state_machine, timeout_imminent, load_actions, load_state, save_state
 
 
-def handler(event: dict, context: Any | None = None):
+def handler(event: dict, context: Any | None = None) -> None:
     """
     Recieve an "Actions" event request and run it!
 

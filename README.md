@@ -1,33 +1,17 @@
 # Core-Execute
 
-The execute Lambda function is responsible for executing a list of actions.
+The execute is a module responsible for executing applications from a list of Action items
+based of the the BaseAction API interface
 
 ## Directory structure
 
-* **actionlib/** - Main collection of classes for working with Actions
-* **evinfo/** - Module to retrieve information about the environment programatically
-* **lib/** - Third-party libraries
+* **core_execute/actionlib/** - Main collection of classes for working with Actions
+* **core_execute/evinfo/** - Module to retrieve information about the environment programatically
+* **core_execute/handler.py** - Lambda entry point (handler method). A good place to start.
+* **core_execute/cli.py** - Commandline interace to run the "execute" function from the commandline
 * **tests/** - Directory containing various test data files
-* **main.py** - Lambda entry point (handler method). A good place to start.
-* **simulate.py** - Wrapper for executing the runner locally. Simulates the Step Function which would otherwise execute the functions.
 
 ## Description
-
-This is the "TOP" level library.
-
-Example of hierarchy:
-
-Layer 0 - Simple Python Utils
-
-Layer 1 - Core Framework
-
-Layer 2 - Core-Execute (this module)
-
-Layer 3 - AWS Core, Azure Core, VMWare Core, GCP Core
-
-Layer 4 - SCK Core Module / API
-
-Layer 5 - SCK Command Line
 
 From the SCK Command line "core" modules is executed which determines targets and loads
 the appropriate target libraries.  The target libraries will then use this core
@@ -54,7 +38,22 @@ file called "config.py" and put that configration file in the root of your proje
 | `DYNAMODB_HOST`      | String  | None          |                                                              |                        |
 | `DYNAMODB_REAGION`   | String  | None          |                                                              |                        |
 | `EVENT_TABLE_NAME`   | String  | None          |                                                              |                        |
-| `BASE_DIR`           | String  | None          | The folder where the sub-folder 'compiler' is located        |                        |
 
 These above values are required by various modules.  Please generate this config.py file and put in the ROOT of your application
 during your application deployment.
+
+## Installing
+
+Install with poetry
+
+```bash
+poetry install
+```
+
+Then you can run the commmand line:
+
+```bash
+core-execute -h
+```
+
+Enjoy!

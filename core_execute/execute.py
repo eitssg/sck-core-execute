@@ -21,7 +21,8 @@ from .actionlib.helper import Helper
 # When the lambda function is booted and the python module is loaded, we'll get a __bootup_time__
 __bootup_time__ = datetime.now(timezone.utc).timestamp()
 
-__maxx_runtime__ = 10 * 60 * 1000  # 10 minutes in milliseconds
+__max_runtime__ = 10 * 60 * 1000  # 10 minutes in milliseconds
+
 
 def timeout_imminent(context: Any | None = None) -> bool:
     """
@@ -42,7 +43,7 @@ def timeout_imminent(context: Any | None = None) -> bool:
     else:
         # 10 minutes is the max time lambda will run
         t = datetime.now(timezone.utc).timestamp()
-        remaining_time_in_millis = __maxx_runtime__ - int(t - __bootup_time__)
+        remaining_time_in_millis = __max_runtime__ - int(t - __bootup_time__)
 
     # Consider timeout imminent if less than 10 seconds remaining
     return remaining_time_in_millis < to
