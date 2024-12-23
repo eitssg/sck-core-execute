@@ -1,3 +1,4 @@
+"""Upload the Jinja2 Render context to the appropriate S3 bucket"""
 from typing import Any
 
 import core_helper.aws as aws
@@ -7,9 +8,28 @@ import re
 import core_framework as util
 import yaml
 
-from core_framework.models import ActionDefinition, DeploymentDetails
+from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
 
 from core_execute.actionlib.action import BaseAction
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::UnprotectELBAction",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            BucketName="The name of the bucket to upload the context to (required)",
+            Region="The region to create the stack in (required)",
+            Prefix="The prefix to use for the context file (required)",
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class UploadContextAction(BaseAction):
@@ -60,6 +80,7 @@ class UploadContextAction(BaseAction):
                 raise ValueError("Unsupported PRN format")
 
             outputs[var_name] = value
+
         return outputs
 
     def _execute(self):

@@ -1,12 +1,32 @@
+"""Record an event in the database"""
 from typing import Any
 
 import core_logging as log
 
-from core_framework.models import ActionDefinition, DeploymentDetails
+from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
 
 from core_execute.actionlib.action import BaseAction
 
 from core_db.event.models import EventModel
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::GetStackReferences",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Type="The type of event to put (required) defaults to 'STATUS'",
+            Status="The status of the event (required)",
+            Message="The message to associate with the event (optional) defaults to ''",
+            Identity="The identity of the event (optional)",
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class PutEventAction(BaseAction):
@@ -18,6 +38,7 @@ class PutEventAction(BaseAction):
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
+
         self.type = self.params.Type or "STATUS"
         self.status = self.params.Status
         self.message = self.params.Message or ""

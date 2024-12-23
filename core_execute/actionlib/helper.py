@@ -1,3 +1,4 @@
+"""Helper class for managing actions in the actionlib module."""
 import re
 
 from ..actionlib.action import BaseAction
@@ -7,6 +8,7 @@ from core_framework.models import TaskPayload, ActionDefinition
 
 
 class Helper:
+    """Generate BaseAction list from action definitions"""
 
     actions: list[BaseAction]
 

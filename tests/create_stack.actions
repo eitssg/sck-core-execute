@@ -1,0 +1,18 @@
+- Label: action-definition-label
+  Type: "AWS::CreateStack"
+  DependsOn:
+  - put-a-label-here
+  Params:
+    Account: "The account to use for the action (required)"
+    StackName: "The name of the stack to create (required)"
+    Region: "The region to create the stack in (required)"
+    TemplateUrl: "The URL of the CloudFormation template (required)"
+    StackParameters:
+      any: "The parameters to pass to the stack (optional)"
+    Tags:
+      any: "The tags to apply to the stack (optional)"
+    StackPolicy:
+      any: "A policy statement to use within the stack deployment as needed (optional)
+        (converted to JSON)"
+  Scope: "Based on your deployment details, it one of 'portfolio', 'app', 'branch',
+    or 'build'"

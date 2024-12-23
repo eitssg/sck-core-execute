@@ -1,12 +1,44 @@
+"""Record metric data in AWS CloudWatch"""
 from typing import Any
 
-from core_framework.models import ActionDefinition, DeploymentDetails
+from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
+import core_framework as util
 
 from core_execute.actionlib.action import BaseAction
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::PutMetricData",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            Region="The region to create the stack in (required)",
+            Namespace="The namespace for the metric data (required)",
+            Metrics=[
+                {
+                    "MetricName": "The name of the metric (required)",
+                    "Value": "The value of the metric (required)",
+                    "Unit": "The unit of the metric (optional, defaults to 'None')",
+                    "DimensionSets": [
+                        {
+                            "Name": "The name of the dimension (required)",
+                            "Value": "The value of the dimension (required)",
+                        }
+                    ],
+                }
+            ],
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class PutMetricDataAction(BaseAction):
@@ -26,7 +58,7 @@ class PutMetricDataAction(BaseAction):
     def _execute(self):
         # Obtain an EC2 client
         cloudwatch_client = aws.cloudwatch_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         # Put metric data into CloudWatch

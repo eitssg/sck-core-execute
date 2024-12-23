@@ -1,15 +1,34 @@
+"""Get the outputs of a CloudFormation stack"""
 from typing import Any
 
 from botocore.exceptions import ClientError
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionDefinition
+from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
+import core_framework as util
 from core_execute.actionlib.action import BaseAction
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::GetStackOutputs",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            Region="The region to create the stack in (required)",
+            StackName="The name of the stack to get outputs from (required)",
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class GetStackOutputsAction(BaseAction):
@@ -20,6 +39,7 @@ class GetStackOutputsAction(BaseAction):
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
+
         self.account = self.params.Account
         self.region = self.params.Region
         self.stack_name = self.params.StackName
@@ -27,7 +47,7 @@ class GetStackOutputsAction(BaseAction):
     def _execute(self):
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         try:

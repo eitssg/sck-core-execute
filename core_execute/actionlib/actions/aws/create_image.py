@@ -1,13 +1,33 @@
+"""Create an Image of an EC2 instance"""
 from typing import Any
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionDefinition
+from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
+import core_framework as util
 from core_execute.actionlib.action import BaseAction
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::CreateImageAction",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            ImageName="The name of the image to create (required)",
+            InstanceId="The instance ID to create the image from (required)",
+            Region="The region to create the image in (required)",
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class CreateImageAction(BaseAction):
@@ -26,7 +46,7 @@ class CreateImageAction(BaseAction):
         self.region = self.params.Region
 
         tags = self.params.Tags or {}
-        if deployment_details. DeliveredBy:
+        if deployment_details.DeliveredBy:
             tags["DeliveredBy"] = deployment_details.DeliveredBy
 
         self.tags = aws.transform_tag_hash(tags)
@@ -34,7 +54,7 @@ class CreateImageAction(BaseAction):
     def _execute(self):
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         # Create an image
@@ -49,7 +69,7 @@ class CreateImageAction(BaseAction):
     def _check(self):
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         # Wait for image creation to complete / fail

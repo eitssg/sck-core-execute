@@ -1,15 +1,34 @@
+"""Empty and S3 bucket"""
 from typing import Any
 
 from botocore.exceptions import ClientError
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionDefinition
+from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
+import core_framework as util
 from core_execute.actionlib.action import BaseAction
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::EmptyBucket",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            Region="The region to create the stack in (required)",
+            BucketName="The name of the bucket to empty (required)",
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class EmptyBucketAction(BaseAction):
@@ -50,7 +69,7 @@ class EmptyBucketAction(BaseAction):
     def __empty_bucket(self):
         # Obtain a CloudFormation client
         s3_resource = aws.s3_resource(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         try:

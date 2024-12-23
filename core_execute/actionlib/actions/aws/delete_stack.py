@@ -1,14 +1,34 @@
+"""Teardown or delete a CloudFormation stack"""
 from typing import Any
 
 import core_logging as log
 from botocore.exceptions import ClientError
 
-from core_framework.models import DeploymentDetails, ActionDefinition
+from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
+import core_framework as util
 from core_execute.actionlib.action import BaseAction
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::DeleteStack",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            Region="The region to create the stack in (required)",
+            StackName="The name of the stack to delete (required)",
+            SuccessStatuses=["The stack statuses that indicate success (optional). Defaults to []"],
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class DeleteStackAction(BaseAction):
@@ -29,7 +49,7 @@ class DeleteStackAction(BaseAction):
     def _execute(self):
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         # Describe the stack to get its status
@@ -63,7 +83,7 @@ class DeleteStackAction(BaseAction):
     def _check(self):
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         # Describe the stack to get its status

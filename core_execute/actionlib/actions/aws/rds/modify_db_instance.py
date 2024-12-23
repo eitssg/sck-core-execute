@@ -1,28 +1,56 @@
+"""Modify and RDS databae instance"""
+
+from typing import Any
+
 from botocore.exceptions import ClientError
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
+from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
+
+import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::RDS::ModifyDbInstance",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            Region="The region to create the stack in (required)",
+            ApiParams={
+                "any": "The parameters to pass to the modify_db_instance call (required)"
+            },
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
+
+
 class ModifyDbInstanceAction(BaseAction):
-    def __init__(self, definition, context, deployment_details):
+    def __init__(
+        self,
+        definition: ActionDefinition,
+        context: dict[str, Any],
+        deployment_details: DeploymentDetails,
+    ):
         super().__init__(definition, context, deployment_details)
-        self.account = self.params["Account"]
-        self.region = self.params["Region"]
-        self.api_params = self.params["ApiParams"]
 
     def _execute(self):
         # Obtain an RDS client
         rds_client = aws.rds_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.params.Account)
         )
 
         self.set_running("Modifying DB instance")
 
         try:
-            response = rds_client.modify_db_instance(**self.api_params)
+            response = rds_client.modify_db_instance(**self.params.ApiParams)
 
             pending_modified_values = response["DBInstance"].get(
                 "PendingModifiedValues", {}
@@ -43,11 +71,11 @@ class ModifyDbInstanceAction(BaseAction):
 
     def _check(self):
         rds_client = aws.rds_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.params.Region, role=util.get_provisioning_role_arn(self.params.Account)
         )
 
         response = rds_client.describe_db_instances(
-            DBInstanceIdentifier=self.api_params["DBInstanceIdentifier"]
+            DBInstanceIdentifier=self.params.ApiParams["DBInstanceIdentifier"]
         )
 
         pending_modified_values = response["DBInstances"][0].get(
@@ -69,6 +97,6 @@ class ModifyDbInstanceAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.account = self.renderer.render_string(self.account, self.context)
-        self.region = self.renderer.render_string(self.region, self.context)
-        self.api_params = self.renderer.render_object(self.api_params, self.context)
+        self.params.Account = self.renderer.render_string(self.params.Account, self.context)
+        self.params.Region = self.renderer.render_string(self.params.Region, self.context)
+        self.params.ApiParams = self.renderer.render_object(self.params.ApiParams, self.context)

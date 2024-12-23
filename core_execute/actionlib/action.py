@@ -1,3 +1,4 @@
+"""Defines the BasActions abstrction for all actions."""
 from typing import Any, Self
 import traceback
 import sys

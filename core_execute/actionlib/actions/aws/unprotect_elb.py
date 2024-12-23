@@ -1,11 +1,30 @@
+"""Remove ELB protection so it can be deleted"""
 from typing import Any
 
-from core_framework.models import ActionDefinition, DeploymentDetails
+from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
+import core_framework as util
 from core_execute.actionlib.action import BaseAction
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::UnprotectELB",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            Region="The region to create the stack in (required)",
+            LoadBalancer="The ARN of the load balancer to unprotect (required)",
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class UnprotectELBAction(BaseAction):
@@ -24,7 +43,7 @@ class UnprotectELBAction(BaseAction):
     def _execute(self):
         if self.load_balancer != "none":
             elbv2_client = aws.elbv2_client(
-                region=self.region, role=envinfo.provisioning_role_arn(self.account)
+                region=self.region, role=util.get_provisioning_role_arn(self.account)
             )
 
             elbv2_client.modify_load_balancer_attributes(

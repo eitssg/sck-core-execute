@@ -1,3 +1,4 @@
+"""Delete ENIs attached to a security group"""
 from typing import Any
 
 import core_logging as log
@@ -6,12 +7,30 @@ from core_framework.models import DeploymentDetails, ActionDefinition
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
-from core_execute.actionlib.action import BaseAction
+import core_framework as util
+from core_execute.actionlib.action import BaseAction, ActionParams
 
 
 # If this account is hyperplane enabled, amazon manages the ENI attachments for you.
 ENI_OWNER_HYPERPLANE = "amazon-aws"
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::DeleteSecurityGroupEnis",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            Region="The region to create the stack in (required)",
+            SecurityGroupId="The ID of the security group to delete ENIs from (required)",
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class DeleteSecurityGroupEnisAction(BaseAction):
@@ -57,7 +76,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
 
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         # Retrieve security group ENIs

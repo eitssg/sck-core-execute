@@ -15,7 +15,7 @@ from .execute import (
 )
 
 
-def handler(event: dict, context: Any | None = None) -> None:
+def handler(event: dict, context: Any | None = None) -> dict:
     """
     Recieve an "Actions" event request and run it!
 
@@ -42,7 +42,7 @@ def handler(event: dict, context: Any | None = None) -> None:
         # Load actions from the s3 bucket "{task}.actions"
         definitions = load_actions(task_payload)
 
-        # Load state
+        # Load state.  This should have been a document created from "get_facts" for Jinja2 rendering
         context_state = load_state(task_payload)
 
         action_helper = Helper(definitions, context_state, task_payload)
@@ -54,12 +54,12 @@ def handler(event: dict, context: Any | None = None) -> None:
         # Save state
         save_state(task_payload, context_state)
 
-        log.debug("Exiting (FlowControl = {})", task_payload.FlowControl)
+        log.debug("Exiting (FlowControl with state = {})", task_payload.FlowControl)
 
         return task_payload.model_dump()
 
     except Exception as e:
         log.error("Error in handler: {}", e)
 
-        task_payload.FlowControl = "error"
+        task_payload.FlowControl = "failure"
         return task_payload.model_dump()

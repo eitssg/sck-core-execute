@@ -1,3 +1,4 @@
+"""Duplicate an Image and copy it to one ore more accounts"""
 from typing import Any
 
 import core_logging as log
@@ -6,10 +7,31 @@ from core_framework.models import DeploymentDetails, ActionDefinition
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
-from core_execute.actionlib.action import BaseAction
+import core_framework as util
+from core_execute.actionlib.action import BaseAction, ActionParams
 
 import boto3
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::DuplicateImageToAccount",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            Region="The region to create the stack in (required)",
+            ImageName="The name of the image to duplicate (required)",
+            AccountsToShare=["The accounts to share the image with (required)"],
+            KmsKeyArn="The KMS key ARN to use for encryption (required)",
+            Tags={"any": "The tags to apply to the image (optional)"},
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class DuplicateImageToAccountAction(BaseAction):
@@ -21,6 +43,7 @@ class DuplicateImageToAccountAction(BaseAction):
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
+
         self.account = self.params.Account
         self.image_name = self.params.ImageName
         self.region = self.params.Region
@@ -40,7 +63,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         # Find image (provides image id and snapshot ids)
@@ -148,7 +171,7 @@ class DuplicateImageToAccountAction(BaseAction):
         target_account = self.account_to_share
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=envinfo.provisioning_role_arn(target_account)
+            region=self.region, role=util.get_provisioning_role_arn(target_account)
         )
 
         # Wait for image creation to complete / fail
@@ -209,7 +232,7 @@ class DuplicateImageToAccountAction(BaseAction):
         target_account = self.account_to_share
 
         credentials = aws.assume_role(
-            role=envinfo.provisioning_role_arn(target_account),
+            role=util.get_provisioning_role_arn(target_account),
             session_name="temp-session-{}".format(target_account),
         )
 

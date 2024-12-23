@@ -1,8 +1,10 @@
+"""Deploy a Cloudformation stack"""
+
 from typing import Any
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionDefinition
+from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
 
 import core_framework as util
 
@@ -10,8 +12,33 @@ from botocore.exceptions import ClientError
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
 from core_execute.actionlib.action import BaseAction
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::CreateStack",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            Region="The region to create the stack in (required)",
+            StackName="The name of the stack to create (required)",
+            TemplateUrl="The URL of the CloudFormation template (required)",
+            StackParameters={"any": "The parameters to pass to the stack (optional)"},
+            OnFailure="The action to take on failure (optional)",
+            TimeoutInMinutes=15,
+            Tags={"any": "The tags to apply to the stack (optional)"},
+            StackPolicy={
+                "any": "A policy statement to use within the stack deployment as needed (optional) (converted to JSON)"
+            },
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class CreateStackAction(BaseAction):
@@ -96,7 +123,7 @@ class CreateStackAction(BaseAction):
     def _execute(self):
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         # Determine if the stack already exists
@@ -120,7 +147,7 @@ class CreateStackAction(BaseAction):
     def _check(self):
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         # Describe the stack to get its status

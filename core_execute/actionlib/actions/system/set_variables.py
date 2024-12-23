@@ -1,14 +1,36 @@
+"""A method to set variables internally in memory and pass them through Jinja2 context rendering first"""
 from typing import Any
-from core_framework.models import DeploymentDetails, ActionDefinition
+from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
 
 from ...action import BaseAction
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="SYSTEM::SetVariables",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Variables={"any": "The variables to set (required)"},
+        ),
+        Scope="",
+    )
+
+    return definition
 
 
 class SetVariablesAction(BaseAction):
 
     variables: dict[str, str] | None = None
 
-    def __init__(self, definition: ActionDefinition, context: dict[str, Any], deployment_details: DeploymentDetails):
+    def __init__(
+        self,
+        definition: ActionDefinition,
+        context: dict[str, Any],
+        deployment_details: DeploymentDetails,
+    ):
         super().__init__(definition, context, deployment_details)
 
         self.variables = self.params.Variables

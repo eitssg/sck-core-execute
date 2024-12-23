@@ -1,30 +1,64 @@
+"""Grant access to KMS keys to principals"""
+from typing import Any
+
 import core_logging as log
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
+from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
+
+import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 import re
 
 
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::KMS::CreateGrants",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            Region="The region to create the stack in (required)",
+            KmsKeyId="The ID of the KMS key to create grants for (optionally required)",
+            KmsKeyArn="The ARN of the KMS key to create grants for (optionally required)",
+            GranteePrincipals=["The principals to grant access to (required)"],
+            Operations=["The operations to grant access for (required)"],
+            IgnoreFailedGrants=False,
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
+
+
 class CreateGrantsAction(BaseAction):
     """Create grants for a KMS key"""
 
-    def __init__(self, definition, context, deployment_details):
+    def __init__(
+        self,
+        definition: ActionDefinition,
+        context: dict[str, Any],
+        deployment_details: DeploymentDetails,
+    ):
         super().__init__(definition, context, deployment_details)
 
-        self.account = self.params["Account"]
-        self.region = self.params["Region"]
-        self.kms_key_id = self.params.get("KmsKeyId", self.params.get("KmsKeyArn"))
-        self.grantee_principals = self.params["GranteePrincipals"]
-        self.operations = self.params["Operations"]
-        self.ignore_failed_grants = self.params.get("IgnoreFailedGrants", True)
+        self.account = self.params.Account
+        self.region = self.params.Region
+        self.kms_key_id = self.params.KmsKeyId or self.params.KmsKeyArn
+        self.grantee_principals = self.params.GranteePrincipals
+        self.operations = self.params.Operations
+        self.ignore_failed_grants = (
+            self.params.IgnoreFailedGrants if self.params.IgnoreFailedGrants else True
+        )
 
     def _execute(self):
         # Obtain an EC2 client
         kms_client = aws.kms_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.account)
         )
 
         # Create the grants

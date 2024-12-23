@@ -1,21 +1,49 @@
+"""Copy an AMI from one region to another with encryption"""
+
 from typing import Any
 import core_logging as log
 
-from core_framework.models import ActionDefinition, DeploymentDetails
+import core_framework as util
+
+from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
 
 import core_helper.aws as aws
 
-import core_execute.envinfo as envinfo
 from core_execute.actionlib.action import BaseAction
+
+
+def generate_template() -> ActionDefinition:
+    """Generate the action definition"""
+
+    definition = ActionDefinition(
+        Label="action-definition-label",
+        Type="AWS::CopyImage",
+        DependsOn=['put-a-label-here'],
+        Params=ActionParams(
+            Account="The account to use for the action (required)",
+            DestinationImageName="The name of the destination image (required)",
+            ImageName="The name of the source image (required)",
+            KmsKeyArn="The KMS key ARN to use for encryption (required)",
+            Region="The region to copy the image to (required)",
+            Tags={"any": "The tags to apply to the image (optional)"},
+        ),
+        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    )
+
+    return definition
 
 
 class CopyImageAction(BaseAction):
     """Copy AMI from one region to another with encryption"""
 
-    def __init__(self, definition: ActionDefinition, context: dict[str, Any], deployment_details: DeploymentDetails):
+    def __init__(
+        self,
+        definition: ActionDefinition,
+        context: dict[str, Any],
+        deployment_details: DeploymentDetails,
+    ):
         super().__init__(definition, context, deployment_details)
 
-        self.account = self.params.Account
         self.destination_image_name = self.params.DestinationImageName
         self.image_name = self.params.ImageName
         self.kms_key_arn = self.params.KmsKeyArn
@@ -29,7 +57,7 @@ class CopyImageAction(BaseAction):
     def _execute(self):
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.get_provisioning_role_arn(self.params.Account)
         )
 
         # Find image (provides image id and snapshot ids)
@@ -65,7 +93,7 @@ class CopyImageAction(BaseAction):
     def _check(self):
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=envinfo.provisioning_role_arn(self.account)
+            region=self.region, role=util.provisioning_role_arn(self.params.Account)
         )
 
         # Wait for image creation to complete / fail
@@ -110,7 +138,9 @@ class CopyImageAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.account = self.renderer.render_string(self.account, self.context)
+        self.params.Account = self.renderer.render_string(
+            self.params.Account, self.context
+        )
         self.image_name = self.renderer.render_string(self.image_name, self.context)
         self.region = self.renderer.render_string(self.region, self.context)
 
