@@ -18,7 +18,7 @@ def generate_template() -> ActionDefinition:
     definition = ActionDefinition(
         Label="action-definition-label",
         Type="AWS::RDS::ModifyDbInstance",
-        DependsOn=['put-a-label-here'],
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             Region="The region to create the stack in (required)",
@@ -33,6 +33,35 @@ def generate_template() -> ActionDefinition:
 
 
 class ModifyDbInstanceAction(BaseAction):
+    """Modify an RDS database instance
+
+    This action modifies an RDS database instance.  The action will wait for the modifications to complete before returning.
+
+    Attributes:
+        Type: Use the value: ``AWS::RDS::ModifyDbInstance``
+        Params.Account: The account where your RDS instance is located
+        Params.Region: The region where your RDS instance is located
+        Params.ApiParams: The parameters to pass to the modify_db_instance call (required).  See AWS docuemntation for more infomration on the parameters.
+
+    .. rubric: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-rds-modifydbinstance-label
+              Type: "AWS::RDS::ModifyDbInstance"
+              Params:
+                Account: "123456789012"
+                Region: "ap-southeast-1"
+                ApiParams:
+                  DBInstanceIdentifier: "My-RDS-Instance-Id"
+                  DBInstanceClass: db.m7g.4xlarge
+                  ApplyImmediately: True
+              Scope: "build"
+
+    """
+
     def __init__(
         self,
         definition: ActionDefinition,
@@ -71,7 +100,8 @@ class ModifyDbInstanceAction(BaseAction):
 
     def _check(self):
         rds_client = aws.rds_client(
-            region=self.params.Region, role=util.get_provisioning_role_arn(self.params.Account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
         response = rds_client.describe_db_instances(
@@ -97,6 +127,12 @@ class ModifyDbInstanceAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.params.Account = self.renderer.render_string(self.params.Account, self.context)
-        self.params.Region = self.renderer.render_string(self.params.Region, self.context)
-        self.params.ApiParams = self.renderer.render_object(self.params.ApiParams, self.context)
+        self.params.Account = self.renderer.render_string(
+            self.params.Account, self.context
+        )
+        self.params.Region = self.renderer.render_string(
+            self.params.Region, self.context
+        )
+        self.params.ApiParams = self.renderer.render_object(
+            self.params.ApiParams, self.context
+        )

@@ -1,12 +1,15 @@
 """Upload the Jinja2 Render context to the appropriate S3 bucket"""
+
 from typing import Any
+import re
+import json
+import yaml
+
+import core_logging as log
 
 import core_helper.aws as aws
-import json
-import core_logging as log
-import re
+
 import core_framework as util
-import yaml
 
 from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
 
@@ -19,7 +22,7 @@ def generate_template() -> ActionDefinition:
     definition = ActionDefinition(
         Label="action-definition-label",
         Type="AWS::UnprotectELBAction",
-        DependsOn=['put-a-label-here'],
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             BucketName="The name of the bucket to upload the context to (required)",
@@ -41,6 +44,28 @@ class UploadContextAction(BaseAction):
     The "Context" is the FACTS output from the Factor API, which is a dictionary of all variables
     used in the generation of cloudformation templates
 
+    Attributes:
+        Type: Use the value: ``AWS::UploadContext``
+        Params.Account: The account where the bucket is located
+        Params.Region: The region where the bucket is located
+        Params.BucketName: The name of the bucket to upload the context to (required)
+        Params.Prefix: The prefix to use for the context file (required)
+
+    .. rubric: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-uploadcontext-label
+              Type: "AWS::UploadContext"
+              Params:
+                Account: "154798051514"
+                BucketName: "my-bucket-name"
+                Region: "ap-southeast-1"
+                Prefix: "my-prefix"
+              Scope: "build"
+
     """
 
     def __init__(
@@ -51,11 +76,10 @@ class UploadContextAction(BaseAction):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.bucket = self.params.BucketName
-        self.region = self.params.Region
-        self.prefix = self.params.Prefix
-
     def __context_outputs(self):
+
+        log.trace("UploadContextAction.__context_outputs()")
+
         outputs = {}
 
         for key, value in self.context.items():
@@ -77,20 +101,26 @@ class UploadContextAction(BaseAction):
                 _, portfolio, app, branch, build, resource_type = prn.split(":")
                 var_name = "{}/{}".format("pipeline", label)
             else:
+                log.fatal("Unsupported PRN format")
                 raise ValueError("Unsupported PRN format")
 
             outputs[var_name] = value
 
+        log.trace("Context outputs: {}", outputs)
+
         return outputs
 
     def _execute(self):
+
+        log.trace("UploadContextAction._execute()")
+
         # Obtain an S3 client
-        s3_client = aws.s3_client(region=self.region)
+        s3_client = aws.s3_client(region=self.params.Region)
 
         # Upload context as YAML
-        s3_key = "{}/context.yaml".format(self.prefix)
+        s3_key = "{}/context.yaml".format(self.params.Prefix)
 
-        log.debug("Uploading context file '{}' to '{}'", s3_key, self.bucket)
+        log.debug("Uploading context file '{}' to '{}'", s3_key, self.params.BucketName)
 
         body_hash = {}
         for key, value in self.__context_outputs().items():
@@ -100,29 +130,29 @@ class UploadContextAction(BaseAction):
         yaml_string = yaml.safe_dump(body_hash, default_flow_style=False)
 
         s3_client.put_object(
-            Bucket=self.bucket,
+            Bucket=self.params.BucketName,
             Key=s3_key,
             Body=yaml_string,
             ServerSideEncryption="AES256",
         )
 
         # Upload context as JSON
-        s3_key = "{}/context.json".format(self.prefix)
+        s3_key = "{}/context.json".format(self.params.Prefix)
 
-        log.debug("Uploading context file '{}' to '{}'", s3_key, self.bucket)
+        log.debug("Uploading context file '{}' to '{}'", s3_key, self.params.BucketName)
 
         json_string = json.dumps(body_hash, indent=4)
         s3_client.put_object(
-            Bucket=self.bucket,
+            Bucket=self.params.BucketName,
             Key=s3_key,
             Body=json_string,
             ServerSideEncryption="AES256",
         )
 
         # Upload context as Bash exports
-        s3_key = "{}/context.sh".format(self.prefix)
+        s3_key = "{}/context.sh".format(self.params.Prefix)
 
-        log.debug("Uploading context file '{}' to '{}'", s3_key, self.bucket)
+        log.debug("Uploading context file '{}' to '{}'", s3_key, self.params.BucketName)
 
         body_array = []
         for key, value in self.__context_outputs().items():
@@ -130,7 +160,7 @@ class UploadContextAction(BaseAction):
             body_array.append('export {}="{}"'.format(var_name, value))
         bash_string = "\n".join(body_array)
         s3_client.put_object(
-            Bucket=self.bucket,
+            Bucket=self.params.BucketName,
             Key=s3_key,
             Body=bash_string,
             ServerSideEncryption="AES256",
@@ -138,8 +168,15 @@ class UploadContextAction(BaseAction):
 
         self.set_complete()
 
+        log.trace("UploadContextAction._execute() complete")
+
     def _check(self):
+
+        log.trace("UploadContextAction._check()")
+
         self.set_failed("Internal error - _check() should not have been called")
+
+        log.trace("UploadContextAction._check() complete")
 
     def _unexecute(self):
         pass

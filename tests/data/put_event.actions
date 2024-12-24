@@ -1,5 +1,5 @@
 - Label: action-aws-putevent-label
-  Type: "AWS::GetStackReferences"
+  Type: "AWS::PutEvent"
   DependsOn:
   - put-a-label-here
   Params:

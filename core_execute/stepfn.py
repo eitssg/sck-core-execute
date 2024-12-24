@@ -1,4 +1,5 @@
 """Emulate how step functions and lambda run things in the background"""
+
 import os
 from datetime import datetime, timezone
 import uuid
@@ -162,15 +163,18 @@ def generate_task_and_start(args: list):
     emulate_state_machine(name, **data)
 
 
-class local_step_function_client:
-    """ Special runner to start the process in the background """
+class MagicStepFnClient:
+    """Special runner to start the process in the background"""
 
     def __init__(self, region: str):
         self.region = region
 
     def start_execution(self, **kwargs) -> dict:
         """
-        Start the execution of the step function in the background
+        Start the execution of the step function in the background.  The step function
+        runs in a separate shell and disconnects from the current process allow it
+        to run in the background and coninue util it completes are is forceably killed
+        by the OS.
 
         Returns:
             dict: Information about its startup
@@ -200,8 +204,17 @@ class local_step_function_client:
 
             # Execute the command in a shell and disconnect the TTY
             if os.name == "nt":  # Windows
-                venv_python = os.path.join(os.environ['VIRTUAL_ENV'], 'Scripts', 'python.exe')
-                cmd = [venv_python, script_name, "--task_payload", json_data, "--name", name]
+                venv_python = os.path.join(
+                    os.environ["VIRTUAL_ENV"], "Scripts", "python.exe"
+                )
+                cmd = [
+                    venv_python,
+                    script_name,
+                    "--task_payload",
+                    json_data,
+                    "--name",
+                    name,
+                ]
 
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -213,8 +226,15 @@ class local_step_function_client:
                     startupinfo=startupinfo,
                 )
             else:  # Unix-like
-                venv_python = os.path.join(os.environ['VIRTUAL_ENV'], 'bin', 'python')
-                cmd = [venv_python, script_name, "--task_payload", json_data, "--name", name]
+                venv_python = os.path.join(os.environ["VIRTUAL_ENV"], "bin", "python")
+                cmd = [
+                    venv_python,
+                    script_name,
+                    "--task_payload",
+                    json_data,
+                    "--name",
+                    name,
+                ]
 
                 subprocess.Popen(
                     ["nohup"] + cmd + ["&"],
@@ -227,6 +247,12 @@ class local_step_function_client:
 
         except Exception as e:
             return {"error": str(e)}
+
+
+def step_function_client(region: str) -> MagicStepFnClient:
+    """Return the local step function client"""
+
+    return MagicStepFnClient(region)
 
 
 if __name__ == "__main__":

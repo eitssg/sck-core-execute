@@ -1,8 +1,11 @@
 """Create CloudFront invalidation action to clear the cache"""
+
 from typing import Any
 from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
 
 import core_helper.aws as aws
+
+import core_logging as log
 
 import core_framework as util
 from core_execute.actionlib.action import BaseAction
@@ -15,8 +18,8 @@ def generate_template() -> ActionDefinition:
 
     definition = ActionDefinition(
         Label="action-definition-label",
-        Type="AWS::CreateCloudFrontInvalidationAction",
-        DependsOn=['put-a-label-here'],
+        Type="AWS::CreateCloudFrontInvalidation",
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             Region="The region to copy the image to (required)",
@@ -30,7 +33,35 @@ def generate_template() -> ActionDefinition:
 
 
 class CreateCloudFrontInvalidationAction(BaseAction):
-    """Create a CloudFront invalidation and clear caches"""
+    """Create a CloudFront invalidation and clear caches
+
+    This action will create a CloudFront invalidation and clear the cache.  The action will wait for the invalidation to complete before returning.
+
+    Attributes:
+        Type: Use the value: ``AWS::CreateCloudFrontInvalidation``
+        Params.Account: The account where CloudFront is located
+        Params.Region: The region where CloudFront is located
+        Params.DistributionId: The ID of the CloudFront distribution to invalidate (required)
+        Params.Paths: The paths to invalidate (optional).  Defaults to ['*']
+
+    .. rubric:: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-createcloudfrontinvalidation-label
+              Type: "AWS::CreateCloudFrontInvalidation"
+              Params:
+                  Account: "123456789012"
+                  Region: "ap-southeast-1"
+                  DistributionId: "E1234567890"
+                  Paths:
+                    - "/index.html"
+                    - "/images/*"
+              Scope: "build"
+
+    """
 
     def __init__(
         self,
@@ -39,25 +70,32 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
-        self.account = self.params.Account
-        self.region = self.params.Region
-        self.distribution_id = self.params.DistributionId
-        self.paths = self.params.Paths or ['*']
+
+        if self.params.Paths is None:
+            self.params.Paths = ["*"]
 
     def _execute(self):
-        if self.distribution_id is None or self.distribution_id == "":
+
+        log.trace("Executing CreateCloudFrontInvalidationAction")
+
+        if self.params.DistributionId is None or self.params.DistributionId == "":
             self.set_complete("No distribution specified")
+            log.warning("No distribution specified")
             return
 
         # Obtain a CloudFront client
         cloudfront_client = aws.cloudfront_client(
-            region=self.region, role=util.get_provisioning_role_arn(self.account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
         response = cloudfront_client.create_invalidation(
-            DistributionId=self.distribution_id,
+            DistributionId=self.params.DistributionId,
             InvalidationBatch={
-                "Paths": {"Items": self.paths, "Quantity": len(self.paths)},
+                "Paths": {
+                    "Items": self.params.Paths,
+                    "Quantity": len(self.params.Paths),
+                },
                 "CallerReference": dt.utcnow().isoformat(),
             },
         )
@@ -67,6 +105,10 @@ class CreateCloudFrontInvalidationAction(BaseAction):
             "Invalidation has been triggered - '{}'".format(
                 response["Invalidation"]["Id"]
             )
+        )
+
+        log.trace(
+            "Invalidation has been triggered - '{}'", response["Invalidation"]["Id"]
         )
 
     def _check(self):
@@ -79,12 +121,21 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.region = self.renderer.render_string(self.region, self.context)
-        self.account = self.renderer.render_string(self.account, self.context)
-        self.distribution_id = self.renderer.render_string(
-            self.distribution_id, self.context
+
+        log.trace("Resolving CreateCloudFrontInvalidationAction")
+
+        self.params.Region = self.renderer.render_string(
+            self.params.Region, self.context
+        )
+        self.params.Account = self.renderer.render_string(
+            self.params.Account, self.context
+        )
+        self.params.DistributionId = self.renderer.render_string(
+            self.params.DistributionId, self.context
         )
         paths = []
-        for path in self.paths:
+        for path in self.params.Paths:
             paths.append(self.renderer.render_string(path, self.context))
-        self.paths = paths
+        self.params.Paths = paths
+
+        log.trace("CreateCloudFrontInvalidationAction resolved")

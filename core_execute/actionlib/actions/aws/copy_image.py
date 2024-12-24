@@ -18,7 +18,7 @@ def generate_template() -> ActionDefinition:
     definition = ActionDefinition(
         Label="action-definition-label",
         Type="AWS::CopyImage",
-        DependsOn=['put-a-label-here'],
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             DestinationImageName="The name of the destination image (required)",
@@ -34,7 +34,34 @@ def generate_template() -> ActionDefinition:
 
 
 class CopyImageAction(BaseAction):
-    """Copy AMI from one region to another with encryption"""
+    """Copy AMI from one region to another with encryption
+
+    This action will copy an AMI.  The action will wait for the copy to complete before returning.
+
+    Attributes:
+        Label: Enter a label to define this action instance
+        Type: Use the value: ``AWS::KMS::CopyImage``
+        Params.Account: The accoutn where KMS keys are centraly stored
+        Params.Region: The region where KMS keys are located
+        Params.ImageName: The name of the source image (required)
+        Params.KmsKeyArn: The KMS Key ARN to use for encryption (required)
+
+    .. rubric: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-copyimage-label
+              Type: "AWS::KMS::CopyImage"
+              Params:
+                Account: "123456789012"
+                Region: "ap-southeast-1"
+                ImageName: "My-Image-Name"
+                KmsKeyArn: "arn:aws:kms:ap-southeast-1:123456789012:key/your-kms-key-id"
+              Scope: "build"
+
+    """
 
     def __init__(
         self,
@@ -44,56 +71,67 @@ class CopyImageAction(BaseAction):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.destination_image_name = self.params.DestinationImageName
-        self.image_name = self.params.ImageName
-        self.kms_key_arn = self.params.KmsKeyArn
-        self.region = self.params.Region
-
         tags = self.params.Tags or {}
         if deployment_details.DeliveredBy:
             tags["DeliveredBy"] = deployment_details.DeliveredBy
+
         self.tags = aws.transform_tag_hash(tags)
 
     def _execute(self):
+
+        log.trace("Executing CopyImageAction")
+
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=util.get_provisioning_role_arn(self.params.Account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
         # Find image (provides image id and snapshot ids)
-        log.debug("Finding image with name '{}'", self.image_name)
+        log.debug("Finding image with name '{}'", self.params.ImageName)
         response = ec2_client.describe_images(
-            Filters=[{"Name": "name", "Values": [self.image_name]}]
+            Filters=[{"Name": "name", "Values": [self.params.ImageName]}]
         )
 
         if len(response["Images"]) == 0:
             self.set_complete(
                 "Could not find image with name '{}'. It may have been previously deleted.".format(
-                    self.image_name
+                    self.params.ImageName
                 )
+            )
+            log.warning(
+                "Could not find image with name '{}'. It may have been previously deleted.",
+                self.params.ImageName,
             )
             return
 
         image_id = response["Images"][0]["ImageId"]
-        log.debug("Found image '{}' with name '{}'", image_id, self.image_name)
+        log.debug("Found image '{}' with name '{}'", image_id, self.params.ImageName)
 
         # Encrypt AMI by copying source AMI with encryption option
         self.set_running("Encrypting new image")
         response = ec2_client.copy_image(
             Encrypted=True,
-            KmsKeyId=self.kms_key_arn,
-            Name=self.destination_image_name,
+            KmsKeyId=self.params.KmsKeyArn,
+            Name=self.params.DestinationImageName,
             SourceImageId=image_id,
-            SourceRegion=self.region,
+            SourceRegion=self.params.Region,
         )
+
         image_id = response["ImageId"]
         self.set_output("ImageId", image_id)
         self.set_state("ImageId", image_id)
 
+        log.trace("CopyImageAction completed")
+
     def _check(self):
+
+        log.trace("Checking CopyImageAction")
+
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=util.provisioning_role_arn(self.params.Account)
+            region=self.params.Region,
+            role=util.provisioning_role_arn(self.params.Account),
         )
 
         # Wait for image creation to complete / fail
@@ -110,6 +148,7 @@ class CopyImageAction(BaseAction):
 
         if len(describe_images_response["Images"]) == 0:
             self.set_failed("No images found with id '{}'", image_id)
+            log.warning("No images found with id '{}'", image_id)
             return
 
         state = describe_images_response["Images"][0]["State"]
@@ -124,12 +163,15 @@ class CopyImageAction(BaseAction):
             )
             if len(image_snapshots) > 0:
                 ec2_client.create_tags(Resources=image_snapshots, Tags=self.tags)
+
             self.set_complete("Image is in state '{}'".format(state))
 
         elif state == "pending":
             self.set_running("Image is in state '{}'".format(state))
         else:
             self.set_failed("Image is in state '{}'".format(state))
+
+        log.trace("CopyImageAction check completed")
 
     def _unexecute(self):
         pass
@@ -138,11 +180,20 @@ class CopyImageAction(BaseAction):
         pass
 
     def _resolve(self):
+
+        log.trace("Resolving CopyImageAction")
+
         self.params.Account = self.renderer.render_string(
             self.params.Account, self.context
         )
-        self.image_name = self.renderer.render_string(self.image_name, self.context)
-        self.region = self.renderer.render_string(self.region, self.context)
+        self.params.ImageName = self.renderer.render_string(
+            self.params.ImageName, self.context
+        )
+        self.params.Region = self.renderer.render_string(
+            self.params.Region, self.context
+        )
+
+        log.trace("CopyImageAction resolved")
 
     def __get_image_snapshots(self, describe_images_response):
         snapshots = []

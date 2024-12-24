@@ -1,4 +1,5 @@
 """Delete an image and its associated snapshots"""
+
 from typing import Any
 
 import core_logging as log
@@ -19,7 +20,7 @@ def generate_template() -> ActionDefinition:
     definition = ActionDefinition(
         Label="action-definition-label",
         Type="AWS::DeleteImage",
-        DependsOn=['put-a-label-here'],
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             Region="The region to create the stack in (required)",
@@ -32,6 +33,32 @@ def generate_template() -> ActionDefinition:
 
 
 class DeleteImageAction(BaseAction):
+    """Delete an image and its associated snapshots
+
+    This action will delete an image and its associated snapshots.  The action will wait for the deletion to complete before returning.
+
+    Attributes:
+        Type: Use the value: ``AWS::DeleteImage``
+        Params.Account: The account where the image is located
+        Params.Region: The region where the image is located
+        Params.ImageName: The name of the image to delete (required)
+
+    .. rubric: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-deleteimage-label
+              Type: "AWS::DeleteImage"
+              Params:
+                Account: "154798051514"
+                Region: "ap-southeast-1"
+                ImageName: "my-image-name"
+              Scope: "build"
+
+    """
+
     def __init__(
         self,
         definition: ActionDefinition,
@@ -39,33 +66,35 @@ class DeleteImageAction(BaseAction):
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
-        self.account = self.params.Account
-        self.image_name = self.params.ImageName
-        self.region = self.params.Region
 
     def _execute(self):  # noqa: C901
+
+        log.trace("DeleteImageAction._execute()")
+
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=util.get_provisioning_role_arn(self.account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
         # Find image (provides image id and snapshot ids)
-        log.debug("Finding image with name '{}'", self.image_name)
+        log.debug("Finding image with name '{}'", self.params.ImageName)
         response = ec2_client.describe_images(
-            Filters=[{"Name": "name", "Values": [self.image_name]}]
+            Filters=[{"Name": "name", "Values": [self.params.ImageName]}]
         )
 
         if len(response["Images"]) == 0:
+            log.warning("Image '{}' does not exist", self.params.ImageName)
             self.set_complete(
                 "Image '{}' does not exist, may have been previously deleted".format(
-                    self.image_name
+                    self.params.ImageName
                 )
             )
             return
 
         image_id = response["Images"][0]["ImageId"]
 
-        log.debug("Found image '{}' with id '{}'", self.image_name, image_id)
+        log.debug("Found image '{}' with id '{}'", self.params.ImageName, image_id)
 
         # Extract snapshot ids from describe_images response
         snapshot_ids = []
@@ -88,10 +117,12 @@ class DeleteImageAction(BaseAction):
                     )
                 )
             else:
+                log.error("Error deregistering image '{}': {}", image_id, e)
                 raise
 
         # Delete image snapshots
         self.set_running("Deleting snapshots for image '{}'".format(image_id))
+
         for snapshot_id in snapshot_ids:
 
             log.debug("Deleting snapshot '{}'", snapshot_id)
@@ -106,12 +137,19 @@ class DeleteImageAction(BaseAction):
                         e,
                     )
                 else:
+                    log.error("Error deleting snapshot '{}': {}", snapshot_id, e)
                     raise
 
         self.set_complete()
 
+        log.trace("DeleteImageAction._execute() complete")
+
     def _check(self):
+        log.trace("DeleteImageAction._check()")
+
         self.set_complete()
+
+        log.trace("DeleteImageAction._check() complete")
 
     def _unexecute(self):
         pass
@@ -120,6 +158,17 @@ class DeleteImageAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.account = self.renderer.render_string(self.account, self.context)
-        self.image_name = self.renderer.render_string(self.image_name, self.context)
-        self.region = self.renderer.render_string(self.region, self.context)
+
+        log.trace("DeleteImageAction._resolve()")
+
+        self.params.Account = self.renderer.render_string(
+            self.params.Account, self.context
+        )
+        self.params.ImageName = self.renderer.render_string(
+            self.params.ImageName, self.context
+        )
+        self.params.Region = self.renderer.render_string(
+            self.params.Region, self.context
+        )
+
+        log.trace("DeleteImageAction._resolve() complete")

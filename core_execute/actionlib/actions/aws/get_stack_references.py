@@ -1,4 +1,5 @@
 """Gets the references to a stack output export"""
+
 from typing import Any
 from botocore.exceptions import ClientError
 
@@ -18,7 +19,7 @@ def generate_template() -> ActionDefinition:
     definition = ActionDefinition(
         Label="action-definition-label",
         Type="AWS::GetStackReferences",
-        DependsOn=['put-a-label-here'],
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             Region="The region to create the stack in (required)",
@@ -32,6 +33,34 @@ def generate_template() -> ActionDefinition:
 
 
 class GetStackReferencesAction(BaseAction):
+    """Get the references to a stack output export variables
+
+    This action will get the references to a stack output export variable.  The action will return the references to the export.
+
+    Attributes:
+        Type: Use the value: ``AWS::GetStackReferences``
+        Params.Account: The account where the stack is located
+        Params.Region: The region where the stack is located
+        Params.StackName: The name of the stack to check for references (required)
+        Params.OutputName: The name of the output to check for references (optional) defaults to 'DefaultExport'
+
+    .. rubric: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-getstackreferences-label
+              Type: "AWS::GetStackReferences"
+              Params:
+                Account: "154798051514"
+                StackName: "my-stack-name"
+                Region: "ap-southeast-1"
+                OutputName: "DefaultExport"
+              Scope: "build"
+
+    """
+
     def __init__(
         self,
         definition: ActionDefinition,
@@ -40,18 +69,20 @@ class GetStackReferencesAction(BaseAction):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.account = self.params.Account
-        self.region = self.params.Region
-        self.stack_name = self.params.StackName
-        self.output_name = self.params.OutputName or "DefaultExport"
+        if self.params.OutputName is None:
+            self.output_name = "DefaultExport"
 
     def _execute(self):
+
+        log.trace("GetStackReferencesAction._execute()")
+
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
-            region=self.region, role=util.get_provisioning_role_arn(self.account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
-        output_export_name = "{}:{}".format(self.stack_name, self.output_name)
+        output_export_name = "{}:{}".format(self.params.StackName, self.output_name)
         try:
             response = cfn_client.list_imports(ExportName=output_export_name)
 
@@ -59,7 +90,7 @@ class GetStackReferencesAction(BaseAction):
             log.debug(
                 "Stack is being referenced",
                 details={
-                    "StackName": self.stack_name,
+                    "StackName": self.params.StackName,
                     "OutputName": self.output_name,
                     "References": response["Imports"],
                     "HasReferences": True,
@@ -73,7 +104,7 @@ class GetStackReferencesAction(BaseAction):
             self.set_output("NumReferences", len(response["Imports"]))
 
             # Complete the action
-            self.set_complete("Stack '{}' is referenced".format(self.stack_name))
+            self.set_complete("Stack '{}' is referenced".format(self.params.StackName))
 
         except ClientError as e:
             # Error thrown - stack is not being referenced (or a legit error)
@@ -89,15 +120,34 @@ class GetStackReferencesAction(BaseAction):
                 )
             elif "not imported" in e.response["Error"]["Message"]:
                 # Export isn't imported / referenced
+                log.warning(
+                    "Stack '{}' is not referenced",
+                    details={
+                        "StackName": self.params.StackName,
+                        "OutputName": self.output_name,
+                    },
+                )
                 self.set_complete(
-                    "Stack '{}' is not referenced".format(self.stack_name)
+                    "Stack '{}' is not referenced".format(self.params.StackName)
                 )
             else:
                 # Other error
+                log.error(
+                    "Error getting references for stack '{}': {}",
+                    self.params.StackName,
+                    e,
+                )
                 raise
 
+        log.trace("GetStackReferencesAction._execute() complete")
+
     def _check(self):
+
+        log.trace("GetStackReferencesAction._check()")
+
         self.set_failed("Internal error - _check() should not have been called")
+
+        log.trace("GetStackReferencesAction._check() complete")
 
     def _unexecute(self):
         pass
@@ -106,7 +156,18 @@ class GetStackReferencesAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.account = self.renderer.render_string(self.account, self.context)
-        self.region = self.renderer.render_string(self.region, self.context)
-        self.stack_name = self.renderer.render_string(self.stack_name, self.context)
+
+        log.trace("GetStackReferencesAction._resolve()")
+
+        self.params.Account = self.renderer.render_string(
+            self.params.Account, self.context
+        )
+        self.params.Region = self.renderer.render_string(
+            self.params.Region, self.context
+        )
+        self.params.StackName = self.renderer.render_string(
+            self.params.StackName, self.context
+        )
         self.output_name = self.renderer.render_string(self.output_name, self.context)
+
+        log.trace("GetStackReferencesAction._resolve() complete")

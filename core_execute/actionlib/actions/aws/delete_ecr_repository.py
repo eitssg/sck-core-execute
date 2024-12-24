@@ -1,7 +1,10 @@
 """Delete an ECR repository"""
+
 from typing import Any
 
 from botocore.exceptions import ClientError
+
+import core_logging as log
 
 from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
 
@@ -17,7 +20,7 @@ def generate_template() -> ActionDefinition:
     definition = ActionDefinition(
         Label="action-definition-label",
         Type="AWS::DeleteEcrRepository",
-        DependsOn=['put-a-label-here'],
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             Region="The region to create the stack in (required)",
@@ -30,7 +33,31 @@ def generate_template() -> ActionDefinition:
 
 
 class DeleteEcrRepositoryAction(BaseAction):
-    """Delete an ECR repository"""
+    """Delete an ECR repository
+
+    This action will delete an ECR repository.  The action will wait for the deletion to complete before returning.
+
+    Attributes:
+        Type: Use the value: ``AWS::DeleteEcrRepository``
+        Params.Account: The account where the ECR repository is located
+        Params.Region: The region where the ECR repository is located
+        Params.RepositoryName: The name of the ECR repository to delete (required)
+
+    .. rubric: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-deleteecrrepository-label
+              Type: "AWS::DeleteEcrRepository"
+              Params:
+                Account: "154798051514"
+                Region: "ap-southeast-1"
+                RepositoryName: "my-ecr-repository"
+              Scope: "build"
+
+    """
 
     def __init__(
         self,
@@ -40,34 +67,52 @@ class DeleteEcrRepositoryAction(BaseAction):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.account = self.params.Account
-        self.region = self.params.Region
-        self.repository_name = self.params.RepositoryName
-
     def _execute(self):
+
+        log.trace("DeleteEcrRepositoryAction._execute()")
+
         ecr_client = aws.ecr_client(
-            region=self.region, role=util.get_provisioning_role_arn(self.account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
         try:
             ecr_client.delete_repository(
-                registryId=self.account, repositoryName=self.repository_name, force=True
+                registryId=self.params.Account,
+                repositoryName=self.params.RepositoryName,
+                force=True,
             )
             self.set_complete(
-                "ECR repository '{}' has been deleted".format(self.repository_name)
+                "ECR repository '{}' has been deleted".format(
+                    self.params.RepositoryName
+                )
             )
         except ClientError as e:
             if e.response["Error"]["Code"] == "RepositoryNotFoundException":
+                log.warning(
+                    "ECR repository '{}' does not exist", self.params.RepositoryName
+                )
                 self.set_complete(
                     "ECR repository '{}' does not exist, may have been previously deleted".format(
-                        self.repository_name
+                        self.params.RepositoryName
                     )
                 )
             else:
+                log.error(
+                    "Error deleting ECR repository '{}': {}",
+                    self.params.RepositoryName,
+                    e,
+                )
                 raise
 
+        log.trace("DeleteEcrRepositoryAction._execute() complete")
+
     def _check(self):
+        log.trace("DeleteEcrRepositoryAction._check()")
+
         self.set_failed("Internal error - _check() should not have been called")
+
+        log.trace("DeleteEcrRepositoryAction._check() complete")
 
     def _unexecute(self):
         pass
@@ -76,8 +121,17 @@ class DeleteEcrRepositoryAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.account = self.renderer.render_string(self.account, self.context)
-        self.region = self.renderer.render_string(self.region, self.context)
-        self.repository_name = self.renderer.render_string(
-            self.repository_name, self.context
+
+        log.trace("DeleteEcrRepositoryAction._resolve()")
+
+        self.params.Account = self.renderer.render_string(
+            self.params.Account, self.context
         )
+        self.params.Region = self.renderer.render_string(
+            self.params.Region, self.context
+        )
+        self.params.RepositoryName = self.renderer.render_string(
+            self.params.RepositoryName, self.context
+        )
+
+        log.trace("DeleteEcrRepositoryAction._resolve() complete")

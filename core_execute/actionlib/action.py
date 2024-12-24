@@ -1,4 +1,5 @@
 """Defines the BasActions abstrction for all actions."""
+
 from typing import Any, Self
 import traceback
 import sys
@@ -35,6 +36,8 @@ LC_HOOK_FAILED = "Failed"
 LC_HOOK_RUNNING = "Running"
 LC_HOOK_COMPLETE = "Complete"
 
+NO_DEFAULT_PROVIDED = "_!NO!DEFAULT!PROVIDED!_"
+
 
 class StatusCode(enum.Enum):
     """Enum for action status codes."""
@@ -46,19 +49,42 @@ class StatusCode(enum.Enum):
 
 
 class BaseAction:
+    """BaseActions the class where all actions inherit from."""
+
+    label: str
+    """str: The label of the action is the unique identifier of the action."""
 
     context: dict[str, Any]
-    label: str
+    """dict[str, Any]: The context of the action is the Jinja2 Rendering Context."""
+
     action_name: str
+    """str: The action name is the name of the action."""
+
     output_namespace: str | None
+    """str | None: The output namespace is the namespace where the output of the action is stored."""
+
     state_namespace: str
+    """str: The state namespace is the namespace where the state of the action is stored."""
     type: str
+    """str: The type of the action."""
+
     condition: str
+    """str: The condition of the action."""
+
     after: list[str]
+    """list[str]: The actions that should be perfomed after this action."""
+
     params: ActionParams
+    """ActionParams: The parameters of the action."""
+
     lifecycle_hooks: list[dict[str, Any]]
+    """list[dict[str, Any]]: The lifecycle hooks of the action."""
+
     deployment_details: DeploymentDetails
+    """DeploymentDetails: The deployment details of the action. client/portfolio/app/branch/build information."""
+
     renderer: Jinja2Renderer
+    """Jinja2Renderer: The Jinja2 Renderer for the action.  Uses the context to render templates."""
 
     def _execute(self):
         raise NotImplementedError("Must implement in subclass")
@@ -108,21 +134,54 @@ class BaseAction:
         self.params = definition.Params
         self.lifecycle_hooks = definition.LifecycleHooks
 
-    def is_init(self):
+    def is_init(self) -> bool:
+        """
+        Check if the action is in the init state.
+
+        Returns:
+            bool: True if the action is in the init state
+        """
         return self.__get_status_code() == StatusCode.PENDING.value
 
-    def is_failed(self):
+    def is_failed(self) -> bool:
+        """
+        Check if the action is in the failed state.
+
+        Returns:
+            bool: True if the action is in the failed state
+        """
         return self.__get_status_code() == StatusCode.FAILED.value
 
-    def is_running(self):
+    def is_running(self) -> bool:
+        """
+        Check if the action is in the running state.
+
+        Returns:
+            bool: True if the action is in the running state
+        """
         return self.__get_status_code() == StatusCode.RUNNING.value
 
-    def is_complete(self):
+    def is_complete(self) -> bool:
+        """
+        Check if the action is in the complete state.
+
+        Returns:
+            bool: True if the action is in the complete state
+        """
         return self.__get_status_code() == StatusCode.COMPLETE.value
 
     def set_failed(self, reason: str):
+        """
+        Set the status to failed and supply the given reason
+
+        Args:
+            reason (str): Reason the status failed.
+        """
+        log.trace("Setting action to failed - {}", reason)
+
         # Ignore duplicate state updates
         if self.is_failed() and self.__get_status_reason() == reason:
+            log.trace("Action is already failed - {}", reason)
             return
 
         # Log the state change
@@ -135,9 +194,20 @@ class BaseAction:
         self.__set_context(self.label, STATUS_CODE, StatusCode.FAILED.value)
         self.__set_context(self.label, STATUS_REASON, reason)
 
+        log.trace("Action set to failed - {}", reason)
+
     def set_running(self, reason: str):
+        """
+        Set the status to running and supply the given reason
+
+        Args:
+            reason (str): The reason the status is running.
+        """
+        log.trace("Setting action to running - {}", reason)
+
         # Ignore duplicate state updates
         if self.is_running() and self.__get_status_reason() == reason:
+            log.trace("Action is already running - {}", reason)
             return
 
         # Log the state change
@@ -150,9 +220,20 @@ class BaseAction:
         self.__set_context(self.label, STATUS_CODE, StatusCode.RUNNING.value)
         self.__set_context(self.label, STATUS_REASON, reason)
 
+        log.trace("Action set to running - {}", reason)
+
     def set_complete(self, reason: str):
+        """
+        Set the status to complete and supply the given reason
+
+        Args:
+            reason (str): The reason the status is complete.
+        """
+        log.trace("Setting action to complete - {}", reason)
+
         # Ignore duplicate state updates
         if self.is_complete() and self.__get_status_reason() == reason:
+            log.trace("Action is already complete - {}", reason)
             return
 
         # Log the state change
@@ -165,9 +246,20 @@ class BaseAction:
         self.__set_context(self.label, STATUS_CODE, StatusCode.COMPLETE.value)
         self.__set_context(self.label, STATUS_REASON, reason)
 
+        log.trace("Action set to complete - {}", reason)
+
     def set_skipped(self, reason: str):
+        """
+        Set the status to skipped and supply the given reason
+
+        Args:
+            reason (str): The reason the status is skipped.
+        """
+        log.trace("Setting action to skipped - {}", reason)
+
         # Ignore duplicate state updates
         if self.is_complete() and self.__get_status_reason() == reason:
+            log.trace("Action is already complete - {}", reason)
             return
 
         # Log the state change
@@ -177,7 +269,18 @@ class BaseAction:
         self.__set_context(self.label, STATUS_CODE, StatusCode.COMPLETE.value)
         self.__set_context(self.label, STATUS_REASON, reason)
 
+        log.trace("Action set to skipped - {}", reason)
+
     def set_output(self, name: str, value: Any):
+        """
+        Set the output of the action
+
+        Args:
+            name (str): Variable name of the output within the action output namespace.
+            value (Any): Value of this variable
+        """
+        log.trace("Setting output '{}' = '{}'", name, value)
+
         # Set output variable (if user chose to save outputs)
         if self.output_namespace is not None:
             log.debug(
@@ -188,21 +291,67 @@ class BaseAction:
         # Set state variable
         self.__set_context(self.state_namespace, name, value)
 
+        log.trace("Output '{}' set to '{}'", name, value)
+
     def get_output(self, name: str) -> str | None:
+        """
+        Get the output variable from the action within the output namespace
+
+        Args:
+            name (str): Name of the output variable
+
+        Returns:
+            str | None: Value of the output variable
+        """
+
+        log.trace("Getting output '{}'", name)
+
         if self.output_namespace is None:
             return None
         return self.__get_context(self.output_namespace, name)
 
     def set_state(self, name: str, value: Any):
+        """
+        Set a state variable of the action within the action state namespace
+
+        Args:
+            name (str): Name of the state variable
+            value (Any): vaue of the state variable
+        """
+        log.trace("Setting state '{}' = '{}'", name, value)
+
         self.__set_context(self.state_namespace, name, value)
 
     def get_state(self, name: str) -> str:
+        """
+        Get a state variable of the action within the action state namespace
+
+        Args:
+            name (str): Name of the state variable
+
+        Returns:
+            str: Value of the state variable
+        """
+
+        log.trace("Getting state '{}'", name)
+
         return self.__get_context(self.state_namespace, name)
 
     def execute(self) -> Self:
+        """
+        Execute the action.  It will first check the condition, and if true, execute the action.
+
+        The context is used to render action variables and paramters and the action is executed.
+
+        Returns:
+            Self: This action object
+        """
+
         try:
             # Temporarily set the logger identity to this action's label
             log.set_identity(self.label)
+
+            log.trace("Executing action for {}", self.label)
 
             # Render the action condition, and see if it evaluates to true
             condition_result = self.renderer.render_string(
@@ -217,6 +366,8 @@ class BaseAction:
                 # Condition is false, skip the action
                 self.set_skipped("Condition evaluated to '{}'".format(condition_result))
 
+            log.trace("Action executed for {}", self.label)
+
         except Exception as e:
             # Something went wrong (internal error)
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -228,20 +379,35 @@ class BaseAction:
             else:
                 fname = "Unknown"
                 lineno = -1
-            tb_str = ''.join(traceback.format_exception(exc_type, exc_obj, exc_tb))
+            tb_str = "".join(traceback.format_exception(exc_type, exc_obj, exc_tb))
             self.set_failed(
                 "Internal error {} in {} at {} - {}\nTraceback:\n{}".format(
                     exc_type.__name__, fname, lineno, str(e), tb_str
                 )
             )
+            log.error(
+                "Internal error {} in {} at {} - {}",
+                exc_type.__name__,
+                fname,
+                lineno,
+                str(e),
+            )
 
         finally:
             # Reset the logger identity to base value
+            log.trace("Resetting identity")
             log.reset_identity()
 
         return self
 
     def check(self) -> Self:
+        """
+        Check the action to determine if it is oc to run
+
+        Returns:
+            Self: _description_
+        """
+
         try:
             # Temporarily set the logger identity to this action's label
             log.set_identity(self.label)
@@ -251,6 +417,8 @@ class BaseAction:
             self._resolve()
             self._check()
 
+            log.trace("Action checked for {}", self.label)
+
         except Exception as e:
             # Something went wrong (internal error)
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -262,11 +430,18 @@ class BaseAction:
             else:
                 fname = "Unknown"
                 lineno = -1
-            tb_str = ''.join(traceback.format_exception(exc_type, exc_obj, exc_tb))
+            tb_str = "".join(traceback.format_exception(exc_type, exc_obj, exc_tb))
             self.set_failed(
                 "Internal error {} in {} at {} - {}\nTraceback:\n{}".format(
                     exc_type.__name__, fname, lineno, str(e), tb_str
                 )
+            )
+            log.error(
+                "Internal error {} in {} at {} - {}",
+                exc_type.__name__,
+                fname,
+                lineno,
+                str(e),
             )
 
         finally:
@@ -282,7 +457,7 @@ class BaseAction:
         return self.__get_context(self.label, STATUS_REASON, None)
 
     def __get_context(
-        self, prn: str, name: str, default: str = "_!NO!DEFAULT!PROVIDED!_"
+        self, prn: str, name: str, default: str = NO_DEFAULT_PROVIDED
     ) -> str:
         key = "{}/{}".format(prn, name)
 
@@ -290,7 +465,7 @@ class BaseAction:
             return self.context[key]
 
         else:
-            if default == "_!NO!DEFAULT!PROVIDED!_":
+            if default == NO_DEFAULT_PROVIDED:
                 raise KeyError(
                     "Key '{}' is not in the context and no default was provided".format(
                         name
@@ -310,9 +485,7 @@ class BaseAction:
 
     def __execute_lifecycle_hooks(self, event: str, reason: str):
         # Retrieve the event hooks for this action, for this state event
-        event_hooks = [
-            h for h in self.lifecycle_hooks if event in h.get("States", [])
-        ]
+        event_hooks = [h for h in self.lifecycle_hooks if event in h.get("States", [])]
 
         # Execute the event hooks
         for event_hook in event_hooks:

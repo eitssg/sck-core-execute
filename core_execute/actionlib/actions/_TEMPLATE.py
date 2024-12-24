@@ -13,7 +13,7 @@ def generate_template() -> ActionDefinition:
     definition = ActionDefinition(
         Label="action-definition-label",
         Type="SYSTEM::ActionNameGoesHere",
-        DependsOn=['put-a-label-here'],
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(Account="See class ActionParams for details"),
         Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
     )
@@ -22,6 +22,28 @@ def generate_template() -> ActionDefinition:
 
 
 class ActionNameGoesHereAction(BaseAction):
+    """Sameple Action Description
+
+    Attributes:
+        Type: Use the value: ``SYSTEM::ActionNameGoesHere``
+        Params.Account: The account where the action is located
+        Params.Region: The region where the action is located
+        Params.ActionName: The name of the action to execute
+
+    .. rubric: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-system-actionnamegoeshere-label
+              Type: "SYSTEM::ActionNameGoesHere"
+              Params:
+                Account: "154798051514"
+                Region: "ap-southeast-1"
+                ActionName: "my-action-name"
+              Scope: "build"
+    """
 
     renderer = Jinja2Renderer()
 

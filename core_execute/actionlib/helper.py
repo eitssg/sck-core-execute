@@ -1,4 +1,5 @@
 """Helper class for managing actions in the actionlib module."""
+
 import re
 
 from ..actionlib.action import BaseAction
@@ -12,7 +13,12 @@ class Helper:
 
     actions: list[BaseAction]
 
-    def __init__(self, definitions: list[ActionDefinition], state_context: dict, task_payload: TaskPayload):
+    def __init__(
+        self,
+        definitions: list[ActionDefinition],
+        state_context: dict,
+        task_payload: TaskPayload,
+    ):
 
         self.actions = list(
             map(

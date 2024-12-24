@@ -1,4 +1,5 @@
 """Grant access to KMS keys to principals"""
+
 from typing import Any
 
 import core_logging as log
@@ -19,7 +20,7 @@ def generate_template() -> ActionDefinition:
     definition = ActionDefinition(
         Label="action-definition-label",
         Type="AWS::KMS::CreateGrants",
-        DependsOn=['put-a-label-here'],
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             Region="The region to create the stack in (required)",
@@ -36,7 +37,39 @@ def generate_template() -> ActionDefinition:
 
 
 class CreateGrantsAction(BaseAction):
-    """Create grants for a KMS key"""
+    """Create Grans for an AWS KMS Key
+
+    This action will create grants for KMS Keys.  The action will wait for the modifications to complete before returning.
+
+    Attributes:
+        Label: Enter a label to define this action instance
+        Type: Use the value: ``AWS::KMS::CreateGrants``
+        Params.Account: The accoutn where KMS keys are centraly stored
+        Params.Region: The region where KMS keys are located
+        Params.KmsKeyArn: The ID of the KMS key to create grants for (required if KmsKeyId is not provided)
+        Params.KmsKeyId: The ARN of the KMS key to create grants for (required if KmsKeyArn is not provided)
+        Params.GranteePrincipals: The principals to grant access to (required)
+        Params.Operations: The operations to grant access for (required)
+        Params.IgnoreFailedGrants: If true, ignore failed grants, otherwise fail the action if a grant fails
+
+    .. rubric: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-kms-creategrants-label
+              Type: "AWS::KMS::CreateGrants"
+              Params:
+                Account: "123456789012"
+                Region: "ap-southeast-1"
+                KmsKeyArn: "arn:aws:kms:ap-southeast-1:123456789012:key/your-kms-key-id"
+                GrantPrincipals: ["arn:aws:iam::123456789012:role/YourRole"]
+                Operations: ["Encrypt", "Decrypt", "GenerateDataKey"]
+                IgnoreFailedGrants: false
+              Scope: "build"
+
+    """
 
     def __init__(
         self,

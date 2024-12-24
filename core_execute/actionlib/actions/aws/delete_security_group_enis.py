@@ -1,4 +1,5 @@
 """Delete ENIs attached to a security group"""
+
 from typing import Any
 
 import core_logging as log
@@ -21,7 +22,7 @@ def generate_template() -> ActionDefinition:
     definition = ActionDefinition(
         Label="action-definition-label",
         Type="AWS::DeleteSecurityGroupEnis",
-        DependsOn=['put-a-label-here'],
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             Region="The region to create the stack in (required)",
@@ -34,6 +35,32 @@ def generate_template() -> ActionDefinition:
 
 
 class DeleteSecurityGroupEnisAction(BaseAction):
+    """Delete ENIs attached to a security group
+
+    This action will delete ENIs attached to a security group.  The action will wait for the deletion to complete before returning.
+
+    Attributes:
+        Type: Use the value: ``AWS::DeleteSecurityGroupEnis``
+        Params.Account: The account where the security group is located
+        Params.Region: The region where the security group is located
+        Params.SecurityGroupId: The ID of the security group to delete ENIs from (required)
+
+    .. rubric: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-deletesecuritygroupenis-label
+              Type: "AWS::DeleteSecurityGroupEnis"
+              Params:
+                Account: "154798051514"
+                Region: "ap-southeast-1"
+                SecurityGroupId: "security-group-id"
+              Scope: "build"
+
+    """
+
     def __init__(
         self,
         definition: ActionDefinition,
@@ -41,23 +68,29 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
-        self.account = self.params.Account
-        self.region = self.params.Region
-        self.security_group_id = self.params.SecurityGroupId
 
     def _execute(self):
-        if self.security_group_id:
+
+        log.trace("DeleteSecurityGroupEnisAction._execute()")
+
+        if self.params.SecurityGroupId:
             self.set_running(
                 "Deleting ENIs attached to security group '{}'".format(
-                    self.security_group_id
+                    self.params.SecurityGroupId
                 )
             )
             self.__detach_enis()
         else:
             self.set_complete("Could not find security group, nothing to do")
 
+        log.trace("DeleteSecurityGroupEnisAction._execute()")
+
     def _check(self):
+        log.trace("DeleteSecurityGroupEnisAction._check()")
+
         self.__detach_enis()
+
+        log.trace("DeleteSecurityGroupEnisAction._check()")
 
     def _unexecute(self):
         pass
@@ -66,22 +99,34 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.account = self.renderer.render_string(self.account, self.context)
-        self.region = self.renderer.render_string(self.region, self.context)
-        self.security_group_id = self.renderer.render_string(
-            self.security_group_id, self.context
+
+        log.trace("DeleteSecurityGroupEnisAction._resolve()")
+
+        self.params.Account = self.renderer.render_string(
+            self.params.Account, self.context
         )
+        self.params.Region = self.renderer.render_string(
+            self.params.Region, self.context
+        )
+        self.params.SecurityGroupId = self.renderer.render_string(
+            self.params.SecurityGroupId, self.context
+        )
+
+        log.trace("DeleteSecurityGroupEnisAction._resolve()")
 
     def __detach_enis(self):
 
+        log.trace("DeleteSecurityGroupEnisAction.__detach_enis()")
+
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=util.get_provisioning_role_arn(self.account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
         # Retrieve security group ENIs
         response = ec2_client.describe_network_interfaces(
-            Filters=[{"Name": "group-id", "Values": [self.security_group_id]}]
+            Filters=[{"Name": "group-id", "Values": [self.params.SecurityGroupId]}]
         )
         network_interfaces = response["NetworkInterfaces"]
 
@@ -97,7 +142,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                     log.debug(
                         "Detaching ENI '{}' from security group '{}'",
                         network_interface["NetworkInterfaceId"],
-                        self.security_group_id,
+                        self.params.SecurityGroupId,
                     )
                     ec2_client.detach_network_interface(
                         AttachmentId=network_interface["Attachment"]["AttachmentId"],
@@ -114,5 +159,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         else:
             self.set_complete(
                 "Detached and deleted all ENIs from security group '{}'",
-                self.security_group_id,
+                self.params.SecurityGroupId,
             )
+
+        log.trace("DeleteSecurityGroupEnisAction.__detach_enis() complete")

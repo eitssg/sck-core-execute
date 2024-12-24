@@ -1,4 +1,5 @@
 """Create an Image of an EC2 instance"""
+
 from typing import Any
 
 import core_logging as log
@@ -16,8 +17,8 @@ def generate_template() -> ActionDefinition:
 
     definition = ActionDefinition(
         Label="action-definition-label",
-        Type="AWS::CreateImageAction",
-        DependsOn=['put-a-label-here'],
+        Type="AWS::CreateImage",
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             ImageName="The name of the image to create (required)",
@@ -31,6 +32,32 @@ def generate_template() -> ActionDefinition:
 
 
 class CreateImageAction(BaseAction):
+    """Create an AMI Image from an EC2 Instance
+
+    This action will create an AMI for an EC2.  It will wait for the operation to complete.
+
+    Attributes:
+        Label: Enter a label to define this action instance
+        Type:  Use the  value ``AWS::CopyImage``
+        Params.Account: The accoutn where KMS keys are centraly stored
+        Params.Region: The region where KMS keys are located
+        Params.InstanceId: The instance ID to create an image from.
+        Params.ImageName: The name of the source image (required)
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-createimage-label
+              Type: "AWS::KMS::CreateImage"
+              Params:
+                Account: "123456789012"
+                Region: "ap-southeast-1"
+                InstanceId: "i-1234567890abcdef0"
+                ImageName: "My-Image-Name"
+              Scope: "build"
+
+    """
 
     def __init__(
         self,
@@ -40,11 +67,6 @@ class CreateImageAction(BaseAction):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.account = self.params.Account
-        self.image_name = self.params.ImageName
-        self.instance_id = self.params.InstanceId
-        self.region = self.params.Region
-
         tags = self.params.Tags or {}
         if deployment_details.DeliveredBy:
             tags["DeliveredBy"] = deployment_details.DeliveredBy
@@ -52,24 +74,34 @@ class CreateImageAction(BaseAction):
         self.tags = aws.transform_tag_hash(tags)
 
     def _execute(self):
+
+        log.trace("Executing action")
+
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=util.get_provisioning_role_arn(self.account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
         # Create an image
-        self.set_running("Creating new image '{}'".format(self.image_name))
+        self.set_running("Creating new image '{}'".format(self.params.ImageName))
         response = ec2_client.create_image(
-            InstanceId=self.instance_id, Name=self.image_name
+            InstanceId=self.params.InstanceId, Name=self.params.ImageName
         )
         image_id = response["ImageId"]
         self.set_output("ImageId", image_id)
         self.set_state("ImageId", image_id)
 
+        log.trace("Image created with id '{}'", image_id)
+
     def _check(self):
+
+        log.trace("Checking action")
+
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=util.get_provisioning_role_arn(self.account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
         # Wait for image creation to complete / fail
@@ -104,6 +136,8 @@ class CreateImageAction(BaseAction):
         else:
             self.set_failed("Image '{}' is in state '{}'".format(image_id, state))
 
+        log.trace("Check completed")
+
     def _unexecute(self):
         pass
 
@@ -111,10 +145,23 @@ class CreateImageAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.account = self.renderer.render_string(self.account, self.context)
-        self.image_name = self.renderer.render_string(self.image_name, self.context)
-        self.instance_id = self.renderer.render_string(self.instance_id, self.context)
-        self.region = self.renderer.render_string(self.region, self.context)
+
+        log.trace("Resolving action")
+
+        self.params.Account = self.renderer.render_string(
+            self.params.Account, self.context
+        )
+        self.params.ImageName = self.renderer.render_string(
+            self.params.ImageName, self.context
+        )
+        self.params.InstanceId = self.renderer.render_string(
+            self.params.InstanceId, self.context
+        )
+        self.params.Region = self.renderer.render_string(
+            self.params.Region, self.context
+        )
+
+        log.trace("Resolved action complete")
 
     def __get_image_snapshots(self, describe_images_response):
         snapshots = []

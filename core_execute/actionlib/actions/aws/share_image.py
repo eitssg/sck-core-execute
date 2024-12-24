@@ -1,4 +1,5 @@
 """Share an image with other accounts"""
+
 from typing import Any
 
 import core_logging as log
@@ -17,7 +18,7 @@ def generate_template() -> ActionDefinition:
     definition = ActionDefinition(
         Label="action-definition-label",
         Type="AWS::ShareImage",
-        DependsOn=['put-a-label-here'],
+        DependsOn=["put-a-label-here"],
         Params=ActionParams(
             Account="The account to use for the action (required)",
             Region="The region to create the stack in (required)",
@@ -32,6 +33,35 @@ def generate_template() -> ActionDefinition:
 
 
 class ShareImageAction(BaseAction):
+    """Share an image with other accounts.
+
+    This action will share an image with other accounts.  The action will wait for the sharing to complete before returning.
+
+    Attributes:
+        Type: Use the value: ``AWS::ShareImage``
+        Params.Account: The account where the image is located
+        Params.Region: The region where the image is located
+        Params.ImageName: The name of the image to share (required)
+        Params.AccountsToShare: The accounts to share the image with (required)
+        Params.Siblings: The accounts that are allowed to share the image (required)
+
+    .. rubric: ActionDefinition:
+
+    .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
+
+        .. code-block:: yaml
+
+            - Label: action-aws-shareimage-label
+              Type: "AWS::ShareImage"
+              Params:
+                Account: "154798051514"
+                Region: "ap-southeast-1"
+                ImageName: "my-image-to-share"
+                AccountsToShare: ["123456789012", "234567890123"]
+                Siblings: ["123456789012", "234567890123"]
+              Scope: "build"
+
+    """
 
     def __init__(
         self,
@@ -40,50 +70,56 @@ class ShareImageAction(BaseAction):
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
-        self.account = self.params.Account
-        self.image_name = self.params.ImageName
-        self.region = self.params.Region
-        self.accounts_to_share = self.params.AccountsToShare
-        self.siblings = self.params.Siblings
 
-        tags = self.params.Tags or {}
+        if self.params.Tags is None:
+            self.params.Tags = {}
         if deployment_details.DeliveredBy:
-            tags["DeliveredBy"] = deployment_details.DeliveredBy
-        self.tags = aws.transform_tag_hash(tags)
+            self.params.Tags["DeliveredBy"] = deployment_details.DeliveredBy
 
     def _execute(self):
-        target_accounts = self.accounts_to_share
+
+        log.trace("ShareImageAction._execute()")
+
+        target_accounts = self.params.AccountsToShare
 
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.region, role=util.get_provisioning_role_arn(self.account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
-        log.debug("Finding image with name '{}'", self.image_name)
+        log.debug("Finding image with name '{}'", self.params.ImageName)
 
         # Find image (provides image id and snapshot ids)
         response = ec2_client.describe_images(
-            Filters=[{"Name": "name", "Values": [self.image_name]}]
+            Filters=[{"Name": "name", "Values": [self.params.ImageName]}]
         )
 
         if len(response["Images"]) == 0:
             self.set_complete(
                 "Could not find image with name '{}'. It may have been previously deleted.".format(
-                    self.image_name
+                    self.params.ImageName
                 )
+            )
+            log.warning(
+                "Could not find image with name '{}'. It may have been previously deleted.",
+                self.params.ImageName,
             )
             return
 
-        for target in self.accounts_to_share:
-            if target not in self.siblings:
+        for target in self.params.AccountsToShare:
+            if target not in self.params.Siblings:
                 self.set_failed(
+                    "Sharing to account {} that is not permissible in accounts.yaml, you need to have AwsSiblings property containing list of account you may share this image to"
+                )
+                log.warning(
                     "Sharing to account {} that is not permissible in accounts.yaml, you need to have AwsSiblings property containing list of account you may share this image to"
                 )
                 return
 
         image_id = response["Images"][0]["ImageId"]
 
-        log.debug("Found image '{}' with name '{}'", image_id, self.image_name)
+        log.debug("Found image '{}' with name '{}'", image_id, self.params.ImageName)
 
         ec2_client.modify_image_attribute(
             ImageId=image_id,
@@ -93,7 +129,7 @@ class ShareImageAction(BaseAction):
                         lambda s: {
                             "UserId": s,
                         },
-                        self.accounts_to_share,
+                        self.params.AccountsToShare,
                     )
                 ),
             },
@@ -103,6 +139,8 @@ class ShareImageAction(BaseAction):
             "Successfully shared AMI {} to target account {}", image_id, target_accounts
         )
         self.set_complete()
+
+        log.trace("ShareImageAction._execute()")
 
     def _check(self):
         pass
@@ -114,6 +152,17 @@ class ShareImageAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.account = self.renderer.render_string(self.account, self.context)
-        self.image_name = self.renderer.render_string(self.image_name, self.context)
-        self.region = self.renderer.render_string(self.region, self.context)
+
+        log.trace("ShareImageAction._resolve()")
+
+        self.params.Account = self.renderer.render_string(
+            self.params.Account, self.context
+        )
+        self.params.ImageName = self.renderer.render_string(
+            self.params.ImageName, self.context
+        )
+        self.params.Region = self.renderer.render_string(
+            self.params.Region, self.context
+        )
+
+        log.trace("ShareImageAction._resolve() complete")
