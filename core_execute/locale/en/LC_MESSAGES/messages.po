@@ -1,0 +1,115 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en\n"
+
+msgid "%(heading)s:"
+msgstr "%(heading)s:"
+
+msgid "usage: "
+msgstr "Usage: "
+
+msgid " (default: %(default)s)"
+msgstr " (default: %(default)s)"
+
+msgid "positional arguments"
+msgstr "Arguments"
+
+msgid "options"
+msgstr "Options"
+
+msgid "show this help message and exit"
+msgstr "Show this help message and exit"
+
+msgid "invalid conflict_resolution value"
+msgstr "invalid conflict_resolution value"
+
+msgid "conflicting option string: %s"
+msgstr "conflicting option string: %s"
+
+msgid "expected %s argument"
+msgstr "expected %s argument"
+
+msgid "expected %s arguments"
+msgstr "expected %s arguments"
+
+msgid "expected one argument"
+msgstr "expected one argument"
+
+msgid "expected at most one argument"
+msgstr "expected at most one argument"
+
+msgid "expected at least one argument"
+msgstr "expected at least one argument"
+
+msgid "argument %(argument_name)s: %(message)s"
+msgstr "argument %(argument_name)s: %(message)s"
+
+msgid ".__call__() not defined"
+msgstr ".__call__() not defined"
+
+msgid "conflicting subparser: %s"
+msgstr "conflicting subparser: %s"
+
+msgid "conflicting subparser alias: %s"
+msgstr "conflicting subparser alias: %s"
+
+msgid "unknown parser %(parser_name)r (choices: %(choices)s)"
+msgstr "unknown parser %(parser_name)r (choices: %(choices)s)"
+
+msgid "argument \"-\" with mode %r"
+msgstr "argument \"-\" with mode %r"
+
+msgid "cannot merge actions - two groups are named %r"
+msgstr "cannot merge actions - two groups are named %r"
+
+msgid "invalid option string %(option)r: "
+msgstr "invalid option string %(option)r: "
+
+msgid "must start with a character %(prefix_chars)r"
+msgstr "must start with a character %(prefix_chars)r"
+
+msgid "dest= is required for options like %r"
+msgstr "dest= is required for options like %r"
+
+msgid "invalid conflict_resolution value: %r"
+msgstr "invalid conflict_resolution value: %r"
+
+msgid "mutually exclusive arguments must be optional"
+msgstr "mutually exclusive arguments must be optional"
+
+msgid "cannot have multiple subparser arguments"
+msgstr "cannot have multiple subparser arguments"
+
+msgid "unrecognized arguments: %s"
+msgstr "unrecognized arguments: %s"
+
+msgid "not allowed with argument %s"
+msgstr "not allowed with argument %s"
+
+msgid "ignored explicit argument %r"
+msgstr "ignored explicit argument %r"
+
+msgid "the following arguments are required: %s"
+msgstr "the following arguments are required: %s"
+
+msgid "one of the arguments %s is required"
+msgstr "one of the arguments %s is required"
+
+msgid "ambiguous option: %(option)s could match %(matches)s"
+msgstr "ambiguous option: %(option)s could match %(matches)s"
+
+msgid "unexpected option string: %s"
+msgstr "unexpected option string: %s"
+
+msgid "%r is not callable"
+msgstr "%r is not callable"
+
+msgid "invalid %(type)s value: %(value)r"
+msgstr "invalid %(type)s value: %(value)r"
+
+msgid "invalid choice: %(value)r (choose from %(choices)s)"
+msgstr "invalid choice: %(value)r (choose from %(choices)s)"
+
+msgid "%(prog)s: error: %(message)s\n"
+msgstr "%(prog)s: error: %(message)s\n"

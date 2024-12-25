@@ -5,6 +5,7 @@ and generate actions to prepare for the execter """
 
 from typing import Callable
 import sys
+import gettext
 import os
 import argparse
 import json
@@ -27,6 +28,21 @@ from .stepfn import emulate_state_machine
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+# Initialize the translation function
+def setup_i18n(locale: str = "en"):
+    locales_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "locale")
+    gettext.bindtextdomain("messages", locales_dir)
+    gettext.textdomain("messages")
+    translation = gettext.translation(
+        "messages", locales_dir, languages=[locale], fallback=True
+    )
+    translation.install()
+    return translation.gettext
+
+
+_ = setup_i18n()
 
 
 def action_deploy(**kwargs):
@@ -464,7 +480,11 @@ def parse_args() -> dict:
     mode = util.get_mode()
     profile = util.get_aws_profile()
 
-    parser = argparse.ArgumentParser(description="Execute a Core Automation Action")
+    parser = argparse.ArgumentParser(
+        description="Execute a Core Automation Action",
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog="\nSimple Cloud Kit Automation Engine CLI. (c) 2024 EITS\n",
+    )
 
     parser.add_argument(
         "--client",
@@ -493,7 +513,7 @@ def parse_args() -> dict:
     )
 
     subparsers = parser.add_subparsers(
-        title="commands", dest="command", metavar="command", required=True
+        title="Commands", dest="command", metavar="<command>", required=True
     )
 
     add_action_subparser(subparsers)
