@@ -1,6 +1,7 @@
 """Perform a NoOps (No Operation) action"""
 
 from typing import Any
+from datetime import datetime, timezone
 
 import core_logging as log
 
@@ -56,7 +57,15 @@ class NoOpAction(BaseAction):
 
         log.trace("NoOpAction._execute()")
 
-        self.set_complete("No operation required")
+        log.debug("Execute NoOp Action. Setting NoOpAction as complete")
+
+        t = datetime.now(timezone.utc).isoformat()
+
+        log.debug("Setting output variable: execution_time=`{}`", t)
+
+        self.set_output("execution_time", t)
+
+        self.set_complete("NoOpAction Execution Complete!")
 
         log.trace("NoOpAction._execute() - complete")
 
@@ -64,7 +73,9 @@ class NoOpAction(BaseAction):
 
         log.trace("NoOpAction._check()")
 
-        self.set_complete("No operation required")
+        log.debug("Checking NoOp Action. Setting NoOpAction as complete")
+
+        self.set_complete("Check NoOp Action")
 
         log.trace("NoOpAction._check() - complete")
 
@@ -72,11 +83,15 @@ class NoOpAction(BaseAction):
 
         log.trace("NoOpAction._unexecute()")
 
+        log.debug("Unexecuting NoOp Action")
+
         pass
 
     def _cancel(self):
 
         log.trace("NoOpAction._cancel()")
+
+        log.debug("Cancelling NoOp Action")
 
         pass
 
@@ -84,10 +99,14 @@ class NoOpAction(BaseAction):
 
         log.trace("NoOpAction._resolve()")
 
+        log.debug("Resolving NoOp Action")
+
         pass
 
     def _cleanup(self):
 
         log.trace("NoOpAction._cleanup()")
+
+        log.debug("Cleaning up NoOp Action")
 
         pass

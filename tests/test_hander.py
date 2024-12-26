@@ -1,6 +1,13 @@
+import traceback
 import pytest
-import os
-from core_execute import handler
+import json
+
+from core_framework.models import (
+    TaskPayload,
+    DeploymentDetails as DeploymentDetailsClass,
+)
+
+from core_execute.handler import handler
 
 
 @pytest.fixture
@@ -10,22 +17,31 @@ def real_aws(pytestconfig):
 
 def test_lambda_handler():
 
-    os.environ["AWS_PROFILE"] = "test_profile"
-    os.environ["AWS_REGION"] = "us-east-1"
-    os.environ["LOCAL_MODE"] = "true"
+    try:
 
-    event = {
-        "Package": {
-            "Branch": "Branch",
-            "Build": "Build",
-            "Mode": "Mode",
-            "Portfolio": "Portfolio",
-            "Region": "Region",
-        },
-        "DeploymentDetails": {"BranchShortName": "BranchShortName", "Build": "Build"},
-    }
-    context = {}
+        task_payload = TaskPayload(
+            Task="deploy",
+            DeploymentDetails=DeploymentDetailsClass(
+                Client="Client",
+                Portfolio="Portfolio",
+                Environment="Environment",
+                Scope="portfolio",
+                DataCenter="DataCenter",
+            ),
+        )
 
-    response = handler(event, context)
+        event = task_payload.model_dump()
 
-    assert response == "Hello from Lambda!"
+        print("Event")
+        print(json.dumps(event, indent=2))
+
+        response = handler(event, None)
+
+        task_payload = TaskPayload(**response)
+
+        assert task_payload.Task == "deploy"
+        assert task_payload.FlowControl == "success"
+
+    except Exception as e:
+        print(traceback.format_exc())
+        assert False, str(e)

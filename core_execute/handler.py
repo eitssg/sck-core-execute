@@ -36,8 +36,13 @@ def handler(event: dict, context: Any | None = None) -> dict:
         raise
 
     try:
-        # Setup logging
         log.setup(task_payload.Identity)
+
+        log.trace("Entering core_execute.handler")
+
+        log.info("Entering handler event: {}", task_payload.Task)
+
+        log.debug("Event: ", details=task_payload.model_dump())
 
         # Load actions from the s3 bucket "{task}.actions"
         definitions = load_actions(task_payload)
@@ -56,7 +61,13 @@ def handler(event: dict, context: Any | None = None) -> dict:
 
         log.debug("Exiting (FlowControl with state = {})", task_payload.FlowControl)
 
-        return task_payload.model_dump()
+        result = task_payload.model_dump()
+
+        log.debug("Execution Complete.")
+
+        log.trace("Result: ", details=result)
+
+        return result
 
     except Exception as e:
         log.error("Error in handler: {}", e)

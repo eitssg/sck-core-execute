@@ -2,7 +2,7 @@
 #
 from typing import Any
 from datetime import datetime, timezone
-
+import os
 import io
 import json
 
@@ -175,7 +175,7 @@ def load_actions(task_payload: TaskPayload) -> list[ActionDefinition]:
     """
 
     # Load actions and create an action helper object
-    log.info("Loading actions")
+    log.trace("Loading actions")
 
     actions_details = task_payload.Actions
     if actions_details is None:
@@ -186,7 +186,9 @@ def load_actions(task_payload: TaskPayload) -> list[ActionDefinition]:
 
     if task_payload.Package.Mode == V_LOCAL:
         ap = task_payload.Package.AppPath
-        log.info("Downloading actions from file://{}/{}", ap, actions_details.Key)
+        log.info(
+            "Downloading actions from {}{}{}", ap, os.path.sep, actions_details.Key
+        )
         s3_actions_client = MagicS3Client(region=bucket_region, app_path=ap)
     else:
         log.info(
@@ -211,6 +213,9 @@ def load_actions(task_payload: TaskPayload) -> list[ActionDefinition]:
     # we mutate the actions details.  bad on us.
     actions_details.ContentType = content_type
 
+    log.debug("Loaded Actions Content Type: {}", content_type)
+    log.debug("Loaded Actions Data: ", details=actions_data)
+
     if actions_data is None:
         return []
 
@@ -218,12 +223,26 @@ def load_actions(task_payload: TaskPayload) -> list[ActionDefinition]:
         ActionDefinition(**action) for action in actions_data
     ]
 
+    log.trace("Actions loaded")
+
     return actions
 
 
 def load_state(task_payload: TaskPayload) -> dict:
+    """
+    Load the state from S3.  State data is a simple dictionary.  Facts data.
 
-    log.info("Downloading state from S3")
+    Args:
+        task_payload (TaskPayload): _description_
+
+    Raises:
+        ValueError: _description_
+        Exception: _description_
+
+    Returns:
+        dict: _description_
+    """
+    log.trace("Loading state")
 
     state_details = task_payload.State
     if state_details is None:
@@ -243,7 +262,7 @@ def load_state(task_payload: TaskPayload) -> dict:
 
     if task_payload.Package.Mode == V_LOCAL:
         ap = task_payload.Package.AppPath
-        log.info("Downloading state from file://{}/{}", ap, state_details.Key)
+        log.info("Downloading state from {}{}{}", ap, os.path.sep, state_details.Key)
         s3_state_client = MagicS3Client(region=bucket_region, app_path=ap)
     else:
         log.info("Downloading state from s3://{}/{}", bucket_name, state_details.Key)
@@ -266,11 +285,16 @@ def load_state(task_payload: TaskPayload) -> dict:
     else:
         raise Exception("State file unknown content type: {}", state_type)
 
+    # we mutate the state details.  bad on us.
+    state_details.ContentType = state_type
+
+    log.debug("Loaded State Content Type: {}", state_type)
+    log.debug("Loaded State Data: ", details=state)
+
     if state is None:
         return {}
 
-    # we mutate the state details.  bad on us.
-    state_details.ContentType = state_type
+    log.trace("State loaded")
 
     return state
 
@@ -284,7 +308,7 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
         state (dict): The state object to save.
     """
 
-    log.info("Uploading state to S3")
+    log.trace("Enter Save state")
 
     state_details = task_payload.State
     if state_details is None:
@@ -294,6 +318,9 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
     bucket_region = state_details.BucketRegion
 
     content_type = state_details.ContentType or "application/x-yaml"
+
+    log.debug("Saving State Content Type: {}", content_type)
+    log.debug("Saving State Data: ", details=state)
 
     if content_type == "application/x-yaml":
         y = YAML(typ="safe")
@@ -307,7 +334,7 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
 
     if task_payload.Package.Mode == V_LOCAL:
         ap = task_payload.Package.AppPath
-        log.info("Save state to file://{}/{}", ap, state_details.Key)
+        log.info("Save state to {}{}{}", ap, os.path.sep, state_details.Key)
         s3_state_client = MagicS3Client(region=bucket_region, app_path=ap)
     else:
         log.info("Save state to s3://{}/{}", bucket_name, state_details.Key)
@@ -320,4 +347,9 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
         ContentType=content_type,
         ServerSideEncryption="AES256",
     )
+
+    log.debug("State save response: ", details=response)
+
     state_details.VersionId = response["VersionId"] if "VersionId" in response else None
+
+    log.trace("Exit Save state")

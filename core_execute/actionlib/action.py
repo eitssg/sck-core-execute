@@ -107,14 +107,23 @@ class BaseAction:
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
+
+        log.trace("BaseAction.__init__()")
+
         # All actions can use the Jinja2 renderer to parse CloudFormation.j2 templates
         self.renderer = Jinja2Renderer()
 
-        self.context = context
-        self.deployment_details = deployment_details
-
         # Extract action details from the definition
         self.label = definition.Label
+
+        log.debug("Action label is: {}", self.label)
+
+        self.context = context
+
+        log.debug("Action context is: ", details=self.context)
+
+        self.deployment_details = deployment_details
+
         self.action_name = self.label.split("/", 1)[-1]
 
         # Set output_namespace if user specified SaveOutputs = True
@@ -125,14 +134,21 @@ class BaseAction:
         else:
             self.output_namespace = None
 
+        log.debug("Action output namespace is {}", self.output_namespace)
+
         # State namespace is the same as action label, except with :var/ instead of :action/
         self.state_namespace = self.label.replace(":action/", ":var/")
+
+        log.debug("Action state namespace is {}", self.state_namespace)
+
         self.type = definition.Type
         self.condition = definition.Condition
         self.before = definition.Before
         self.after = definition.After + definition.DependsOn
         self.params = definition.Params
         self.lifecycle_hooks = definition.LifecycleHooks
+
+        log.trace("BaseAction.__init__() - complete")
 
     def is_init(self) -> bool:
         """
