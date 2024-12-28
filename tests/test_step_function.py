@@ -39,7 +39,9 @@ def test_step_function_client(task_payload: TaskPayload):
 
     executionName = generate_execution_name(task_payload)
 
-    execution_arn = "arn:aws:states:us-east-1:123456789012:stateMachine:my-state-machine"
+    execution_arn = (
+        "arn:aws:states:us-east-1:123456789012:stateMachine:my-state-machine"
+    )
     result = client.start_execution(
         name=executionName,
         stateMachineArn=execution_arn,
