@@ -116,17 +116,17 @@ reference = "nexus"
 
 [[package]]
 name = "boto3"
-version = "1.35.87"
+version = "1.35.89"
 description = "The AWS SDK for Python"
 optional = false
 python-versions = ">= 3.8"
 files = [
-    {file = "boto3-1.35.87-py3-none-any.whl", hash = "sha256:588ab05e2771c50fca5c242be14e7a25200ffd3dd95c45950ce40993473864c7"},
-    {file = "boto3-1.35.87.tar.gz", hash = "sha256:341c58602889078a4a25dc4331b832b5b600a33acd73471d2532c6f01b16fbb4"},
+    {file = "boto3-1.35.89-py3-none-any.whl", hash = "sha256:40a980841771bdba49214aeb045b0e8046b4c1b0788987f03fc966a34c4d0d2f"},
+    {file = "boto3-1.35.89.tar.gz", hash = "sha256:966bb926688f086d609d1c3044f06a66405461077abe8b66a26cbabe30689f7d"},
 ]
 
 [package.dependencies]
-botocore = ">=1.35.87,<1.36.0"
+botocore = ">=1.35.89,<1.36.0"
 jmespath = ">=0.7.1,<2.0.0"
 s3transfer = ">=0.10.0,<0.11.0"
 
@@ -140,13 +140,13 @@ reference = "nexus"
 
 [[package]]
 name = "boto3-stubs"
-version = "1.35.88"
-description = "Type annotations for boto3 1.35.88 generated with mypy-boto3-builder 8.7.0"
+version = "1.35.89"
+description = "Type annotations for boto3 1.35.89 generated with mypy-boto3-builder 8.7.0"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "boto3_stubs-1.35.88-py3-none-any.whl", hash = "sha256:088ac0bb8cf4911a3d5dd8d554a296d317929f5cabeacb062511d4959c1a68d7"},
-    {file = "boto3_stubs-1.35.88.tar.gz", hash = "sha256:1160251c8cfcc581ced3f90d900be6395a596f97c6f143c665ea4edf75cda18c"},
+    {file = "boto3_stubs-1.35.89-py3-none-any.whl", hash = "sha256:d791e895c5bbbdd223058de4343c91e4ee1c31870f745b65d421f169376ffccb"},
+    {file = "boto3_stubs-1.35.89.tar.gz", hash = "sha256:62e20763044c7c4cfaf4ab8cfb4519c16a8e8cf0b345b58bc3aaa8ce5f87eee3"},
 ]
 
 [package.dependencies]
@@ -201,7 +201,7 @@ bedrock-data-automation-runtime = ["mypy-boto3-bedrock-data-automation-runtime (
 bedrock-runtime = ["mypy-boto3-bedrock-runtime (>=1.35.0,<1.36.0)"]
 billing = ["mypy-boto3-billing (>=1.35.0,<1.36.0)"]
 billingconductor = ["mypy-boto3-billingconductor (>=1.35.0,<1.36.0)"]
-boto3 = ["boto3 (==1.35.88)"]
+boto3 = ["boto3 (==1.35.89)"]
 braket = ["mypy-boto3-braket (>=1.35.0,<1.36.0)"]
 budgets = ["mypy-boto3-budgets (>=1.35.0,<1.36.0)"]
 ce = ["mypy-boto3-ce (>=1.35.0,<1.36.0)"]
@@ -571,13 +571,13 @@ reference = "nexus"
 
 [[package]]
 name = "botocore"
-version = "1.35.87"
+version = "1.35.89"
 description = "Low-level, data-driven core of boto 3."
 optional = false
 python-versions = ">= 3.8"
 files = [
-    {file = "botocore-1.35.87-py3-none-any.whl", hash = "sha256:81cf84f12030d9ab3829484b04765d5641697ec53c2ac2b3987a99eefe501692"},
-    {file = "botocore-1.35.87.tar.gz", hash = "sha256:3062d073ce4170a994099270f469864169dc1a1b8b3d4a21c14ce0ae995e0f89"},
+    {file = "botocore-1.35.89-py3-none-any.whl", hash = "sha256:70d55f9882a40e2a5fea1f2fc1efed3fd27c35d87f0a949b1cbac32d25bb49e1"},
+    {file = "botocore-1.35.89.tar.gz", hash = "sha256:b073751c5a33eec2879f73120e2636d9bed3178f7498c49aca76274d9d8a5442"},
 ]
 
 [package.dependencies]
@@ -595,13 +595,13 @@ reference = "nexus"
 
 [[package]]
 name = "botocore-stubs"
-version = "1.35.88"
+version = "1.35.89"
 description = "Type annotations and code completion for botocore"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "botocore_stubs-1.35.88-py3-none-any.whl", hash = "sha256:7851e5bdfd0baf63bd85a2c4a1edaae3136df98dd0af0a1287fbd938a60590dd"},
-    {file = "botocore_stubs-1.35.88.tar.gz", hash = "sha256:d24619e6b780d3ceec8f02a5c436f74886abf9dd295d610d84b38c52340aa77a"},
+    {file = "botocore_stubs-1.35.89-py3-none-any.whl", hash = "sha256:6473e4482f8b8e97fe8e506f844e2018997759c2b408e33d9de95503a3d05ae0"},
+    {file = "botocore_stubs-1.35.89.tar.gz", hash = "sha256:059795ef32212d82d1b554ed0bb667202a8c74b3afcf40c905d129a740d3916d"},
 ]
 
 [package.dependencies]
@@ -1987,7 +1987,7 @@ reference = "nexus"
 
 [[package]]
 name = "sck-core-db"
-version = "0.0.1-pre.14+308d1e7"
+version = "0.0.1"
 description = "Core Database Library to access DynamoDB for Core-Automation"
 optional = false
 python-versions = "^3.12"
@@ -2007,7 +2007,7 @@ url = "../sck-core-db"
 
 [[package]]
 name = "sck-core-framework"
-version = "0.0.1-pre.20+e7f8948"
+version = "0.0.1-pre.21+d4c42f2"
 description = "Core-Framework for Core-Automation"
 optional = false
 python-versions = "^3.12"

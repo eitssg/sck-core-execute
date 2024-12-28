@@ -368,7 +368,7 @@ class MagicStepFnClient:
 
             log.info("Starting step function emulator for {}", self.name)
 
-            typ = os.getenv("CLIENT_TYPE", os.name)
+            typ = os.getenv("CONSOLE", os.name)
 
             # Execute the command in a shell and disconnect the TTY
             if typ == "interactive":
