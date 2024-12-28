@@ -4,7 +4,7 @@ build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.poetry]
 name = "sck-core-execute"
-version = "0.0.1"
+version = "0.0.2"
 description = "Core Automation Engine execute Lambda function"
 authors = ["James Barwick <jbarwick@me.com>"]
 license = "GPL-3.0-only"
@@ -33,8 +33,8 @@ botocore = ">=1.35.87"
 PyYAML = "^6.0.2"
 pyyaml-include = "^2.1"
 
-sck-core-framework = "^0.0.1"
-sck-core-db = "^0.0.1"
+sck-core-framework = "^0.0.2"
+sck-core-db = "^0.0.2"
 [tool.poetry-dynamic-versioning.files."core_execute/_version.py"]
 persistent-substitution = true
 initial-content = "  \"\"\"\n  This is the version informatooin for this template\n  \"\"\"\n  __version__ = \"0.0.0\"\n  __version_tuple__ = (0, 0, 0)\n"
