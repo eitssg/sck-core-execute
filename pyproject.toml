@@ -10,6 +10,7 @@ authors = ["James Barwick <jbarwick@me.com>"]
 license = "GPL-3.0-only"
 readme = "README.md"
 keywords = ["sck", "core", "aws", "cloud", "automation"]
+include = ["core_execute/_version.py"]
 
 [[tool.poetry.packages]]
 include = "core_execute"
