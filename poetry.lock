@@ -1987,13 +1987,13 @@ reference = "nexus"
 
 [[package]]
 name = "sck-core-db"
-version = "0.0.1"
+version = "0.0.2"
 description = "Core Database Library to access DynamoDB for Core-Automation"
 optional = false
 python-versions = ">=3.12,<4.0"
 files = [
-    {file = "sck_core_db-0.0.1-py3-none-any.whl", hash = "sha256:f36116d936bbcde5d9a219ecf4c8cca9f91f29bc7188db80bf350ae568b796bb"},
-    {file = "sck_core_db-0.0.1.tar.gz", hash = "sha256:2483de843fa624280f4238b57465827d1960b2e7e4ee1e80bb4fc15cb85949e4"},
+    {file = "sck_core_db-0.0.2-py3-none-any.whl", hash = "sha256:c247f6c0aed5c817ff7e5b795584c5834b0d16735df0d4b8f11a0db9c9032b25"},
+    {file = "sck_core_db-0.0.2.tar.gz", hash = "sha256:7f865cc6eeae386ed9c3a97faa30ca2f4c5189e7ebc1d96e081785606360cb43"},
 ]
 
 [package.dependencies]
@@ -2001,7 +2001,7 @@ boto3 = ">=1.35.87"
 botocore = ">=1.35.87"
 pydantic = ">=2.10.3,<3.0.0"
 pynamodb = ">=6.0.1,<7.0.0"
-sck-core-framework = ">=0.0.1,<0.0.2"
+sck-core-framework = ">=0.0.2,<0.0.3"
 
 [package.source]
 type = "legacy"
@@ -2010,13 +2010,13 @@ reference = "nexus"
 
 [[package]]
 name = "sck-core-framework"
-version = "0.0.1"
+version = "0.0.2"
 description = "Core-Framework for Core-Automation"
 optional = false
 python-versions = ">=3.12,<4.0"
 files = [
-    {file = "sck_core_framework-0.0.1-py3-none-any.whl", hash = "sha256:4e7344ade0a24591f4ddffb17e69d66c8bb9bff35bcd8af094fd1d1467fc98b7"},
-    {file = "sck_core_framework-0.0.1.tar.gz", hash = "sha256:475e69e6c640277994789e1f351ad63b29d7f1f489e124ccab9f0d2cd0099b18"},
+    {file = "sck_core_framework-0.0.2-py3-none-any.whl", hash = "sha256:e33c7651d0b4e9f539d0fe1b860fddb70f8554d061fc66827b7ca10b7f2404e0"},
+    {file = "sck_core_framework-0.0.2.tar.gz", hash = "sha256:72078ca6f0b47e808c35e4ffce71c8ea35dab457021f96ffa86ecbc5f0e25b08"},
 ]
 
 [package.dependencies]
@@ -2180,4 +2180,4 @@ reference = "nexus"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "53fb86db609c51f6d769d81aaee55c52f949c89698d7185a4586c74537868aca"
+content-hash = "bb3e2223cc3f24eb252c31624e73276b1c70922dcf0a7a45a128745326b3a4e4"
