@@ -32,6 +32,8 @@ boto3 = ">=1.35.87"
 botocore = ">=1.35.87"
 PyYAML = "^6.0.2"
 pyyaml-include = "^2.1"
+rich = "^13.9.4"
+darkdetect = "^0.8.0"
 
 
 [tool.poetry.dependencies.sck-core-db]
@@ -56,4 +58,4 @@ pytest-dotenv = "^0.5.2"
 types-pyyaml = "^6.0.12.20240917"
 
 [tool.poetry.scripts]
-core-execute = "core_execute.cli:main"
+execute = "core_execute.cli:main"
