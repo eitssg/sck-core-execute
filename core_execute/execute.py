@@ -189,7 +189,7 @@ def load_actions(task_payload: TaskPayload) -> list[ActionDefinition]:
         log.info(
             "Downloading actions from {}{}{}", ap, os.path.sep, actions_details.Key
         )
-        s3_actions_client = MagicS3Client(region=bucket_region, app_path=ap)
+        s3_actions_client = MagicS3Client(Region=bucket_region, AppPath=ap)
     else:
         log.info(
             "Downloading actions from s3://{}/{}", bucket_name, actions_details.Key
@@ -263,7 +263,7 @@ def load_state(task_payload: TaskPayload) -> dict:
     if task_payload.Package.Mode == V_LOCAL:
         ap = task_payload.Package.AppPath
         log.info("Downloading state from {}{}{}", ap, os.path.sep, state_details.Key)
-        s3_state_client = MagicS3Client(region=bucket_region, app_path=ap)
+        s3_state_client = MagicS3Client(Region=bucket_region, AppPath=ap)
     else:
         log.info("Downloading state from s3://{}/{}", bucket_name, state_details.Key)
         s3_state_client = aws.s3_client(region=bucket_region)
@@ -335,7 +335,7 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
     if task_payload.Package.Mode == V_LOCAL:
         ap = task_payload.Package.AppPath
         log.info("Save state to {}{}{}", ap, os.path.sep, state_details.Key)
-        s3_state_client = MagicS3Client(region=bucket_region, app_path=ap)
+        s3_state_client = MagicS3Client(Region=bucket_region, AppPath=ap)
     else:
         log.info("Save state to s3://{}/{}", bucket_name, state_details.Key)
         s3_state_client = aws.s3_client(region=bucket_region)
@@ -350,6 +350,6 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
 
     log.debug("State save response: ", details=response)
 
-    state_details.VersionId = response["VersionId"] if "VersionId" in response else None
+    state_details.VersionId = response.version_id
 
     log.trace("Exit Save state")
