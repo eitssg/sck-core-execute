@@ -31,7 +31,7 @@ def test_step_function_client(task_payload: TaskPayload):
 
     region = "us-east-1"
 
-    client = step_function_client(region)
+    client = step_function_client(region=region)
 
     assert client is not None
 

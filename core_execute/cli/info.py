@@ -39,7 +39,7 @@ def run_info(**kwargs) -> dict:
 
     yprint(to_yaml(task_payload.model_dump()))
 
-    app_dir = task_payload.Actions.AppPath
+    app_dir = task_payload.Actions.DataPath
     action_key = task_payload.Actions.Key
 
     action_file = os.path.join(app_dir, action_key)

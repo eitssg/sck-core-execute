@@ -1,16 +1,13 @@
 import os
 import importlib
 
+import core_framework as util
 from core_framework import generate_task_payload
 from core_framework.models import ActionDefinition
 
 from ..actionlib.factory import ActionFactory
 
 from .common import (
-    to_yaml,
-    write_yaml,
-    to_json,
-    write_json,
     add_common_parameters,
     get_module_name_parts,
     get_module_description,
@@ -116,9 +113,9 @@ def print_actions_list(actions_list: list[dict], format: str = "yaml"):
     cprint("")
 
     if format == "json":
-        jprint(to_json(actions_list))
+        jprint(util.to_json(actions_list))
     elif format == "yaml":
-        yprint(to_yaml(actions_list))
+        yprint(util.to_yaml(actions_list))
     else:
         cprint("Invalid format.  Use 'yaml' or 'json'.")
 
@@ -129,9 +126,9 @@ def save_actions(filename: str, actions_list: list[dict], format: str = "yaml"):
     if filename:
         with open(filename, "w") as f:
             if format == "json":
-                write_json(actions_list, f)
+                util.write_json(actions_list, f)
             elif format == "yaml":
-                write_yaml(actions_list, f)
+                util.write_yaml(actions_list, f)
         cprint(f"Actions saved to: {filename}")
 
 
@@ -162,7 +159,7 @@ def action_template(**kwargs):
 
         cprint("")
 
-        yprint(to_yaml(actions_list))
+        yprint(util.to_yaml(actions_list))
 
         filename = kwargs.get("filename", None)
         if filename:
@@ -259,7 +256,7 @@ def action_add(**kwargs):
 
     task_payload = generate_task_payload(**kwargs)
 
-    yprint(to_yaml(task_payload.model_dump()))
+    yprint(util.to_yaml(task_payload.model_dump()))
 
     fn = kwargs.get("filename")
     if not fn:
@@ -270,9 +267,9 @@ def action_add(**kwargs):
 
     print("Actions list to add to task '{}':\n".format(task_payload.Task))
 
-    yprint(to_yaml([ad.model_dump() for ad in action_defs]))
+    yprint(util.to_yaml([ad.model_dump() for ad in action_defs]))
 
-    app_dir = task_payload.Actions.AppPath
+    app_dir = task_payload.Actions.DataPath
     action_key = task_payload.Actions.Key
 
     action_file = os.path.join(app_dir, action_key)
@@ -301,7 +298,7 @@ def action_add(**kwargs):
 
     cprint("Actions saved to: {}\n".format(action_file))
 
-    yprint(to_yaml([ad.model_dump() for ad in deploy_actions]))
+    yprint(util.to_yaml([ad.model_dump() for ad in deploy_actions]))
 
     cprint("There are now {} actions in the file".format(len(deploy_actions)))
 
@@ -326,7 +323,7 @@ def action_delete(**kwargs):
 
     task_payload = generate_task_payload(**kwargs)
 
-    yprint(to_yaml(task_payload.model_dump()))
+    yprint(util.to_yaml(task_payload.model_dump()))
 
     label = kwargs.get("label")
 
@@ -334,7 +331,7 @@ def action_delete(**kwargs):
         cprint("No label specified.  Exiting.")
         return {"error": "No label specified"}
 
-    app_dir = task_payload.Actions.AppPath
+    app_dir = task_payload.Actions.DataPath
     action_key = task_payload.Actions.Key
 
     action_file = os.path.join(app_dir, action_key)
@@ -343,7 +340,7 @@ def action_delete(**kwargs):
 
     deploy_actions = load_actions_list_from_file(action_file)
 
-    yprint(to_yaml([ad.model_dump() for ad in deploy_actions]))
+    yprint(util.to_yaml([ad.model_dump() for ad in deploy_actions]))
 
     if not __label_is_in_actions_list(label, deploy_actions):
         cprint("Label '{}' not in the actions list".format(label))
@@ -370,7 +367,7 @@ def action_delete(**kwargs):
 
     cprint("Actions saved to: {}\n".format(action_file))
 
-    yprint(to_yaml([ad.model_dump() for ad in deploy_actions]))
+    yprint(util.to_yaml([ad.model_dump() for ad in deploy_actions]))
 
     cprint("There are now {} actions in the file".format(len(deploy_actions)))
 

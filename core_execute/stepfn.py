@@ -14,6 +14,8 @@ load_dotenv()
 
 import core_logging as log  # noqa E402
 
+import core_framework as util  # noqa E402
+
 from core_framework.models import TaskPayload  # noqa E402
 from core_db.registry.client.actions import ClientActions  # noqa E402
 
@@ -393,8 +395,10 @@ class MagicStepFnClient:
             return {"error": str(e)}
 
 
-def step_function_client(region: str) -> MagicStepFnClient:
+def step_function_client(**kwargs) -> MagicStepFnClient:
     """Return the local step function client"""
+
+    region = kwargs.get("region", util.get_region())
 
     return MagicStepFnClient(region)
 

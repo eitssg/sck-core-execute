@@ -146,13 +146,13 @@ def __get_artefact_path(**kwargs) -> str | None:
         cprint("Exiting. Cannot determine task!")
         return None
 
-    app_path = task_payload.State.AppPath
+    data_path = task_payload.State.DataPath
     app_key = task_payload.State.Key
 
     cprint("")
     yprint(to_yaml(task_payload.model_dump()))
 
-    artefact_path = os.path.join(app_path, app_key)
+    artefact_path = os.path.join(data_path, app_key)
 
     return artefact_path
 

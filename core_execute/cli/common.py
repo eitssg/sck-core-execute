@@ -1,17 +1,14 @@
 """Common commandline paramters"""
 
 from typing import Any
-import io
 import os
 import importlib
-import json
 from rich.console import Console
 from rich.syntax import Syntax
 import darkdetect  # type: ignore
-from ruamel.yaml import YAML
-from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 
 from core_framework.models import ActionDefinition
+import core_framework as util
 
 console = Console()
 
@@ -85,18 +82,6 @@ def add_common_parameters(parser):
     )
 
 
-def quote_strings(data):
-    """Recursively quote all strings in the data."""
-    if isinstance(data, dict):
-        return {k: v if k == "Label" else quote_strings(v) for k, v in data.items()}
-    elif isinstance(data, list):
-        return [quote_strings(v) for v in data]
-    elif isinstance(data, str):
-        return DoubleQuotedScalarString(data)
-    else:
-        return data
-
-
 def get_module_name_parts(relative_module_name):
     """Helper function to get module name parts and class name."""
     module_name_parts = relative_module_name.split(".")
@@ -117,53 +102,6 @@ def get_module_description(full_module_name):
     return description
 
 
-def to_yaml(data: dict | list) -> str:
-    """Convert data to yaml string."""
-    quoted_data = quote_strings(data)
-
-    y = YAML(typ="rt")
-    y.default_flow_style = False
-    y.indent(mapping=2, sequence=4, offset=2)
-
-    s = io.StringIO()
-    y.dump(quoted_data, s)
-    return s.getvalue()
-
-
-def to_json(data: dict | list) -> str:
-    """Convert data to json."""
-    return json.dumps(data, indent=2)
-
-
-def read_yaml(stream) -> dict | list:
-    """Load the yaml data"""
-    yaml = YAML(typ="rt")
-    return yaml.load(stream)
-
-
-def write_yaml(data: dict | list, stream) -> None:
-    """Write the yaml data"""
-
-    quoted_actions_list = quote_strings(data)
-
-    y = YAML(typ="rt")
-    y.default_flow_style = False
-    y.preserve_quotes = True
-    y.indent(mapping=2, sequence=4, offset=2)
-
-    y.dump(quoted_actions_list, stream)
-
-
-def read_json(stream) -> dict | list:
-    """Load the json data"""
-    return json.load(stream.read())
-
-
-def write_json(data: dict | list, stream) -> None:
-    """Write the json data"""
-    json.dump(data, stream, indent=2)
-
-
 def load_actions_list_from_file(fn: str) -> list[ActionDefinition]:
     """Load the actions list from the file"""
 
@@ -172,7 +110,7 @@ def load_actions_list_from_file(fn: str) -> list[ActionDefinition]:
         return []
 
     with open(fn, "r") as f:
-        actions_list = read_yaml(f)
+        actions_list = util.read_yaml(f)
 
     if not isinstance(actions_list, list):
         print(f"Invalid actions list in file: {fn}")
@@ -190,4 +128,4 @@ def save_actions_to_file(filename: str, actions_list: list[ActionDefinition]):
     data = [ad.model_dump() for ad in actions_list]
 
     with open(filename, "w") as f:
-        write_yaml(data, f)
+        util.write_yaml(data, f)

@@ -2,7 +2,6 @@
 #
 from typing import Any
 from datetime import datetime, timezone
-import os
 import io
 import json
 
@@ -10,11 +9,8 @@ from ruamel.yaml import YAML
 
 import core_logging as log
 
-from core_framework.constants import V_LOCAL
 from core_framework.models import TaskPayload, ActionDefinition
-from core_framework.magic import MagicS3Client
-
-import core_helper.aws as aws
+from core_helper.magic import MagicS3Client
 
 from .actionlib.helper import Helper
 
@@ -184,17 +180,9 @@ def load_actions(task_payload: TaskPayload) -> list[ActionDefinition]:
     bucket_name = actions_details.BucketName
     bucket_region = actions_details.BucketRegion
 
-    if task_payload.Package.Mode == V_LOCAL:
-        ap = task_payload.Package.AppPath
-        log.info(
-            "Downloading actions from {}{}{}", ap, os.path.sep, actions_details.Key
-        )
-        s3_actions_client = MagicS3Client(Region=bucket_region, AppPath=ap)
-    else:
-        log.info(
-            "Downloading actions from s3://{}/{}", bucket_name, actions_details.Key
-        )
-        s3_actions_client = aws.s3_client(region=bucket_region)
+    s3_actions_client = MagicS3Client.get_client(Region=bucket_region)
+
+    log.info("Downloading actions from {}", actions_details.Key)
 
     actions_fileobj = io.BytesIO()
     download_details = s3_actions_client.download_fileobj(
@@ -260,13 +248,9 @@ def load_state(task_payload: TaskPayload) -> dict:
     if state_details.VersionId is not None:
         extra_args["VersionId"] = state_details.VersionId
 
-    if task_payload.Package.Mode == V_LOCAL:
-        ap = task_payload.Package.AppPath
-        log.info("Downloading state from {}{}{}", ap, os.path.sep, state_details.Key)
-        s3_state_client = MagicS3Client(Region=bucket_region, AppPath=ap)
-    else:
-        log.info("Downloading state from s3://{}/{}", bucket_name, state_details.Key)
-        s3_state_client = aws.s3_client(region=bucket_region)
+    log.info("Downloading state from {}", state_details.Key)
+
+    s3_state_client = MagicS3Client.get_client(Region=bucket_region)
 
     state_fileobj = io.BytesIO()
     state_download_response = s3_state_client.download_fileobj(
@@ -332,13 +316,9 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
     elif content_type == "application/json":
         result_data = json.dumps(state, indent=2)
 
-    if task_payload.Package.Mode == V_LOCAL:
-        ap = task_payload.Package.AppPath
-        log.info("Save state to {}{}{}", ap, os.path.sep, state_details.Key)
-        s3_state_client = MagicS3Client(Region=bucket_region, AppPath=ap)
-    else:
-        log.info("Save state to s3://{}/{}", bucket_name, state_details.Key)
-        s3_state_client = aws.s3_client(region=bucket_region)
+    log.info("Save state to {}", state_details.Key)
+
+    s3_state_client = MagicS3Client.get_client(Region=bucket_region)
 
     response = s3_state_client.put_object(
         Bucket=bucket_name,

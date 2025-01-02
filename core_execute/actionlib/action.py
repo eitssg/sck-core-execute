@@ -141,12 +141,15 @@ class BaseAction:
 
         log.debug("Action state namespace is {}", self.state_namespace)
 
+        after = definition.After or []
+        depends = definition.DependsOn or []
+
         self.type = definition.Type
-        self.condition = definition.Condition
-        self.before = definition.Before
-        self.after = definition.After + definition.DependsOn
+        self.condition = definition.Condition or "True"
+        self.before = definition.Before or []
+        self.after = after + depends
         self.params = definition.Params
-        self.lifecycle_hooks = definition.LifecycleHooks
+        self.lifecycle_hooks = definition.LifecycleHooks or []
 
         log.trace("BaseAction.__init__() - complete")
 
@@ -371,7 +374,7 @@ class BaseAction:
 
             # Render the action condition, and see if it evaluates to true
             condition_result = self.renderer.render_string(
-                "{{{{ {} }}}}".format(self.condition), self.context
+                "{{ " + self.condition + " }}", self.context
             )
 
             if condition_result.lower() == "true":

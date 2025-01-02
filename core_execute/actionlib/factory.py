@@ -58,3 +58,6 @@ class ActionFactory:
 
         except (ImportError, AttributeError):
             raise NotImplementedError("Unknown action '{}'".format(definition.Type))
+
+        except Exception as e:
+            raise RuntimeError("Cannot instantiate class '{}'".format(class_name)) from e
