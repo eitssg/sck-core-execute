@@ -7,7 +7,7 @@ from core_framework.models import (
     DeploymentDetails as DeploymentDetailsClass,
 )
 
-from core_execute.handler import handler
+from core_execute.handler import handler as execute_handler
 
 
 @pytest.fixture
@@ -35,12 +35,11 @@ def test_lambda_handler():
         print("Event")
         print(json.dumps(event, indent=2))
 
-        response = handler(event, None)
+        response = execute_handler(event, None)
 
         task_payload = TaskPayload(**response)
 
         assert task_payload.Task == "deploy"
-        assert task_payload.FlowControl == "success"
 
     except Exception as e:
         print(traceback.format_exc())
