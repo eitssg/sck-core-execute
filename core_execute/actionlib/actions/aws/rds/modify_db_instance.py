@@ -73,7 +73,8 @@ class ModifyDbInstanceAction(BaseAction):
     def _execute(self):
         # Obtain an RDS client
         rds_client = aws.rds_client(
-            region=self.params.Region, role=util.get_provisioning_role_arn(self.params.Account)
+            region=self.params.Region,
+            role=util.get_provisioning_role_arn(self.params.Account),
         )
 
         self.set_running("Modifying DB instance")

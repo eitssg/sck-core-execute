@@ -305,7 +305,9 @@ def action_add(**kwargs):
     return {"result": action_defs}
 
 
-def __label_is_in_actions_list(label: str, actions_list: list[ActionDefinition]) -> bool:
+def __label_is_in_actions_list(
+    label: str, actions_list: list[ActionDefinition]
+) -> bool:
     """Check if the label is in the actions list"""
 
     for action in actions_list:
