@@ -14,7 +14,7 @@ import core_framework as util
 
 from core_framework.models import TaskPayload
 
-from core_execute._version import __version__
+from core_execute import __version__
 
 from core_execute.cli.action import run_action_define, add_action_subparser
 from core_execute.cli.info import run_info, add_info_subparser

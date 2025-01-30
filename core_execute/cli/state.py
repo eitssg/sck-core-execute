@@ -2,14 +2,12 @@
 
 import os
 
+import core_framework as util
 from core_framework.models import TaskPayload
 from core_framework import generate_task_payload
 
 from .common import (
     add_common_parameters,
-    read_json,
-    read_yaml,
-    to_yaml,
     yprint,
     cprint,
 )
@@ -100,13 +98,13 @@ def generate_state(**kwargs) -> dict:
         os.path.dirname(os.path.abspath(__file__)), "data", "state_template.yaml"
     )
     with open(fn, "r") as f:
-        state = read_yaml(f)
+        state = util.read_yaml(f)
 
     if not isinstance(state, dict):
         cprint("Error: Invalid state template")
         return {}
 
-    yprint(to_yaml(state))
+    yprint(util.to_yaml(state))
 
     filename = kwargs.get("filename")
     if filename:
@@ -130,7 +128,7 @@ def generate_state(**kwargs) -> dict:
                 break
 
         with open(filename, "w") as f:
-            f.write(to_yaml(state))
+            util.write_yaml(state, f)
 
         cprint("file saved: {}.".format(filename))
 
@@ -150,7 +148,7 @@ def __get_artefact_path(**kwargs) -> str | None:
     app_key = task_payload.State.Key
 
     cprint("")
-    yprint(to_yaml(task_payload.model_dump()))
+    yprint(util.to_yaml(task_payload.model_dump()))
 
     artefact_path = os.path.join(data_path, app_key)
 
@@ -171,15 +169,15 @@ def __get_state(**kwargs) -> dict:
 
     with open(filename, "r") as f:
         if format == "json":
-            state = read_json(f)
+            state = util.read_json(f)
         else:
-            state = read_yaml(f)
+            state = util.read_yaml(f)
 
     if not isinstance(state, dict):
         cprint("Error: Invalid state file")
         return {}
 
-    yprint(to_yaml(state))
+    yprint(util.to_yaml(state))
 
     return state
 
@@ -218,7 +216,7 @@ def save_state(**kwargs):
     os.makedirs(dirname, exist_ok=True)
 
     with open(artefact_path, "w") as f:
-        f.write(to_yaml(state))
+        util.write_yaml(state, f)
 
     cprint("State saved to file: {}".format(artefact_path))
 
