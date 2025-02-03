@@ -35,6 +35,7 @@ rich = "^13.9.4"
 darkdetect = "^0.8.0"
 sck-core-framework = "^0.0.5"
 sck-core-db = "^0.0.5"
+sck-core-report = "^0.0.5"
 
 
 [tool.poetry-dynamic-versioning.substitution]
@@ -49,6 +50,7 @@ black = "^24.10.0"
 boto3-stubs = ">=1.35.93"
 pytest-dotenv = "^0.5.2"
 types-pyyaml = "^6.0.12.20240917"
+pytest-cov = "^6.0.0"
 
 [tool.poetry.scripts]
 execute = "core_execute.cli:main"
