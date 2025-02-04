@@ -1,7 +1,7 @@
-""" Profiles the CLI interface called "execute".
+"""Profiles the CLI interface called "execute".
 
 Includes helper functions to provide features that allow the user to interact with the Core Automation execute engine
-and generate actions to prepare for the execter """
+and generate actions to prepare for the execter"""
 
 from typing import Callable
 import sys
