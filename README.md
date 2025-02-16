@@ -1,59 +1,70 @@
 # Core-Execute
 
-The execute is a module responsible for executing applications from a list of Action items
-based of the the BaseAction API interface
+The execute is a module responsible for executing functios as defined by the "&lt;task&gt;.actions"
+file which contains Action Definitions.
 
-## Directory structure
-
-* **core_execute/actionlib/** - Main collection of classes for working with Actions
-* **core_execute/evinfo/** - Module to retrieve information about the environment programatically
-* **core_execute/handler.py** - Lambda entry point (handler method). A good place to start.
-* **core_execute/cli.py** - Commandline interace to run the "execute" function from the commandline
-* **tests/** - Directory containing various test data files
+Action Defintions are subroutines that can be added to the deploytment lifecycle.
 
 ## Description
 
-From the SCK Command line "core" modules is executed which determines targets and loads
-the appropriate target libraries.  The target libraries will then use this core
-framework library with helper functions.
+Actions are defined in the module folder ``core_execute/actionlib/actions**``
 
-This library has been extended to use "Simple Python Utils" which contains helper
-functions for the entire CI/CD pipeline infrastructure deployment framework.
+The name of the action is ``FOLDER::FOLDER::ActionNameAction`` where **ActionName** is the PascalCase for the python script which is in snake_case.
 
-## Configuration
+Here is an example:
 
-If you include this module in your project, you are REQUIRED to produce a configuration
-file called "config.py" and put that configration file in the root of your project.
+Assume we have created a python script using the ActionDefintion API to grant access to KMS keys in the python script ``create_grants.py``
 
-### Core-Automation Configuration Variables
+We then organize the module library and place the script ``create_grants.py`` into the subfolder ``core_execute/actionlib/actions/aws/kms``
 
-| Variable Name        | Type    | Default Value | Description                                                  | Example                |
-|----------------------|---------|---------------|--------------------------------------------------------------|------------------------|
-| `ENVIRONMENT`        | String  | None          | Core Automation Operating Environment: prod, nonprod, or dev | `prod`                 |
-| `LCOAL_MODE`         | Boolean | None          | Enable local operation mode for the app.                     | `True` or `False`      |
-| `API_LAMBDA_ARN`     | String  | None          | Secret API key for authentication.                           | `API_KEY=your-api-key` |
-| `OUTPUT_PATH`        | String  | None          |                                                              |                        |
-| `PLATFORM_PATH`      | String  | None          |                                                              |                        |
-| `ENFORCE_VALIDATION` | String  | None          |                                                              |                        |
-| `DYNAMODB_HOST`      | String  | None          |                                                              |                        |
-| `DYNAMODB_REAGION`   | String  | None          |                                                              |                        |
-| `EVENT_TABLE_NAME`   | String  | None          |                                                              |                        |
+Since the file/script is now in the file ``core_execute/actionlib/actions/aws/kms/create_grants.py`` we will derrive the name of the action for the ActionDefinition API by:
 
-These above values are required by various modules.  Please generate this config.py file and put in the ROOT of your application
-during your application deployment.
+1. Capetalize the folder names after the ``/actionslib/actions`` folder separated with `::`.  Example: ``AWS::KMS::``
+2. Use PascalCase notation of the python script filename.  Example: ``CreateGrants``
+3. To create the class append the word *Action* to the name.  Example:  ``CreateGrantsAction``
 
-## Installing
+The name of the action is then, ``AWS::KMS::CreateGrants`` with a class name of ``CreateGrantsAction`` in the file ``aws/kms/create_grants.py``
 
-Install with poetry
 
-```bash
-poetry install
+## ActionDefinition API
+
+### The Action
+
+In the file ``create_grants.py`` there will be a class ``CreateGrantsAction`` which will define the interface from ``BaseAction``
+
+
+```python
+class CreateGrantsAction(BaseAction):
+    def __init__(
+        self,
+        definition: ActionDefinition,
+        context: dict[str, Any],
+        deployment_details: DeploymentDetails,
+    ):
+        super().__init__(definition, context, deployment_details)
 ```
 
-Then you can run the commmand line:
+When this class is instantated by the engine, it will pass the ``ActionDefinition`` and ``DeploymentDetails`` to the ``__init__()`` function for use in the action script.
 
-```bash
-core-execute -h
+### The Action Definition
+
+The action can be used by placing the action defintion with all required parameters into task actions defintion file ``<task>.actions`` such as a ``deployspec.yaml``
+
+Example of an Action Definition:
+
+```yaml
+action-definition-label:
+    type: AWS::KMS::CreateGrants
+    depends_on: [ 'label of another action in this file' ]
+    params:
+        account: "The account to use for the action (required)"
+        region: "The region to create the stack in (required)"
+        kms_key_id: "The ID of the KMS key to create grants for (optionally required)"
+        kms_key_arn: "The ARN of the KMS key to create grants for (optionally required)",
+        grantee_principals: ["The principals to grant access to (required)"]
+        operations: ["The operations to grant access for (required)"]
+        ignore_failed_grants: False
+    scope: "build"
 ```
 
-Enjoy!
+The values of the ``params`` field are for th euse of the action class definition and can be any value as recognized by the action script.
