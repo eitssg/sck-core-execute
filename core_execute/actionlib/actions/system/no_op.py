@@ -1,27 +1,44 @@
 """Perform a NoOps (No Operation) action"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, model_validator
 from datetime import datetime, timezone
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
+from core_framework.models import DeploymentDetails, ActionSpec
 
 from core_execute.actionlib.action import BaseAction
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class NoOpActionParams(BaseModel):
+    """Parameters for the NoOpAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="SYSTEM::NoOp",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(),
-        Scope="",
-    )
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
-    return definition
+
+class NoOpActionSpec(ActionSpec):
+    """Generate the action specification for the NoOp action"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values) -> dict:
+
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-system-noop-label"
+
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "SYSTEM::NoOp"
+
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {}
+
+        return values
 
 
 class NoOpAction(BaseAction):
@@ -32,7 +49,7 @@ class NoOpAction(BaseAction):
     Attributes:
         Type: Use the value: ``SYSTEM::NoOp``
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -47,11 +64,13 @@ class NoOpAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
+
+        self.params = NoOpActionParams(**definition.params)
 
     def _execute(self):
 

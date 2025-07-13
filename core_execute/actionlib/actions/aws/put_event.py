@@ -1,33 +1,67 @@
 """Record an event in the database"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
+from core_framework.models import ActionSpec, DeploymentDetails
 
 from core_execute.actionlib.action import BaseAction
 
 from core_db.event.actions import EventActions
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class PutEventActionParams(BaseModel):
+    """Parameters for the PutEventAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="AWS::GetStackReferences",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Type="The type of event to put (required) defaults to 'STATUS'",
-            Status="The status of the event (required)",
-            Message="The message to associate with the event (optional) defaults to ''",
-            Identity="The identity of the event (optional)",
-        ),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    type: str = Field(
+        "STATUS",
+        alias="Type",
+        description="The type of event to put (required) defaults to 'STATUS'",
+    )
+    status: str = Field(
+        ...,
+        alias="Status",
+        description="The status of the event (required)",
+    )
+    message: str = Field(
+        "",
+        alias="Message",
+        description="The message to associate with the event (optional) defaults to ''",
+    )
+    identity: str = Field(
+        None,
+        alias="Identity",
+        description="The identity of the event (optional)",
     )
 
-    return definition
+
+class PutEventActionSpec(ActionSpec):
+    """Generate the action definition"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate the parameters for the PutEventActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-aws-putevent-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "AWS::PutEvent"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "Type": None,
+                "Status": "",
+                "Message": "",
+                "Identity": None,
+            }
+
+        return values
 
 
 class PutEventAction(BaseAction):
@@ -42,7 +76,7 @@ class PutEventAction(BaseAction):
         Params.Message: The message to associate with the event (optional) defaults to ''
         Params.Identity: The identity of the event (optional)
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -63,37 +97,37 @@ class PutEventAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
-        if self.params.Type is None:
-            self.params.Type = "STATUS"
+        # Validate the action parameters
+        self.params = PutEventActionParams(**definition.params)
 
-        self.item_type = deployment_details.Scope
+        self.item_type = deployment_details.scope
 
     def _execute(self):
 
         log.trace("PutEventAction._execute()")
 
         try:
-            t = self.params.Type.upper()
+            t = self.params.type.upper()
             if t == "STATUS":
                 log.status(
-                    self.params.Status,
-                    self.params.Message,
-                    identity=self.params.Identity,
+                    self.params.status,
+                    self.params.message,
+                    identity=self.params.identity,
                 )
             elif t == "DEBUG":
-                log.debug(self.params.Message, identity=self.params.Identity)
+                log.debug(self.params.message, identity=self.params.identity)
             elif t == "INFO":
-                log.info(self.params.Message, identity=self.params.Identity)
+                log.info(self.params.message, identity=self.params.identity)
             elif t == "WARN":
-                log.warn(self.params.Message, identity=self.params.Identity)
+                log.warn(self.params.message, identity=self.params.identity)
             elif t == "ERROR":
-                log.error(self.params.Message, identity=self.params.Identity)
+                log.error(self.params.message, identity=self.params.identity)
             else:
                 log.fatal("Invalid event type: {}", t)
                 raise ValueError(
@@ -101,11 +135,11 @@ class PutEventAction(BaseAction):
                 )
 
             event = EventActions.create(
-                self.params.Identity,
-                event_type=self.params.Type,
+                self.params.identity,
+                event_type=self.params.type,
                 item_type=self.item_type,
-                status=self.params.Status,
-                message=self.params.Message,
+                status=self.params.status,
+                message=self.params.message,
             )
             log.debug("Event created: {}", event)
 
@@ -136,15 +170,15 @@ class PutEventAction(BaseAction):
 
         log.trace("PutEventAction._resolve()")
 
-        self.params.Type = self.renderer.render_string(self.params.Type, self.context)
-        self.params.Status = self.renderer.render_string(
-            self.params.Status, self.context
+        self.params.type = self.renderer.render_string(self.params.type, self.context)
+        self.params.status = self.renderer.render_string(
+            self.params.status, self.context
         )
-        self.params.Message = self.renderer.render_string(
-            self.params.Message, self.context
+        self.params.message = self.renderer.render_string(
+            self.params.message, self.context
         )
-        self.params.Identity = self.renderer.render_string(
-            self.params.Identity, self.context
+        self.params.identity = self.renderer.render_string(
+            self.params.identity, self.context
         )
 
         log.trace("PutEventAction._resolve() complete")

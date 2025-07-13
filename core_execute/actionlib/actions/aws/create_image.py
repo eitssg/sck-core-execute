@@ -1,10 +1,11 @@
 """Create an Image of an EC2 instance"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
+from core_framework.models import DeploymentDetails, ActionSpec
 
 import core_helper.aws as aws
 
@@ -12,23 +13,62 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class CreateImageActionParams(BaseModel):
+    """Parameters for the CreateImageAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="AWS::CreateImage",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Account="The account to use for the action (required)",
-            ImageName="The name of the image to create (required)",
-            InstanceId="The instance ID to create the image from (required)",
-            Region="The region to create the image in (required)",
-        ),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    account: str = Field(
+        ...,
+        alias="Account",
+        description="The account to use for the action (required)",
+    )
+    image_name: str = Field(
+        ...,
+        alias="ImageName",
+        description="The name of the image to create (required)",
+    )
+    instance_id: str = Field(
+        ...,
+        alias="InstanceId",
+        description="The instance ID to create the image from (required)",
+    )
+    region: str = Field(
+        ...,
+        alias="Region",
+        description="The region to create the image in (required)",
+    )
+    tags: dict[str, str] | None = Field(
+        default_factory=dict,
+        alias="Tags",
+        description="The tags to apply to the image (optional)",
     )
 
-    return definition
+
+class CreateImageActionSpec(ActionSpec):
+    """Generate the action definition"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate the parameters for the CreateImageActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-aws-createimage-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "AWS::CreateImage"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "account": "",
+                "image_name": "",
+                "instance_id": "",
+                "region": "",
+                "tags": {},
+            }
+
+        return values
 
 
 class CreateImageAction(BaseAction):
@@ -61,15 +101,17 @@ class CreateImageAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
-        tags = self.params.Tags or {}
-        if deployment_details.DeliveredBy:
-            tags["DeliveredBy"] = deployment_details.DeliveredBy
+        self.params = CreateImageActionParams(**definition.params)
+
+        tags = self.params.tags or {}
+        if deployment_details.delivered_by:
+            tags["DeliveredBy"] = deployment_details.delivered_by
 
         self.tags = aws.transform_tag_hash(tags)
 
@@ -79,14 +121,14 @@ class CreateImageAction(BaseAction):
 
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.params.Region,
-            role=util.get_provisioning_role_arn(self.params.Account),
+            region=self.params.region,
+            role=util.get_provisioning_role_arn(self.params.account),
         )
 
         # Create an image
-        self.set_running("Creating new image '{}'".format(self.params.ImageName))
+        self.set_running("Creating new image '{}'".format(self.params.image_name))
         response = ec2_client.create_image(
-            InstanceId=self.params.InstanceId, Name=self.params.ImageName
+            InstanceId=self.params.instance_id, Name=self.params.image_name
         )
         image_id = response["ImageId"]
         self.set_output("ImageId", image_id)
@@ -100,8 +142,8 @@ class CreateImageAction(BaseAction):
 
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.params.Region,
-            role=util.get_provisioning_role_arn(self.params.Account),
+            region=self.params.region,
+            role=util.get_provisioning_role_arn(self.params.account),
         )
 
         # Wait for image creation to complete / fail
@@ -148,17 +190,17 @@ class CreateImageAction(BaseAction):
 
         log.trace("Resolving action")
 
-        self.params.Account = self.renderer.render_string(
-            self.params.Account, self.context
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
         )
-        self.params.ImageName = self.renderer.render_string(
-            self.params.ImageName, self.context
+        self.params.image_name = self.renderer.render_string(
+            self.params.image_name, self.context
         )
-        self.params.InstanceId = self.renderer.render_string(
-            self.params.InstanceId, self.context
+        self.params.instance_id = self.renderer.render_string(
+            self.params.instance_id, self.context
         )
-        self.params.Region = self.renderer.render_string(
-            self.params.Region, self.context
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
         )
 
         log.trace("Resolved action complete")

@@ -7,7 +7,7 @@ import os
 import enum
 import core_logging as log
 
-from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
+from core_framework.models import ActionSpec, DeploymentDetails
 
 from core_renderer import Jinja2Renderer
 
@@ -21,7 +21,6 @@ ACT_TYPE = "Type"
 ACT_CONDITION = "Condition"
 ACT_BEFORE = "Before"
 ACT_AFTER = "After"
-ACT_PARAMS = "Params"
 ACT_LIFECYCLE_HOOKS = "LifecycleHooks"
 ACT_SAVE_OUTPUTS = "SaveOutputs"
 ACT_DEPENDS_ON = "DependsOn"
@@ -74,9 +73,6 @@ class BaseAction:
     after: list[str]
     """list[str]: The actions that should be perfomed after this action."""
 
-    params: ActionParams
-    """ActionParams: The parameters of the action."""
-
     lifecycle_hooks: list[dict[str, Any]]
     """list[dict[str, Any]]: The lifecycle hooks of the action."""
 
@@ -103,7 +99,7 @@ class BaseAction:
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
@@ -114,7 +110,7 @@ class BaseAction:
         self.renderer = Jinja2Renderer()
 
         # Extract action details from the definition
-        self.label = definition.Label
+        self.label = definition.label
 
         log.debug("Action label is: {}", self.label)
 
@@ -127,7 +123,7 @@ class BaseAction:
         self.action_name = self.label.split("/", 1)[-1]
 
         # Set output_namespace if user specified SaveOutputs = True
-        if definition.SaveOutputs:
+        if definition.save_outputs:
             self.output_namespace = self.label.split("/", 1)[0].replace(
                 ":action", ":output"
             )
@@ -141,15 +137,14 @@ class BaseAction:
 
         log.debug("Action state namespace is {}", self.state_namespace)
 
-        after = definition.After or []
-        depends = definition.DependsOn or []
+        after = definition.after or []
+        depends = definition.depends_on or []
 
-        self.type = definition.Type
-        self.condition = definition.Condition or "True"
-        self.before = definition.Before or []
+        self.type = definition.type
+        self.condition = definition.condition or "True"
+        self.before = definition.before or []
         self.after = after + depends
-        self.params = definition.Params
-        self.lifecycle_hooks = definition.LifecycleHooks or []
+        self.lifecycle_hooks = definition.lifecycle_hooks or []
 
         log.trace("BaseAction.__init__() - complete")
 
@@ -241,13 +236,16 @@ class BaseAction:
 
         log.trace("Action set to running - {}", reason)
 
-    def set_complete(self, reason: str):
+    def set_complete(self, reason: str | None = None):
         """
         Set the status to complete and supply the given reason
 
         Args:
             reason (str): The reason the status is complete.
         """
+        if reason is None:
+            reason = "Action finished."
+
         log.trace("Setting action to complete - {}", reason)
 
         # Ignore duplicate state updates
@@ -497,10 +495,7 @@ class BaseAction:
 
         key = "{}/{}".format(prn, name)
 
-        if not self.context:
-            self.context = {key: value}
-        else:
-            self.context[key] = value
+        self.context[key] = value
 
     def __execute_lifecycle_hooks(self, event: str, reason: str):
         # Retrieve the event hooks for this action, for this state event

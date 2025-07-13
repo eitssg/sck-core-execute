@@ -1,35 +1,61 @@
 """Modify and RDS databae instance"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from botocore.exceptions import ClientError
 
 import core_helper.aws as aws
 
-from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
+from core_framework.models import ActionSpec, DeploymentDetails
 
 import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class ModifyDbInstanceActionParams(BaseModel):
+    """Parameters for the ModifyDbInstanceAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="AWS::RDS::ModifyDbInstance",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Account="The account to use for the action (required)",
-            Region="The region to create the stack in (required)",
-            ApiParams={
-                "any": "The parameters to pass to the modify_db_instance call (required)"
-            },
-        ),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    account: str = Field(
+        ...,
+        alias="Account",
+        description="The account to use for the action (required)",
+    )
+    region: str = Field(
+        ...,
+        alias="Region",
+        description="The region to create the stack in (required)",
+    )
+    api_params: dict[str, Any] = Field(
+        ...,
+        alias="ApiParams",
+        description="The parameters to pass to the modify_db_instance call (required). See AWS documentation for more information on the parameters.",
     )
 
-    return definition
+
+class ModifyDbInstanceActionSpec(ActionSpec):
+    """Generate the action definition"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate the parameters for the ModifyDbInstanceActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-aws-rds-modifydbinstance-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "AWS::RDS::ModifyDbInstance"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "Account": "",
+                "Region": "",
+                "ApiParams": {},
+            }
+        return values
 
 
 class ModifyDbInstanceAction(BaseAction):
@@ -43,7 +69,7 @@ class ModifyDbInstanceAction(BaseAction):
         Params.Region: The region where your RDS instance is located
         Params.ApiParams: The parameters to pass to the modify_db_instance call (required).  See AWS docuemntation for more infomration on the parameters.
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -64,23 +90,26 @@ class ModifyDbInstanceAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
+        # validate the parameters
+        self.params = ModifyDbInstanceActionParams(**definition.params)
+
     def _execute(self):
         # Obtain an RDS client
         rds_client = aws.rds_client(
-            region=self.params.Region,
-            role=util.get_provisioning_role_arn(self.params.Account),
+            region=self.params.region,
+            role=util.get_provisioning_role_arn(self.params.account),
         )
 
         self.set_running("Modifying DB instance")
 
         try:
-            response = rds_client.modify_db_instance(**self.params.ApiParams)
+            response = rds_client.modify_db_instance(**self.params.api_params)
 
             pending_modified_values = response["DBInstance"].get(
                 "PendingModifiedValues", {}
@@ -101,12 +130,12 @@ class ModifyDbInstanceAction(BaseAction):
 
     def _check(self):
         rds_client = aws.rds_client(
-            region=self.params.Region,
-            role=util.get_provisioning_role_arn(self.params.Account),
+            region=self.params.region,
+            role=util.get_provisioning_role_arn(self.params.account),
         )
 
         response = rds_client.describe_db_instances(
-            DBInstanceIdentifier=self.params.ApiParams["DBInstanceIdentifier"]
+            DBInstanceIdentifier=self.params.api_params["DBInstanceIdentifier"]
         )
 
         pending_modified_values = response["DBInstances"][0].get(
@@ -128,12 +157,12 @@ class ModifyDbInstanceAction(BaseAction):
         pass
 
     def _resolve(self):
-        self.params.Account = self.renderer.render_string(
-            self.params.Account, self.context
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
         )
-        self.params.Region = self.renderer.render_string(
-            self.params.Region, self.context
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
         )
-        self.params.ApiParams = self.renderer.render_object(
-            self.params.ApiParams, self.context
+        self.params.api_params = self.renderer.render_object(
+            self.params.api_params, self.context
         )

@@ -1,10 +1,11 @@
 """Share an image with other accounts"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
+from core_framework.models import ActionSpec, DeploymentDetails
 
 import core_helper.aws as aws
 
@@ -12,24 +13,60 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class ShareImageActionParams(BaseModel):
+    """Parameters for the ShareImageAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="AWS::ShareImage",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Account="The account to use for the action (required)",
-            Region="The region to create the stack in (required)",
-            ImageName="The name of the image to share (required)",
-            AccountsToShare=["The accounts to share the image with (required)"],
-            Siblings=["The accounts that are allowed to share the image (required)"],
-        ),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    account: str = Field(
+        ..., alias="Account", description="The account to use for the action (required)"
+    )
+    region: str = Field(
+        ..., alias="Region", description="The region to create the stack in (required)"
+    )
+    image_name: str = Field(
+        ..., alias="ImageName", description="The name of the image to share (required)"
+    )
+    accounts_to_share: list[str] = Field(
+        ...,
+        alias="AccountsToShare",
+        description="The accounts to share the image with (required)",
+    )
+    siblings: list[str] = Field(
+        ...,
+        alias="Siblings",
+        description="The accounts that are allowed to share the image (required)",
+    )
+    tags: dict[str, str] | None = Field(
+        default_factory=dict,
+        alias="Tags",
+        description="The tags to apply to the image (optional)",
     )
 
-    return definition
+
+class ShareImageActionSpec(ActionSpec):
+    """Generate the action definition"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate the parameters for the ShareImageActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-aws-shareimage-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "AWS::ShareImage"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "account": "",
+                "region": "",
+                "image_name": "",
+                "accounts_to_share": [],
+                "siblings": [],
+            }
+        return values
 
 
 class ShareImageAction(BaseAction):
@@ -45,7 +82,7 @@ class ShareImageAction(BaseAction):
         Params.AccountsToShare: The accounts to share the image with (required)
         Params.Siblings: The accounts that are allowed to share the image (required)
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -65,50 +102,51 @@ class ShareImageAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
-        if self.params.Tags is None:
-            self.params.Tags = {}
-        if deployment_details.DeliveredBy:
-            self.params.Tags["DeliveredBy"] = deployment_details.DeliveredBy
+        # Validate the action parameters
+        self.params = ShareImageActionParams(**definition.params)
+
+        if deployment_details.delivered_by:
+            self.params.tags["DeliveredBy"] = deployment_details.delivered_by
 
     def _execute(self):
 
         log.trace("ShareImageAction._execute()")
 
-        target_accounts = self.params.AccountsToShare
+        target_accounts = self.params.accounts_to_share
 
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.params.Region,
-            role=util.get_provisioning_role_arn(self.params.Account),
+            region=self.params.region,
+            role=util.get_provisioning_role_arn(self.params.account),
         )
 
-        log.debug("Finding image with name '{}'", self.params.ImageName)
+        log.debug("Finding image with name '{}'", self.params.image_name)
 
         # Find image (provides image id and snapshot ids)
         response = ec2_client.describe_images(
-            Filters=[{"Name": "name", "Values": [self.params.ImageName]}]
+            Filters=[{"Name": "name", "Values": [self.params.image_name]}]
         )
 
         if len(response["Images"]) == 0:
             self.set_complete(
                 "Could not find image with name '{}'. It may have been previously deleted.".format(
-                    self.params.ImageName
+                    self.params.image_name
                 )
             )
             log.warning(
                 "Could not find image with name '{}'. It may have been previously deleted.",
-                self.params.ImageName,
+                self.params.image_name,
             )
             return
 
-        for target in self.params.AccountsToShare:
-            if target not in self.params.Siblings:
+        for target in self.params.accounts_to_share:
+            if target not in self.params.siblings:
                 self.set_failed(
                     "Sharing to account {} that is not permissible in accounts.yaml, you need to have AwsSiblings property containing list of account you may share this image to"
                 )
@@ -129,7 +167,7 @@ class ShareImageAction(BaseAction):
                         lambda s: {
                             "UserId": s,
                         },
-                        self.params.AccountsToShare,
+                        self.params.accounts_to_share,
                     )
                 ),
             },
@@ -155,14 +193,14 @@ class ShareImageAction(BaseAction):
 
         log.trace("ShareImageAction._resolve()")
 
-        self.params.Account = self.renderer.render_string(
-            self.params.Account, self.context
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
         )
-        self.params.ImageName = self.renderer.render_string(
-            self.params.ImageName, self.context
+        self.params.image_name = self.renderer.render_string(
+            self.params.image_name, self.context
         )
-        self.params.Region = self.renderer.render_string(
-            self.params.Region, self.context
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
         )
 
         log.trace("ShareImageAction._resolve() complete")

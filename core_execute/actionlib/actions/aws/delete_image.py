@@ -1,10 +1,11 @@
 """Delete an image and its associated snapshots"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
+from core_framework.models import DeploymentDetails, ActionSpec
 
 from botocore.exceptions import ClientError
 
@@ -14,22 +15,49 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class DeleteImageActionParams(BaseModel):
+    """Parameters for the DeleteImageAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="AWS::DeleteImage",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Account="The account to use for the action (required)",
-            Region="The region to create the stack in (required)",
-            ImageName="The name of the image to delete (required)",
-        ),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    account: str = Field(
+        ...,
+        alias="Account",
+        description="The account to use for the action (required)",
+    )
+    region: str = Field(
+        ...,
+        alias="Region",
+        description="The region to create the stack in (required)",
+    )
+    image_name: str = Field(
+        ...,
+        alias="ImageName",
+        description="The name of the image to delete (required)",
     )
 
-    return definition
+
+class DeleteImageActionSpec(ActionSpec):
+    """Generate the action definition"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate the parameters for the DeleteImageActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-aws-deleteimage-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "AWS::DeleteImage"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "account": "",
+                "region": "",
+                "image_name": "",
+            }
+        return values
 
 
 class DeleteImageAction(BaseAction):
@@ -43,7 +71,7 @@ class DeleteImageAction(BaseAction):
         Params.Region: The region where the image is located
         Params.ImageName: The name of the image to delete (required)
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -61,11 +89,14 @@ class DeleteImageAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
+
+        # Validate the parameters
+        self.params = DeleteImageActionParams(**definition.params)
 
     def _execute(self):  # noqa: C901
 
@@ -74,27 +105,27 @@ class DeleteImageAction(BaseAction):
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
             region=self.params.Region,
-            role=util.get_provisioning_role_arn(self.params.Account),
+            role=util.get_provisioning_role_arn(self.params.account),
         )
 
         # Find image (provides image id and snapshot ids)
-        log.debug("Finding image with name '{}'", self.params.ImageName)
+        log.debug("Finding image with name '{}'", self.params.image_name)
         response = ec2_client.describe_images(
-            Filters=[{"Name": "name", "Values": [self.params.ImageName]}]
+            Filters=[{"Name": "name", "Values": [self.params.image_name]}]
         )
 
         if len(response["Images"]) == 0:
-            log.warning("Image '{}' does not exist", self.params.ImageName)
+            log.warning("Image '{}' does not exist", self.params.image_name)
             self.set_complete(
                 "Image '{}' does not exist, may have been previously deleted".format(
-                    self.params.ImageName
+                    self.params.image_name
                 )
             )
             return
 
         image_id = response["Images"][0]["ImageId"]
 
-        log.debug("Found image '{}' with id '{}'", self.params.ImageName, image_id)
+        log.debug("Found image '{}' with id '{}'", self.params.image_name, image_id)
 
         # Extract snapshot ids from describe_images response
         snapshot_ids = []
@@ -161,14 +192,14 @@ class DeleteImageAction(BaseAction):
 
         log.trace("DeleteImageAction._resolve()")
 
-        self.params.Account = self.renderer.render_string(
-            self.params.Account, self.context
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
         )
-        self.params.ImageName = self.renderer.render_string(
-            self.params.ImageName, self.context
+        self.params.image_name = self.renderer.render_string(
+            self.params.image_name, self.context
         )
-        self.params.Region = self.renderer.render_string(
-            self.params.Region, self.context
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
         )
 
         log.trace("DeleteImageAction._resolve() complete")

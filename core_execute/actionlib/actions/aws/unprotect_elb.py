@@ -1,10 +1,11 @@
 """Remove ELB protection so it can be deleted"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
+from core_framework.models import ActionSpec, DeploymentDetails
 
 import core_helper.aws as aws
 
@@ -12,22 +13,45 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class UnprotectELBActionParams(BaseModel):
+    """Parameters for the UnprotectELBAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="AWS::UnprotectELB",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Account="The account to use for the action (required)",
-            Region="The region to create the stack in (required)",
-            LoadBalancer="The ARN of the load balancer to unprotect (required)",
-        ),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    account: str = Field(
+        ..., alias="Account", description="The account to use for the action (required)"
+    )
+    region: str = Field(
+        ..., alias="Region", description="The region to create the stack in (required)"
+    )
+    load_balancer: str = Field(
+        ...,
+        alias="LoadBalancer",
+        description="The ARN of the load balancer to unprotect (required)",
     )
 
-    return definition
+
+class UnprotectELBActionSpec(ActionSpec):
+    """Generate the action definition"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate the parameters for the UnprotectELBActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-aws-unprotect-elb-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "AWS::UnprotectELB"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "account": "",
+                "region": "",
+                "load_balancer": "",
+            }
+        return values
 
 
 class UnprotectELBAction(BaseAction):
@@ -41,7 +65,7 @@ class UnprotectELBAction(BaseAction):
         Params.Region: The region where the ELB is located
         Params.LoadBalancer: The ARN of the load balancer to unprotect (required)
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -59,24 +83,27 @@ class UnprotectELBAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
+        # Validate the action parameters
+        self.params = UnprotectELBActionParams(**definition.params)
+
     def _execute(self):
 
         log.trace("UnprotectELBAction._execute()")
 
-        if self.params.LoadBalancer != "none":
+        if self.params.load_balancer != "none":
             elbv2_client = aws.elbv2_client(
-                region=self.params.Region,
-                role=util.get_provisioning_role_arn(self.params.Account),
+                region=self.params.region,
+                role=util.get_provisioning_role_arn(self.params.account),
             )
 
             elbv2_client.modify_load_balancer_attributes(
-                LoadBalancerArn=self.params.LoadBalancer,
+                LoadBalancerArn=self.params.load_balancer,
                 Attributes=[{"Key": "deletion_protection.enabled", "Value": "false"}],
             )
 
@@ -102,14 +129,14 @@ class UnprotectELBAction(BaseAction):
 
         log.trace("UnprotectELBAction._resolve()")
 
-        self.params.Account = self.renderer.render_string(
-            self.params.Account, self.context
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
         )
-        self.params.Region = self.renderer.render_string(
-            self.params.Region, self.context
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
         )
-        self.params.LoadBalancer = self.renderer.render_string(
-            self.params.LoadBalancer, self.context
+        self.params.load_balancer = self.renderer.render_string(
+            self.params.load_balancer, self.context
         )
 
         log.trace("UnprotectELBAction._resolve()")

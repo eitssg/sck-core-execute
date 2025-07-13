@@ -17,7 +17,7 @@ Assume we have created a python script using the ActionDefintion API to grant ac
 
 We then organize the module library and place the script ``create_grants.py`` into the subfolder ``core_execute/actionlib/actions/aws/kms``
 
-Since the file/script is now in the file ``core_execute/actionlib/actions/aws/kms/create_grants.py`` we will derrive the name of the action for the ActionDefinition API by:
+Since the file/script is now in the file ``core_execute/actionlib/actions/aws/kms/create_grants.py`` we will derrive the name of the action for the ActionSpec API by:
 
 1. Capetalize the folder names after the ``/actionslib/actions`` folder separated with `::`.  Example: ``AWS::KMS::``
 2. Use PascalCase notation of the python script filename.  Example: ``CreateGrants``
@@ -26,7 +26,7 @@ Since the file/script is now in the file ``core_execute/actionlib/actions/aws/km
 The name of the action is then, ``AWS::KMS::CreateGrants`` with a class name of ``CreateGrantsAction`` in the file ``aws/kms/create_grants.py``
 
 
-## ActionDefinition API
+## ActionSpec API
 
 ### The Action
 
@@ -37,14 +37,14 @@ In the file ``create_grants.py`` there will be a class ``CreateGrantsAction`` wh
 class CreateGrantsAction(BaseAction):
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 ```
 
-When this class is instantated by the engine, it will pass the ``ActionDefinition`` and ``DeploymentDetails`` to the ``__init__()`` function for use in the action script.
+When this class is instantated by the engine, it will pass the ``ActionSpec`` and ``DeploymentDetails`` to the ``__init__()`` function for use in the action script.
 
 ### The Action Definition
 

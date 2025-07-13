@@ -5,11 +5,10 @@ from datetime import datetime, timezone
 import io
 import json
 
-from ruamel.yaml import YAML
-
 import core_logging as log
 
-from core_framework.models import TaskPayload, ActionDefinition
+import core_framework as util
+from core_framework.models import TaskPayload, ActionSpec
 from core_helper.magic import MagicS3Client
 
 from .actionlib.helper import Helper
@@ -34,6 +33,8 @@ def timeout_imminent(context: Any | None = None) -> bool:
     # Timeout is 10 seconds
     to = 10000
 
+    # get_remaining_time_in_millis is available in the Lambda context
+    # If context is None, we assume we're not running in a Lambda environment
     if context and hasattr(context, "get_remaining_time_in_millis"):
         remaining_time_in_millis = context.get_remaining_time_in_millis()
     else:
@@ -156,50 +157,50 @@ def _percentage(top, bottom):
         return "{}%".format(int(float(top) / float(bottom) * 100.0))
 
 
-def load_actions(task_payload: TaskPayload) -> list[ActionDefinition]:
+def load_actions(task_payload: TaskPayload) -> list[ActionSpec]:
     """
-    Load the ActionDefinition Definitions from S3
+    Load the ActionSpec Definitions from S3
 
     Args:
-        actions_details (dict): ActionDefinition details.  The ActionDefinition Details object.
+        actions_details (dict): ActionSpec details.  The ActionSpec Details object.
 
     Raises:
         Exception: Rais an exception if the content type is not recognized.
 
     Returns:
-        dict: ActionDefinition definitions list
+        dict: ActionSpec definitions list
     """
 
     # Load actions and create an action helper object
     log.trace("Loading actions")
 
-    actions_details = task_payload.Actions
+    actions_details = task_payload.actions
     if actions_details is None:
         raise ValueError("No actions found in the task payload")
 
-    bucket_name = actions_details.BucketName
-    bucket_region = actions_details.BucketRegion
+    bucket_name = actions_details.bucket_name
+    bucket_region = actions_details.bucket_region
 
     s3_actions_client = MagicS3Client.get_client(Region=bucket_region)
 
-    log.info("Downloading actions from {}", actions_details.Key)
+    log.info("Downloading actions from {}", actions_details.key)
 
     actions_fileobj = io.BytesIO()
-    download_details = s3_actions_client.download_fileobj(
-        Bucket=bucket_name, Key=actions_details.Key, Fileobj=actions_fileobj
+    download_details: dict = s3_actions_client.download_fileobj(
+        Bucket=bucket_name, Key=actions_details.key, Fileobj=actions_fileobj
     )
 
     content_type = download_details.get("ContentType", "application/x-yaml")
 
     if content_type == "application/x-yaml":
-        actions_data = YAML(typ="safe").load(actions_fileobj)
+        actions_data = util.read_yaml(actions_fileobj)
     elif content_type == "application/json":
         actions_data = json.loads(actions_fileobj.getvalue())
     else:
         raise ValueError("Actions file unknown content type: {}", content_type)
 
     # we mutate the actions details.  bad on us.
-    actions_details.ContentType = content_type
+    actions_details.content_type = content_type
 
     log.debug("Loaded Actions Content Type: {}", content_type)
     log.debug("Loaded Actions Data: ", details=actions_data)
@@ -207,13 +208,32 @@ def load_actions(task_payload: TaskPayload) -> list[ActionDefinition]:
     if actions_data is None:
         return []
 
-    actions: list[ActionDefinition] = [
-        ActionDefinition(**action) for action in actions_data
-    ]
+    actions: list[ActionSpec] = [ActionSpec(**action) for action in actions_data]
 
     log.trace("Actions loaded")
 
     return actions
+
+
+def save_actions(task_payload: TaskPayload, specs: list[ActionSpec]) -> None:
+    """
+    Save the ActionSpec Definitions to S3
+    Args:
+        task_payload (TaskPayload): The TaskPayload object containing the actions details.
+        actions (dict): The list of action definitions to save.
+    """
+    actions = task_payload.actions
+
+    s3_actions_client = MagicS3Client.get_client(
+        Region=actions.bucket_region, DataPath=actions.data_path
+    )
+
+    s3_actions_client.put_object(
+        Bucket=actions.bucket_name,
+        Key=actions.key,
+        Body=util.to_yaml(specs),
+        ContentType=actions.content_type,
+    )
 
 
 def load_state(task_payload: TaskPayload) -> dict:
@@ -232,30 +252,30 @@ def load_state(task_payload: TaskPayload) -> dict:
     """
     log.trace("Loading state")
 
-    state_details = task_payload.State
+    state_details = task_payload.state
     if state_details is None:
         raise ValueError("No state found in the task payload")
 
-    bucket_name = state_details.BucketName
-    bucket_region = state_details.BucketRegion
+    bucket_name = state_details.bucket_name
+    bucket_region = state_details.bucket_region
 
     # Retrieve state from S3
-    if state_details.VersionId == "new":
+    if state_details.version_id == "new":
         log.info("Creating new state")
         return {}
 
     extra_args = {}
-    if state_details.VersionId is not None:
-        extra_args["VersionId"] = state_details.VersionId
+    if state_details.version_id is not None:
+        extra_args["VersionId"] = state_details.version_id
 
-    log.info("Downloading state from {}", state_details.Key)
+    log.info("Downloading state from {}", state_details.key)
 
     s3_state_client = MagicS3Client.get_client(Region=bucket_region)
 
     state_fileobj = io.BytesIO()
     state_download_response = s3_state_client.download_fileobj(
         Bucket=bucket_name,
-        Key=state_details.Key,
+        Key=state_details.key,
         Fileobj=state_fileobj,
         ExtraArgs=extra_args,
     )
@@ -270,7 +290,7 @@ def load_state(task_payload: TaskPayload) -> dict:
         raise Exception("State file unknown content type: {}", state_type)
 
     # we mutate the state details.  bad on us.
-    state_details.ContentType = state_type
+    state_details.content_type = state_type
 
     log.debug("Loaded State Content Type: {}", state_type)
     log.debug("Loaded State Data: ", details=state)
@@ -294,35 +314,30 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
 
     log.trace("Enter Save state")
 
-    state_details = task_payload.State
+    state_details = task_payload.state
     if state_details is None:
         raise ValueError("No state found in the task payload")
 
-    bucket_name = state_details.BucketName
-    bucket_region = state_details.BucketRegion
+    bucket_name = state_details.bucket_name
+    bucket_region = state_details.bucket_region
 
-    content_type = state_details.ContentType or "application/x-yaml"
+    content_type = state_details.content_type or "application/x-yaml"
 
     log.debug("Saving State Content Type: {}", content_type)
     log.debug("Saving State Data: ", details=state)
 
     if content_type == "application/x-yaml":
-        y = YAML(typ="safe")
-        y.allow_unicode = True
-        y.default_flow_style = False
-        data = io.StringIO()
-        y.dump(state, data)
-        result_data = data.getvalue()
+        result_data = util.to_yaml(state)
     elif content_type == "application/json":
         result_data = json.dumps(state, indent=2)
 
-    log.info("Save state to {}", state_details.Key)
+    log.info("Save state to {}", state_details.key)
 
     s3_state_client = MagicS3Client.get_client(Region=bucket_region)
 
     response = s3_state_client.put_object(
         Bucket=bucket_name,
-        Key=state_details.Key,
+        Key=state_details.key,
         Body=result_data,
         ContentType=content_type,
         ServerSideEncryption="AES256",
@@ -330,6 +345,6 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
 
     log.debug("State save response: ", details=response)
 
-    state_details.VersionId = response.version_id
+    state_details.version_id = response.version_id
 
     log.trace("Exit Save state")

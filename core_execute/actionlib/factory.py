@@ -5,7 +5,7 @@ from typing import Any
 import importlib
 import re
 
-from core_framework.models import ActionDefinition
+from core_framework.models import ActionSpec
 from core_execute.actionlib.action import BaseAction
 
 from core_framework.models import DeploymentDetails
@@ -36,17 +36,17 @@ class ActionFactory:
 
     @staticmethod
     def load(
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ) -> BaseAction:
 
         # Don't allow relative references
-        if ".." in definition.Type:
-            raise NotImplementedError("Unknown action '{}'".format(definition.Type))
+        if ".." in definition.type:
+            raise NotImplementedError("Unknown action '{}'".format(definition.type))
 
         module_path, class_name = ActionFactory.get_module_and_class_name(
-            definition.Type
+            definition.type
         )
 
         # Import the module and instantiate the action class
@@ -57,7 +57,7 @@ class ActionFactory:
             return klass(definition, context, deployment_details)
 
         except (ImportError, AttributeError):
-            raise NotImplementedError("Unknown action '{}'".format(definition.Type))
+            raise NotImplementedError("Unknown action '{}'".format(definition.type))
 
         except Exception as e:
             raise RuntimeError(

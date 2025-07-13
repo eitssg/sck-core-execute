@@ -1,12 +1,12 @@
 """Grant access to KMS keys to principals"""
 
 from typing import Any
-
+from pydantic import BaseModel, ConfigDict, model_validator, Field
 import core_logging as log
 
 import core_helper.aws as aws
 
-from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
+from core_framework.models import DeploymentDetails, ActionSpec
 
 import core_framework as util
 from core_execute.actionlib.action import BaseAction
@@ -14,26 +14,78 @@ from core_execute.actionlib.action import BaseAction
 import re
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class CreateGrantsActionSpec(ActionSpec):
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="AWS::KMS::CreateGrants",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Account="The account to use for the action (required)",
-            Region="The region to create the stack in (required)",
-            KmsKeyId="The ID of the KMS key to create grants for (optionally required)",
-            KmsKeyArn="The ARN of the KMS key to create grants for (optionally required)",
-            GranteePrincipals=["The principals to grant access to (required)"],
-            Operations=["The operations to grant access for (required)"],
-            IgnoreFailedGrants=False,
-        ),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    @model_validator(mode="before")
+    def validate_params(cls, values) -> dict:
+        """Validate the parameters for the CreateGrantsActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-aws-kms-creategrants-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "AWS::KMS::CreateGrants"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "account": "",
+                "region": "",
+                "kms_key_id": "",
+                "grantee_principals": [],
+                "operations": [],
+                "ignore_failed_grants": False,
+            }
+        return values
+
+
+class CreateGrantsActionParams(BaseModel):
+    """Parameters for the CreateGrantsAction
+
+    Attributes:
+        Account="The account to use for the action (required)",
+        Region="The region to create the stack in (required)",
+        KmsKeyId="The ID of the KMS key to create grants for (optionally required)",
+        KmsKeyArn="The ARN of the KMS key to create grants for (optionally required)",
+        GranteePrincipals=["The principals to grant access to (required)"],
+        Operations=["The operations to grant access for (required)"],
+        IgnoreFailedGrants=False
+
+    """
+
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    account: str = Field(
+        ..., alias="Account", description="The account to use for the action (required)"
     )
-
-    return definition
+    region: str = Field(
+        ..., alias="Region", description="The region to create the stack in (required)"
+    )
+    kms_key_id: str | None = Field(
+        None,
+        alias="KmsKeyId",
+        description="The ID of the KMS key to create grants for (optionally required)",
+    )
+    kms_key_arn: str | None = Field(
+        None,
+        alias="KmsKeyArn",
+        description="The ARN of the KMS key to create grants for (optionally required)",
+    )
+    grantee_principals: list[str] = Field(
+        ...,
+        alias="GranteePrincipals",
+        description="The principals to grant access to (required)",
+    )
+    operations: list[str] = Field(
+        ...,
+        alias="Operations",
+        description="The operations to grant access for (required)",
+    )
+    ignore_failed_grants: bool = Field(
+        False,
+        alias="IgnoreFailedGrants",
+        description="If true, ignore failed grants, otherwise fail the action if a grant fails",
+    )
 
 
 class CreateGrantsAction(BaseAction):
@@ -41,18 +93,9 @@ class CreateGrantsAction(BaseAction):
 
     This action will create grants for KMS Keys.  The action will wait for the modifications to complete before returning.
 
-    Attributes:
-        Label: Enter a label to define this action instance
-        Type: Use the value: ``AWS::KMS::CreateGrants``
-        Params.Account: The accoutn where KMS keys are centraly stored
-        Params.Region: The region where KMS keys are located
-        Params.KmsKeyArn: The ID of the KMS key to create grants for (required if KmsKeyId is not provided)
-        Params.KmsKeyId: The ARN of the KMS key to create grants for (required if KmsKeyArn is not provided)
-        Params.GranteePrincipals: The principals to grant access to (required)
-        Params.Operations: The operations to grant access for (required)
-        Params.IgnoreFailedGrants: If true, ignore failed grants, otherwise fail the action if a grant fails
+    Type: Use the value: ``AWS::KMS::CreateGrants``
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -73,19 +116,23 @@ class CreateGrantsAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.account = self.params.Account
-        self.region = self.params.Region
-        self.kms_key_id = self.params.KmsKeyId or self.params.KmsKeyArn
-        self.grantee_principals = self.params.GranteePrincipals
-        self.operations = self.params.Operations
+        self.params = CreateGrantsActionParams(**definition.params)
+
+        self.account = self.params.account
+        self.region = self.params.region
+        self.kms_key_id = self.params.kms_key_id or self.params.kms_key_arn
+        self.grantee_principals = self.params.grantee_principals
+        self.operations = self.params.operations
         self.ignore_failed_grants = (
-            self.params.IgnoreFailedGrants if self.params.IgnoreFailedGrants else True
+            self.params.ignore_failed_grants
+            if self.params.ignore_failed_grants
+            else True
         )
 
     def _execute(self):

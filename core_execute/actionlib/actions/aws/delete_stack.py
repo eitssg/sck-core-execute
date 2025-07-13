@@ -1,11 +1,12 @@
 """Teardown or delete a CloudFormation stack"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 from botocore.exceptions import ClientError
 
-from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
+from core_framework.models import DeploymentDetails, ActionSpec
 
 import core_helper.aws as aws
 
@@ -13,25 +14,55 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class DeleteStackActionParams(BaseModel):
+    """Parameters for the DeleteStackAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="AWS::DeleteStack",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Account="The account to use for the action (required)",
-            Region="The region to create the stack in (required)",
-            StackName="The name of the stack to delete (required)",
-            SuccessStatuses=[
-                "The stack statuses that indicate success (optional). Defaults to []"
-            ],
-        ),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    account: str = Field(
+        ...,
+        alias="Account",
+        description="The account to use for the action (required)",
+    )
+    region: str = Field(
+        ...,
+        alias="Region",
+        description="The region to create the stack in (required)",
+    )
+    stack_name: str = Field(
+        ...,
+        alias="StackName",
+        description="The name of the stack to delete (required)",
+    )
+    success_statuses: list[str] = Field(
+        default_factory=list,
+        alias="SuccessStatuses",
+        description="The stack statuses that indicate success (optional). Defaults to []",
     )
 
-    return definition
+
+class DeleteStackActionSpec(ActionSpec):
+    """Generate the action definition"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate the parameters for the DeleteStackActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-aws-deletestack-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "AWS::DeleteStack"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "account": "",
+                "region": "",
+                "stack_name": "",
+                "success_statuses": [],
+            }
+        return values
 
 
 class DeleteStackAction(BaseAction):
@@ -48,7 +79,7 @@ class DeleteStackAction(BaseAction):
         Params.StackName: The name of the stack to delete (required)
         Params.SuccessStatuses: The stack statuses that indicate success (optional).  Defaults to []
 
-    .. rubric:: ActionDefinition:
+    .. rubric:: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -66,11 +97,14 @@ class DeleteStackAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
+
+        # Validate the action parameters
+        self.params = DeleteStackActionParams(**definition.params)
 
     def _execute(self):
 
@@ -79,37 +113,37 @@ class DeleteStackAction(BaseAction):
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
             region=self.params.Region,
-            role=util.get_provisioning_role_arn(self.params.Account),
+            role=util.get_provisioning_role_arn(self.params.account),
         )
 
         # Describe the stack to get its status
         exists = True
         try:
-            cfn_response = cfn_client.describe_stacks(StackName=self.params.StackName)
+            cfn_response = cfn_client.describe_stacks(StackName=self.params.stack_name)
             stack_status = cfn_response["Stacks"][0]["StackStatus"]
             stack_id = cfn_response["Stacks"][0]["StackId"]
             self.set_state("StackId", stack_id)
             self.set_output("StackStatus", stack_status)
         except ClientError as e:
             if "does not exist" in e.response["Error"]["Message"]:
-                log.warning("Stack '{}' does not exist", self.params.StackName)
+                log.warning("Stack '{}' does not exist", self.params.stack_name)
                 exists = False
             else:
-                log.error("Error describing stack '{}': {}", self.params.StackName, e)
+                log.error("Error describing stack '{}': {}", self.params.stack_name, e)
                 raise
 
         if exists is False:
             self.set_output("StackStatus", "DELETE_COMPLETE")
             self.set_complete(
                 "Stack '{}' does not exist, it may have been previously deleted".format(
-                    self.params.StackName
+                    self.params.stack_name
                 )
             )
         elif stack_status == "DELETE_COMPLETE":
             self.set_output("StackStatus", stack_status)
             self.set_complete("Stack '{}' has been previously deleted")
         else:
-            self.set_running("Deleting stack '{}'".format(self.params.StackName))
+            self.set_running("Deleting stack '{}'".format(self.params.stack_name))
             cfn_response = cfn_client.delete_stack(StackName=self.get_state("StackId"))
 
         log.trace("DeleteStackAction._execute() complete")
@@ -121,7 +155,7 @@ class DeleteStackAction(BaseAction):
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
             region=self.params.Region,
-            role=util.get_provisioning_role_arn(self.params.Account),
+            role=util.get_provisioning_role_arn(self.params.account),
         )
 
         # Describe the stack to get its status
@@ -133,18 +167,18 @@ class DeleteStackAction(BaseAction):
             stack_status = cfn_response["Stacks"][0]["StackStatus"]
         except ClientError as e:
             if "does not exist" in e.response["Error"]["Message"]:
-                log.warning("Stack '{}' does not exist", self.params.StackName)
+                log.warning("Stack '{}' does not exist", self.params.stack_name)
                 exists = False
             else:
-                log.error("Error describing stack '{}': {}", self.params.StackName, e)
+                log.error("Error describing stack '{}': {}", self.params.stack_name, e)
                 raise
 
         if exists is False or stack_status == "DELETE_COMPLETE":
             self.set_output("StackStatus", "DELETE_COMPLETE")
             self.set_complete()
         elif (
-            not self.params.SuccessStatuses
-            or stack_status in self.params.SuccessStatuses
+            not self.params.success_statuses
+            or stack_status in self.params.success_statuses
         ):
             self.set_output("StackStatus", stack_status)
             self.set_complete(
@@ -168,14 +202,14 @@ class DeleteStackAction(BaseAction):
 
         log.trace("DeleteStackAction._resolve()")
 
-        self.params.Account = self.renderer.render_string(
-            self.params.Account, self.context
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
         )
-        self.params.Region = self.renderer.render_string(
-            self.params.Region, self.context
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
         )
-        self.params.StackName = self.renderer.render_string(
-            self.params.StackName, self.context
+        self.params.stack_name = self.renderer.render_string(
+            self.params.stack_name, self.context
         )
 
         log.trace("DeleteStackAction._resolve()")

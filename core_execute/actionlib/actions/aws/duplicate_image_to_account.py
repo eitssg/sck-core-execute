@@ -1,38 +1,82 @@
 """Duplicate an Image and copy it to one ore more accounts"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionDefinition
+from core_framework.models import DeploymentDetails, ActionSpec
 
 import core_helper.aws as aws
 
 import core_framework as util
-from core_execute.actionlib.action import BaseAction, ActionParams
+from core_execute.actionlib.action import BaseAction
 
 import boto3
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class DuplicateImageToAccountActionParams(BaseModel):
+    """Parameters for the DuplicateImageToAccountAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="AWS::DuplicateImageToAccount",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Account="The account to use for the action (required)",
-            Region="The region to create the stack in (required)",
-            ImageName="The name of the image to duplicate (required)",
-            AccountsToShare=["The accounts to share the image with (required)"],
-            KmsKeyArn="The KMS key ARN to use for encryption (required)",
-            Tags={"any": "The tags to apply to the image (optional)"},
-        ),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    account: str = Field(
+        ...,
+        alias="Account",
+        description="The account to use for the action (required)",
+    )
+    region: str = Field(
+        ...,
+        alias="Region",
+        description="The region to create the stack in (required)",
+    )
+    image_name: str = Field(
+        ...,
+        alias="ImageName",
+        description="The name of the image to duplicate (required)",
+    )
+    accounts_to_share: list[str] = Field(
+        ...,
+        alias="AccountsToShare",
+        description="The accounts to share the image with (required)",
+    )
+    kms_key_arn: str = Field(
+        ...,
+        alias="KmsKeyArn",
+        description="The KMS key ARN to use for encryption (required)",
+    )
+    tags: dict[str, str] | None = Field(
+        default_factory=dict,
+        alias="Tags",
+        description="The tags to apply to the image (optional)",
     )
 
-    return definition
+
+class DuplicateImageToAccountActionSpec(ActionSpec):
+    """Generate the action definition"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate the parameters for the DuplicateImageToAccountActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-aws-duplicateimagetoaccount-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "AWS::DuplicateImageToAccount"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "account": "",
+                "region": "",
+                "image_name": "",
+                "accounts_to_share": [],
+                "kms_key_arn": "",
+                "tags": {},
+            }
+
+        return values
 
 
 class DuplicateImageToAccountAction(BaseAction):
@@ -49,7 +93,7 @@ class DuplicateImageToAccountAction(BaseAction):
         Params.KmsKeyArn: The KMS key ARN to use for encryption (required)
         Params.Tags: The tags to apply to the image (optional)
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -71,36 +115,37 @@ class DuplicateImageToAccountAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
-        if self.params.Tags is None:
-            self.params.Tags = {}
-        if deployment_details.DeliveredBy:
-            self.params.Tags["DeliveredBy"] = deployment_details.DeliveredBy
+        # Validate the action parameters
+        self.params = DuplicateImageToAccountActionParams(**definition.params)
+
+        if deployment_details.delivered_by:
+            self.params.tags["DeliveredBy"] = deployment_details.delivered_by
 
     def _execute(self):
 
         log.trace("DuplicateImageToAccountAction._execute()")
 
-        if not self.params.AccountsToShare:
+        if not self.params.accounts_to_share:
             self.set_complete("No accounts to share image with have been specified")
             log.warning("No accounts to share image with have been specified")
             return
 
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.params.Region,
-            role=util.get_provisioning_role_arn(self.params.Account),
+            region=self.params.region,
+            role=util.get_provisioning_role_arn(self.params.account),
         )
 
         # Find image (provides image id and snapshot ids)
-        log.debug("Finding image with name '{}'", self.params.ImageName)
+        log.debug("Finding image with name '{}'", self.params.image_name)
         response = ec2_client.describe_images(
-            Filters=[{"Name": "name", "Values": [self.params.ImageName]}]
+            Filters=[{"Name": "name", "Values": [self.params.image_name]}]
         )
 
         if len(response["Images"]) == 0:
@@ -109,11 +154,11 @@ class DuplicateImageToAccountAction(BaseAction):
                     self.params.ImageName
                 )
             )
-            log.warning("Could not find image with name '{}'", self.params.ImageName)
+            log.warning("Could not find image with name '{}'", self.params.image_name)
             return
 
         image_id = response["Images"][0]["ImageId"]
-        log.debug("Found image '{}' with name '{}'", image_id, self.params.ImageName)
+        log.debug("Found image '{}' with name '{}'", image_id, self.params.image_name)
 
         # Find snapshots of the encrypted image
         snapshot_ids = []
@@ -156,9 +201,9 @@ class DuplicateImageToAccountAction(BaseAction):
 
         shared_snapshot = target_ec2.Snapshot(snapshot_id)
         copy = shared_snapshot.copy(
-            SourceRegion=self.params.Region,
+            SourceRegion=self.params.region,
             Encrypted=True,
-            KmsKeyId=self.params.KmsKeyArn,
+            KmsKeyId=self.params.kms_key_arn,
         )
 
         copied_snapshot = target_ec2.Snapshot(copy["SnapshotId"])
@@ -190,7 +235,7 @@ class DuplicateImageToAccountAction(BaseAction):
             Description="Image created from snapshot {}".format(
                 copied_snapshot.snapshot_id
             ),
-            Name=self.params.ImageName,
+            Name=self.params.image_name,
             # Name='Image created from source image {} target snapshot {}'.format(self.params.ImageName, copied_snapshot.snapshot_id),
             VirtualizationType="hvm",
             EnaSupport=True,
@@ -211,10 +256,10 @@ class DuplicateImageToAccountAction(BaseAction):
 
         log.trace("DuplicateImageToAccountAction._check()")
 
-        target_account = self.params.AccountsToShare
+        target_account = self.params.accounts_to_share
         # Obtain an EC2 client
         ec2_client = aws.ec2_client(
-            region=self.params.Region,
+            region=self.params.region,
             role=util.get_provisioning_role_arn(target_account),
         )
 
@@ -241,7 +286,7 @@ class DuplicateImageToAccountAction(BaseAction):
         if state == "available":
             self.set_running("Tagging image '{}'".format(image_id))
             ec2_client.create_tags(
-                Resources=[image_id], Tags=aws.transform_tag_hash(self.params.Tags)
+                Resources=[image_id], Tags=aws.transform_tag_hash(self.params.tags)
             )
 
             image_snapshots = self.__get_image_snapshots(describe_images_response)
@@ -251,7 +296,7 @@ class DuplicateImageToAccountAction(BaseAction):
             if len(image_snapshots) > 0:
                 ec2_client.create_tags(
                     Resources=image_snapshots,
-                    Tags=aws.transform_tag_hash(self.params.Tags),
+                    Tags=aws.transform_tag_hash(self.params.tags),
                 )
             self.set_complete("Image is in state '{}'".format(state))
 
@@ -272,14 +317,14 @@ class DuplicateImageToAccountAction(BaseAction):
 
         log.trace("DuplicateImageToAccountAction._resolve()")
 
-        self.params.Account = self.renderer.render_string(
-            self.params.Account, self.context
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
         )
-        self.params.ImageName = self.renderer.render_string(
-            self.params.ImageName, self.context
+        self.params.image_name = self.renderer.render_string(
+            self.params.image_name, self.context
         )
-        self.params.Region = self.renderer.render_string(
-            self.params.Region, self.context
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
         )
 
         log.trace("DuplicateImageToAccountAction._resolve() completed")
@@ -301,7 +346,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
         log.trace("DuplicateImageToAccountAction.__ec2_session()")
 
-        target_account = self.params.AccountsToShare
+        target_account = self.params.accounts_to_share
 
         credentials = aws.assume_role(
             role=util.get_provisioning_role_arn(target_account),

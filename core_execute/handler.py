@@ -31,16 +31,21 @@ def handler(event: dict, context: Any | None = None) -> dict:
         # Task payload is a model object should have been crated with TaskPayload.model_dump()
         task_payload = TaskPayload(**event)
 
+        # If the user has not passed in a flow_control, set it to "execute"
+        # The aws step-function will set this to "execute" (or whatever) when it calls this method during the execution.
+        if not task_payload.flow_control:
+            task_payload.flow_control = "execute"
+
     except Exception as e:
         log.error("Error parsing event: {}", e)
         raise
 
     try:
-        log.setup(task_payload.Identity)
+        log.setup(task_payload.identity)
 
         log.trace("Entering core_execute.handler")
 
-        log.info("Entering handler event: {}", task_payload.Task)
+        log.info("Entering handler event: {}", task_payload.task)
 
         log.debug("Event: ", details=task_payload.model_dump())
 
@@ -49,17 +54,18 @@ def handler(event: dict, context: Any | None = None) -> dict:
 
         # Load state.  This should have been a document created from "get_facts" for Jinja2 rendering
         context_state = load_state(task_payload)
+        # context_state["name"] = "initial_state"
 
         action_helper = Helper(definitions, context_state, task_payload)
 
         # Run the execution state machine ( but we can only stay rnning for X minutes (see deployment spec))
-        while task_payload.FlowControl == "execute" and not timeout_imminent(context):
-            task_payload.FlowControl = run_state_machine(action_helper, context)
+        while task_payload.flow_control == "execute" and not timeout_imminent(context):
+            task_payload.flow_control = run_state_machine(action_helper, context)
 
         # Save state
         save_state(task_payload, context_state)
 
-        log.debug("Exiting (FlowControl with state = {})", task_payload.FlowControl)
+        log.debug("Exiting (FlowControl with state = {})", task_payload.flow_control)
 
         result = task_payload.model_dump()
 
@@ -72,5 +78,5 @@ def handler(event: dict, context: Any | None = None) -> dict:
     except Exception as e:
         log.error("Error in handler: {}", e)
 
-        task_payload.FlowControl = "failure"
+        task_payload.flow_control = "failure"
         return task_payload.model_dump()

@@ -1,12 +1,13 @@
 """Get the outputs of a CloudFormation stack"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from botocore.exceptions import ClientError
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
+from core_framework.models import DeploymentDetails, ActionSpec
 
 import core_helper.aws as aws
 
@@ -14,22 +15,45 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class GetStackOutputsActionParams(BaseModel):
+    """Parameters for the GetStackOutputsAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="AWS::GetStackOutputs",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Account="The account to use for the action (required)",
-            Region="The region to create the stack in (required)",
-            StackName="The name of the stack to get outputs from (required)",
-        ),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    account: str = Field(
+        ..., alias="Account", description="The account to use for the action (required)"
+    )
+    region: str = Field(
+        ..., alias="Region", description="The region to create the stack in (required)"
+    )
+    stack_name: str = Field(
+        ...,
+        alias="StackName",
+        description="The name of the stack to get outputs from (required)",
     )
 
-    return definition
+
+class GetStackOutputsActionSpec(ActionSpec):
+    """Generate the action definition"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate the parameters for the GetStackOutputsActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-aws-getstackoutputs-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "AWS::GetStackOutputs"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "account": "",
+                "region": "",
+                "stack_name": "",
+            }
+        return values
 
 
 class GetStackOutputsAction(BaseAction):
@@ -47,7 +71,7 @@ class GetStackOutputsAction(BaseAction):
         Params.Region: The region where the stack is located
         Params.StackName: The name of the stack to get outputs from (required)
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -65,11 +89,14 @@ class GetStackOutputsAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
+
+        # Validate the action parameters
+        self.params = GetStackOutputsActionParams(**definition.params)
 
     def _execute(self):
 

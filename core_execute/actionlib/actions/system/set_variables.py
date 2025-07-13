@@ -1,28 +1,41 @@
 """A method to set variables internally in memory and pass them through Jinja2 context rendering first"""
 
 from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionDefinition, ActionParams
+from core_framework.models import DeploymentDetails, ActionSpec
 
 from core_execute.actionlib.action import BaseAction
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class SetVariablesActionParams(BaseModel):
+    """Parameters for the SetVariablesAction"""
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="SYSTEM::SetVariables",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(
-            Variables={"any": "The variables to set (required)"},
-        ),
-        Scope="",
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    variables: dict[str, Any] = Field(
+        ..., alias="Variables", description="The variables to set (required)"
     )
 
-    return definition
+
+class SetVariablesActionSpec(ActionSpec):
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict) -> dict:
+
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-system-set-variables-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "SYSTEM::SetVariables"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {"variables": {}}
+        return values
 
 
 class SetVariablesAction(BaseAction):
@@ -34,7 +47,7 @@ class SetVariablesAction(BaseAction):
         Type: Use the value: ``SYSTEM::SetVariables``
         Params.Variables: The variables to set (required)
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -56,17 +69,19 @@ class SetVariablesAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
+        self.params = SetVariablesActionParams(**definition.params)
+
     def _execute(self):
 
         log.trace("SetVariablesAction._execute()")
 
-        for key, value in self.params.Variables.items():
+        for key, value in self.params.variables.items():
             self.set_output(key, value)
             self.set_state(key, value)
 
@@ -92,9 +107,9 @@ class SetVariablesAction(BaseAction):
 
         log.trace("SetVariablesAction._resolve()")
 
-        for key in self.params.Variables:
-            self.params.Variables[key] = self.renderer.render_string(
-                self.params.Variables[key], self.context
+        for key in self.params.variables:
+            self.params.variables[key] = self.renderer.render_string(
+                self.params.variables[key], self.context
             )
 
         log.trace("SetVariablesAction._resolve()")

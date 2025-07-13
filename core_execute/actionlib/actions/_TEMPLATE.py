@@ -1,36 +1,57 @@
 from typing import Any
-
-from core_framework.models import ActionDefinition, DeploymentDetails, ActionParams
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from core_framework.models import ActionSpec, DeploymentDetails
 
 from core_execute.actionlib.action import BaseAction
 
 from core_renderer import Jinja2Renderer
 
 
-def generate_template() -> ActionDefinition:
-    """Generate the action definition"""
+class TemplateActionParams(BaseModel):
+    """Parameters for the ActionNameGoesHereAction
 
-    definition = ActionDefinition(
-        Label="action-definition-label",
-        Type="SYSTEM::ActionNameGoesHere",
-        DependsOn=["put-a-label-here"],
-        Params=ActionParams(Account="See class ActionParams for details"),
-        Scope="Based on your deployment details, it one of 'portfolio', 'app', 'branch', or 'build'",
+    This class defines the parameters that can be used in the action.
+    You can add more attributes as needed.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+
+    account: str = Field(
+        ..., alias="Account", description="The account where the action is located"
+    )
+    region: str = Field(
+        ..., alias="Region", description="The region where the action is located"
     )
 
-    return definition
+
+class TemplateActionSpec(ActionSpec):
+    """Generate the action definition"""
+
+    @model_validator(mode="before")
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Validate the parameters for the TemplateActionSpec"""
+        if not (values.get("label") or values.get("Label")):
+            values["label"] = "action-system-actionnamegoeshere-label"
+        if not (values.get("type") or values.get("Type")):
+            values["type"] = "SYSTEM::ActionNameGoesHere"
+        if not (values.get("depends_on") or values.get("DependsOn")):
+            values["depends_on"] = []
+        if not (values.get("scope") or values.get("Scope")):
+            values["scope"] = "build"
+        if not (values.get("params") or values.get("Params")):
+            values["params"] = {
+                "account": "",
+                "region": "",
+            }
+        return values
 
 
 class ActionNameGoesHereAction(BaseAction):
     """Sameple Action Description
 
-    Attributes:
-        Type: Use the value: ``SYSTEM::ActionNameGoesHere``
-        Params.Account: The account where the action is located
-        Params.Region: The region where the action is located
-        Params.ActionName: The name of the action to execute
+    Type: Use the value: ``SYSTEM::ActionNameGoesHere``
 
-    .. rubric: ActionDefinition:
+    .. rubric: ActionSpec:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -41,7 +62,6 @@ class ActionNameGoesHereAction(BaseAction):
               Params:
                 Account: "154798051514"
                 Region: "ap-southeast-1"
-                ActionName: "my-action-name"
               Scope: "build"
     """
 
@@ -49,12 +69,13 @@ class ActionNameGoesHereAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionDefinition,
+        definition: ActionSpec,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
-        # TODO: process parameters from definition
+
+        self.params = TemplateActionParams(**definition.params)
 
     def _execute(self):
         # TODO: implement action execution
