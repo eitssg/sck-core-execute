@@ -41,10 +41,10 @@ class ModifyDbInstanceActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the ModifyDbInstanceActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-rds-modifydbinstance-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::RDS::ModifyDbInstance"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-rds-modifydbinstance-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::RDS::ModifyDbInstance"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -64,7 +64,7 @@ class ModifyDbInstanceAction(BaseAction):
     This action modifies an RDS database instance.  The action will wait for the modifications to complete before returning.
 
     Attributes:
-        Type: Use the value: ``AWS::RDS::ModifyDbInstance``
+        Kind: Use the value: ``AWS::RDS::ModifyDbInstance``
         Params.Account: The account where your RDS instance is located
         Params.Region: The region where your RDS instance is located
         Params.ApiParams: The parameters to pass to the modify_db_instance call (required).  See AWS docuemntation for more infomration on the parameters.
@@ -75,8 +75,8 @@ class ModifyDbInstanceAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-rds-modifydbinstance-label
-              Type: "AWS::RDS::ModifyDbInstance"
+            - Name: action-aws-rds-modifydbinstance-name
+              Kind: "AWS::RDS::ModifyDbInstance"
               Params:
                 Account: "123456789012"
                 Region: "ap-southeast-1"

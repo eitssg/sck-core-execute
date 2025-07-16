@@ -76,10 +76,10 @@ class CreateStackActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the CreateStackActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-createstack-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::CreateStack"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-createstack-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::CreateStack"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -107,7 +107,7 @@ class CreateStackAction(BaseAction):
     The task is typically a "deploy" task.
 
     Attributes:
-        Type: Use the value: ``AWS::CreateStack``
+        Kind: Use the value: ``AWS::CreateStack``
         Params.Account: The account where CloudFormation is located
         Params.Region: The region where CloudFormation is located
         Params.StackName: The name of the stack to create (required)
@@ -124,8 +124,8 @@ class CreateStackAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-createstack-label
-              Type: "AWS::CreateStack"
+            - Name: action-aws-createstack-name
+              Kind: "AWS::CreateStack"
               Params:
                 Account: "154798051514"
                 StackName: "my-applicatin-stack"

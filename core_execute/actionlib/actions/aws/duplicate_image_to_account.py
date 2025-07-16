@@ -58,10 +58,10 @@ class DuplicateImageToAccountActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the DuplicateImageToAccountActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-duplicateimagetoaccount-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::DuplicateImageToAccount"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-duplicateimagetoaccount-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::DuplicateImageToAccount"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -85,7 +85,7 @@ class DuplicateImageToAccountAction(BaseAction):
     This action will duplicate an image and copy it to one or more accounts.  The action will wait for the copy to complete before returning.
 
     Attributes:
-        Type: Use the value: ``AWS::DuplicateImageToAccount``
+        Kind: Use the value: ``AWS::DuplicateImageToAccount``
         Params.Account: The account where the image is located
         Params.Region: The region where the image is located
         Params.ImageName: The name of the image to duplicate (required)
@@ -99,8 +99,8 @@ class DuplicateImageToAccountAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-duplicateimagetoaccount-label
-              Type: "AWS::DuplicateImageToAccount"
+            - Name: action-aws-duplicateimagetoaccount-name
+              Kind: "AWS::DuplicateImageToAccount"
               Params:
                 Account: "154798051514"
                 Region: "ap-southeast-1"

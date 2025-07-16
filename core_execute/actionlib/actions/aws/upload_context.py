@@ -45,10 +45,10 @@ class UploadContextActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the UnprotectELBActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-unprotect-elb-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::UnprotectELBAction"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-unprotect-elb-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::UnprotectELBAction"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -73,7 +73,7 @@ class UploadContextAction(BaseAction):
     used in the generation of cloudformation templates
 
     Attributes:
-        Type: Use the value: ``AWS::UploadContext``
+        Kind: Use the value: ``AWS::UploadContext``
         Params.Account: The account where the bucket is located
         Params.Region: The region where the bucket is located
         Params.BucketName: The name of the bucket to upload the context to (required)
@@ -85,8 +85,8 @@ class UploadContextAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-uploadcontext-label
-              Type: "AWS::UploadContext"
+            - Name: action-aws-uploadcontext-name
+              Kind: "AWS::UploadContext"
               Params:
                 Account: "154798051514"
                 BucketName: "my-bucket-name"
@@ -113,7 +113,7 @@ class UploadContextAction(BaseAction):
         outputs = {}
 
         for key, value in self.context.items():
-            prn, label = key.split("/", 1)
+            prn, name = key.split("/", 1)
 
             # Only upload output values (not vars or action state)
             if not prn.endswith(":output"):
@@ -125,11 +125,11 @@ class UploadContextAction(BaseAction):
                 _, portfolio, app, branch, build, component, resource_type = prn.split(
                     ":"
                 )
-                var_name = "{}/{}".format(component, label)
+                var_name = "{}/{}".format(component, name)
             elif prn.count(":") == 5:
                 # App PRN
                 _, portfolio, app, branch, build, resource_type = prn.split(":")
-                var_name = "{}/{}".format("pipeline", label)
+                var_name = "{}/{}".format("pipeline", name)
             else:
                 log.fatal("Unsupported PRN format")
                 raise ValueError("Unsupported PRN format")

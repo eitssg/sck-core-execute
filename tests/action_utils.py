@@ -13,7 +13,7 @@ def save_deploy_spec(payload_data: TaskPayload, deploy_spec: DeploySpec):
         Region=actions.bucket_region, DataPath=actions.data_path
     )
 
-    data: list = deploy_spec.model_dump()["action_specs"]
+    data: list = deploy_spec.model_dump()["Actions"]
 
     s3_actions_client.put_object(
         Bucket=actions.bucket_name,

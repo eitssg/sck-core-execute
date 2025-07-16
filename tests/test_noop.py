@@ -77,9 +77,7 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):
 
         assert task_payload.task == "deploy"
 
-        assert (
-            task_payload.flow_control == "success"
-        ), "Expected flow_control to be 'success'"
+        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
 
     except Exception as e:
         print(traceback.format_exc())

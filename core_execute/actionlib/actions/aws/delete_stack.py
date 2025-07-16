@@ -47,10 +47,10 @@ class DeleteStackActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the DeleteStackActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-deletestack-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::DeleteStack"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-deletestack-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::DeleteStack"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -73,7 +73,7 @@ class DeleteStackAction(BaseAction):
     This process is typiclly part of a "teardown" task.
 
     Attributes:
-        Type: Use the value: ``AWS::DeleteStack``
+        Kind: Use the value: ``AWS::DeleteStack``
         Params.Account: The account where the stack is located
         Params.Region: The region where the stack is located
         Params.StackName: The name of the stack to delete (required)
@@ -85,8 +85,8 @@ class DeleteStackAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-deletestack-label
-              Type: "AWS::DeleteStack"
+            - Name: action-aws-deletestack-name
+              Kind: "AWS::DeleteStack"
               Params:
                 Account: "154798051514"
                 Region: "ap-southeast-1"

@@ -44,10 +44,10 @@ class GetStackReferencesActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the GetStackReferencesActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-getstackreferences-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::GetStackReferences"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-getstackreferences-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::GetStackReferences"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -68,7 +68,7 @@ class GetStackReferencesAction(BaseAction):
     This action will get the references to a stack output export variable.  The action will return the references to the export.
 
     Attributes:
-        Type: Use the value: ``AWS::GetStackReferences``
+        Kind: Use the value: ``AWS::GetStackReferences``
         Params.Account: The account where the stack is located
         Params.Region: The region where the stack is located
         Params.StackName: The name of the stack to check for references (required)
@@ -80,8 +80,8 @@ class GetStackReferencesAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-getstackreferences-label
-              Type: "AWS::GetStackReferences"
+            - Name: action-aws-getstackreferences-name
+              Kind: "AWS::GetStackReferences"
               Params:
                 Account: "154798051514"
                 StackName: "my-stack-name"

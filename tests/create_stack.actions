@@ -1,5 +1,5 @@
-- Label: action-definition-label
-  Type: "AWS::CreateStack"
+- Name: action-definition-label
+  Kind: "AWS::CreateStack"
   DependsOn:
   - put-a-label-here
   Params:
@@ -8,11 +8,11 @@
     Region: "ap-southeast-1"
     TemplateUrl: "The URL of the CloudFormation template (required)"
     StackParameters:
-      any: "The parameters to pass to the stack (optional)"
+      Name1: "The parameters to pass to the stack (optional)"
     Tags:
-      any: "The tags to apply to the stack (optional)"
+      Tag1: "The tags to apply to the stack (optional)"
     StackPolicy:
-      any: "A policy statement to use within the stack deployment as needed (optional)
+      Policy1: "A policy statement to use within the stack deployment as needed (optional)
         (converted to JSON)"
     TimeoutInMinutes: 15
     OnFailure: "The action to take on failure (optional)"

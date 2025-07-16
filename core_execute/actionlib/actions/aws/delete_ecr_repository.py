@@ -43,10 +43,10 @@ class DeleteEcrRepositoryActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the DeleteEcrRepositoryActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-deleteecrrepository-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::DeleteEcrRepository"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-deleteecrrepository-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::DeleteEcrRepository"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -66,7 +66,7 @@ class DeleteEcrRepositoryAction(BaseAction):
     This action will delete an ECR repository.  The action will wait for the deletion to complete before returning.
 
     Attributes:
-        Type: Use the value: ``AWS::DeleteEcrRepository``
+        Kind: Use the value: ``AWS::DeleteEcrRepository``
         Params.Account: The account where the ECR repository is located
         Params.Region: The region where the ECR repository is located
         Params.RepositoryName: The name of the ECR repository to delete (required)
@@ -77,8 +77,8 @@ class DeleteEcrRepositoryAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-deleteecrrepository-label
-              Type: "AWS::DeleteEcrRepository"
+            - Name: action-aws-deleteecrrepository-name
+              Kind: "AWS::DeleteEcrRepository"
               Params:
                 Account: "154798051514"
                 Region: "ap-southeast-1"

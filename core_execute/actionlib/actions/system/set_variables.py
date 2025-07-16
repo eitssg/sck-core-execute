@@ -25,10 +25,10 @@ class SetVariablesActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict) -> dict:
 
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-system-set-variables-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "SYSTEM::SetVariables"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-system-set-variables-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "SYSTEM::SetVariables"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -44,7 +44,7 @@ class SetVariablesAction(BaseAction):
     This action will set variables in memory and in your state.  The action will return the variables set.
 
     Attributes:
-        Type: Use the value: ``SYSTEM::SetVariables``
+        Kind: Use the value: ``SYSTEM::SetVariables``
         Params.Variables: The variables to set (required)
 
     .. rubric: ActionSpec:
@@ -53,8 +53,8 @@ class SetVariablesAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-system-setvariables-label
-                Type: "SYSTEM::SetVariables"
+            - Name: action-system-setvariables-name
+                Kind: "SYSTEM::SetVariables"
                 Params:
                     Variables:
                         Name: "John Smith"

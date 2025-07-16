@@ -51,10 +51,10 @@ class CreateImageActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the CreateImageActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-createimage-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::CreateImage"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-createimage-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::CreateImage"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -77,8 +77,8 @@ class CreateImageAction(BaseAction):
     This action will create an AMI for an EC2.  It will wait for the operation to complete.
 
     Attributes:
-        Label: Enter a label to define this action instance
-        Type:  Use the  value ``AWS::CopyImage``
+        Name: Enter a name to define this action instance
+        Kind:  Use the  value ``AWS::CopyImage``
         Params.Account: The accoutn where KMS keys are centraly stored
         Params.Region: The region where KMS keys are located
         Params.InstanceId: The instance ID to create an image from.
@@ -88,8 +88,8 @@ class CreateImageAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-createimage-label
-              Type: "AWS::KMS::CreateImage"
+            - Name: action-aws-createimage-name
+              Kind: "AWS::KMS::CreateImage"
               Params:
                 Account: "123456789012"
                 Region: "ap-southeast-1"

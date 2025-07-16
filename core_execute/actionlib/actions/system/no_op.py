@@ -23,11 +23,11 @@ class NoOpActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values) -> dict:
 
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-system-noop-label"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-system-noop-name"
 
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "SYSTEM::NoOp"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "SYSTEM::NoOp"
 
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
@@ -47,7 +47,7 @@ class NoOpAction(BaseAction):
     There is no operation to perform
 
     Attributes:
-        Type: Use the value: ``SYSTEM::NoOp``
+        Kind: Use the value: ``SYSTEM::NoOp``
 
     .. rubric: ActionSpec:
 
@@ -55,8 +55,8 @@ class NoOpAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-system-noop-label
-              Type: "SYSTEM::NoOp"
+            - Name: action-system-noop-name
+              Kind: "SYSTEM::NoOp"
               Params: {}
               Scope: "build"
 

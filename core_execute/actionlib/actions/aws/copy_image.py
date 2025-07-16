@@ -57,10 +57,10 @@ class CopyImageActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the CopyImageActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-copyimage-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::CopyImage"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-copyimage-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::CopyImage"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -83,8 +83,8 @@ class CopyImageAction(BaseAction):
     This action will copy an AMI.  The action will wait for the copy to complete before returning.
 
     Attributes:
-        Label: Enter a label to define this action instance
-        Type: Use the value: ``AWS::KMS::CopyImage``
+        Name: Enter a name to define this action instance
+        Kind: Use the value: ``AWS::KMS::CopyImage``
         Params.Account: The accoutn where KMS keys are centraly stored
         Params.Region: The region where KMS keys are located
         Params.ImageName: The name of the source image (required)
@@ -96,8 +96,8 @@ class CopyImageAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-copyimage-label
-              Type: "AWS::KMS::CopyImage"
+            - Name: action-aws-copyimage-name
+              Kind: "AWS::KMS::CopyImage"
               Params:
                 Account: "123456789012"
                 Region: "ap-southeast-1"

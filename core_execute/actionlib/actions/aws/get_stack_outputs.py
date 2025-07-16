@@ -39,10 +39,10 @@ class GetStackOutputsActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the GetStackOutputsActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-getstackoutputs-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::GetStackOutputs"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-getstackoutputs-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::GetStackOutputs"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -66,7 +66,7 @@ class GetStackOutputsAction(BaseAction):
     when running an action for the currnent state or ... in Jinja2 rendering.
 
     Attributes:
-        Type: Use the value: ``AWS::GetStackOutputs``
+        Kind: Use the value: ``AWS::GetStackOutputs``
         Params.Account: The account where the stack is located
         Params.Region: The region where the stack is located
         Params.StackName: The name of the stack to get outputs from (required)
@@ -77,8 +77,8 @@ class GetStackOutputsAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-getstackoutputs-label
-              Type: "AWS::GetStackOutputs"
+            - Name: action-aws-getstackoutputs-name
+              Kind: "AWS::GetStackOutputs"
               Params:
                 Account: "154798051514"
                 StackName: "my-applications-stack"

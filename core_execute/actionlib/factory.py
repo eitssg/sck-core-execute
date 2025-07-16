@@ -24,9 +24,9 @@ class ActionFactory:
 
     @staticmethod
     def get_module_and_class_name(action_type: str) -> tuple[str, str]:
-        """Get the module name from the action type"""
+        """Get the module name from the action kind"""
 
-        # Work out the class name and module path from the action type
+        # Work out the class name and module path from the action kind
         split_type = action_type.split("::")
         class_name = split_type[-1] + ActionFactory.ACTION_CLASS_NAME_SUFFIX
         module_path = ActionFactory.__camel_to_snake_case(
@@ -42,11 +42,11 @@ class ActionFactory:
     ) -> BaseAction:
 
         # Don't allow relative references
-        if ".." in definition.type:
-            raise NotImplementedError("Unknown action '{}'".format(definition.type))
+        if ".." in definition.kind:
+            raise NotImplementedError("Unknown action '{}'".format(definition.kind))
 
         module_path, class_name = ActionFactory.get_module_and_class_name(
-            definition.type
+            definition.kind
         )
 
         # Import the module and instantiate the action class
@@ -57,7 +57,7 @@ class ActionFactory:
             return klass(definition, context, deployment_details)
 
         except (ImportError, AttributeError):
-            raise NotImplementedError("Unknown action '{}'".format(definition.type))
+            raise NotImplementedError("Unknown action '{}'".format(definition.kind))
 
         except Exception as e:
             raise RuntimeError(

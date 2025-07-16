@@ -19,10 +19,10 @@ class CreateGrantsActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values) -> dict:
         """Validate the parameters for the CreateGrantsActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-kms-creategrants-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::KMS::CreateGrants"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-kms-creategrants-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::KMS::CreateGrants"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -93,7 +93,7 @@ class CreateGrantsAction(BaseAction):
 
     This action will create grants for KMS Keys.  The action will wait for the modifications to complete before returning.
 
-    Type: Use the value: ``AWS::KMS::CreateGrants``
+    Kind: Use the value: ``AWS::KMS::CreateGrants``
 
     .. rubric: ActionSpec:
 
@@ -101,8 +101,8 @@ class CreateGrantsAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-kms-creategrants-label
-              Type: "AWS::KMS::CreateGrants"
+            - Name: action-aws-kms-creategrants-name
+              Kind: "AWS::KMS::CreateGrants"
               Params:
                 Account: "123456789012"
                 Region: "ap-southeast-1"

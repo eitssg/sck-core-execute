@@ -30,10 +30,10 @@ class TemplateActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the TemplateActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-system-actionnamegoeshere-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "SYSTEM::ActionNameGoesHere"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-system-actionnamegoeshere-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "SYSTEM::ActionNameGoesHere"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -49,7 +49,7 @@ class TemplateActionSpec(ActionSpec):
 class ActionNameGoesHereAction(BaseAction):
     """Sameple Action Description
 
-    Type: Use the value: ``SYSTEM::ActionNameGoesHere``
+    Kind: Use the value: ``SYSTEM::ActionNameGoesHere``
 
     .. rubric: ActionSpec:
 
@@ -57,8 +57,8 @@ class ActionNameGoesHereAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-system-actionnamegoeshere-label
-              Type: "SYSTEM::ActionNameGoesHere"
+            - Name: action-system-actionnamegoeshere-name
+              Kind: "SYSTEM::ActionNameGoesHere"
               Params:
                 Account: "154798051514"
                 Region: "ap-southeast-1"

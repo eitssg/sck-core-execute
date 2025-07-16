@@ -50,10 +50,10 @@ class ShareImageActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the ShareImageActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-shareimage-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::ShareImage"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-shareimage-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::ShareImage"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -75,7 +75,7 @@ class ShareImageAction(BaseAction):
     This action will share an image with other accounts.  The action will wait for the sharing to complete before returning.
 
     Attributes:
-        Type: Use the value: ``AWS::ShareImage``
+        Kind: Use the value: ``AWS::ShareImage``
         Params.Account: The account where the image is located
         Params.Region: The region where the image is located
         Params.ImageName: The name of the image to share (required)
@@ -88,8 +88,8 @@ class ShareImageAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-shareimage-label
-              Type: "AWS::ShareImage"
+            - Name: action-aws-shareimage-name
+              Kind: "AWS::ShareImage"
               Params:
                 Account: "154798051514"
                 Region: "ap-southeast-1"

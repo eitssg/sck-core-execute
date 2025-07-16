@@ -65,9 +65,9 @@ valid_actions = [
 
 def is_valid_action(action_type: str) -> bool:
     """
-    Check if the action label is valid.
-    :param action_label: The action label to check.
-    :return: True if the action label is valid, False otherwise.
+    Check if the action name is valid.
+    :param action_label: The action name to check.
+    :return: True if the action name is valid, False otherwise.
     """
     return any(action_type == prefix for prefix, _ in valid_actions)
 
@@ -121,7 +121,7 @@ class Helper:
             for incomplete_action in incomplete_actions:
 
                 # Actions can't block themselves
-                if pending_action.label == incomplete_action.label:
+                if pending_action.name == incomplete_action.name:
                     continue
 
                 # Check if any incomplete actions are blocking this action ("After" mechanics on the pending action)
@@ -129,7 +129,7 @@ class Helper:
                 # - action C after action A
                 # - action C after action B
                 if any(
-                    self.__label_match(incomplete_action.label, dependency)
+                    self.__label_match(incomplete_action.name, dependency)
                     for dependency in pending_action.after
                 ):
                     runnable = False
@@ -140,7 +140,7 @@ class Helper:
                 # - action A before action C
                 # - action B before action C
                 if any(
-                    self.__label_match(pending_action.label, dependent)
+                    self.__label_match(pending_action.name, dependent)
                     for dependent in incomplete_action.before
                 ):
                     runnable = False
@@ -159,7 +159,7 @@ class Helper:
         failed_actions = list(filter(lambda action: action.is_failed(), self.actions))
         return failed_actions
 
-    def __label_match(self, label: str, matcher: str) -> bool:
+    def __label_match(self, name: str, matcher: str) -> bool:
         # Split by the first '/' - need to treat wildcards differently
         splits = matcher.split("/", 1)
 
@@ -181,4 +181,4 @@ class Helper:
         # Must match the entire string, not just the beginning of it
         regex = "^{}$".format(regex)
 
-        return re.match(regex, label) is not None
+        return re.match(regex, name) is not None

@@ -39,10 +39,10 @@ class DeleteUserActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the DeleteUserActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-deleteuser-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::DeleteUser"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-deleteuser-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::DeleteUser"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -62,7 +62,7 @@ class DeleteUserAction(BaseAction):
     This action will delete a user from an AWS IAM account.  The action will wait for the deletion to complete before returning.
 
     Attributes:
-        Type: Use the value: ``AWS::DeleteUser``
+        Kind: Use the value: ``AWS::DeleteUser``
         Params.Account: The account where the user is located
         Params.Region: The region where the user is located
         Params.UserName: The name of the user to delete (required)
@@ -73,8 +73,8 @@ class DeleteUserAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-deleteuser-label
-              Type: "AWS::DeleteUser"
+            - Name: action-aws-deleteuser-name
+              Kind: "AWS::DeleteUser"
               Params:
                 Account: "154798051514"
                 UserName: "John Smith"

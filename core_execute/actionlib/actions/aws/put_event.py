@@ -45,10 +45,10 @@ class PutEventActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the PutEventActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-putevent-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::PutEvent"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-putevent-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::PutEvent"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -70,7 +70,7 @@ class PutEventAction(BaseAction):
     This action will record an event in the database.  The event will be associated with the deployment details and the identity of the event.
 
     Attributes:
-        Type: Use the value: ``AWS::PutEvent``
+        Kind: Use the value: ``AWS::PutEvent``
         Params.Type: The type of event to put (required) defaults to 'STATUS'
         Params.Status: The status of the event (required)
         Params.Message: The message to associate with the event (optional) defaults to ''
@@ -82,8 +82,8 @@ class PutEventAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-putevent-label
-              Type: "AWS::PutEvent"
+            - Name: action-aws-putevent-name
+              Kind: "AWS::PutEvent"
               Params:
                 Account: "154798051514"
                 Region: "ap-southeast-1"

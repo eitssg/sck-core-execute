@@ -66,8 +66,8 @@ def __run_state_machine(action_helper: Helper) -> str:
         len(completed_actions),
         len(incomplete_actions),
         details={
-            "RunningActions": [a.label for a in running_actions],
-            "RunnableActions": [a.label for a in runnable_actions],
+            "RunningActions": [a.name for a in running_actions],
+            "RunnableActions": [a.name for a in runnable_actions],
         },
     )
 
@@ -75,7 +75,7 @@ def __run_state_machine(action_helper: Helper) -> str:
         log.info(
             "Found {}, re-entering execution",
             _pluralise(runnable_actions, "runnable action"),
-            details={"RunnableActions": [a.label for a in runnable_actions]},
+            details={"RunnableActions": [a.name for a in runnable_actions]},
         )
         return "execute"
 
@@ -84,21 +84,17 @@ def __run_state_machine(action_helper: Helper) -> str:
             "Waiting for {} to complete",
             _pluralise(running_actions, "running action"),
             details={
-                "RunningActions": [a.label for a in running_actions],
+                "RunningActions": [a.name for a in running_actions],
             },
         )
         return "wait"
 
-    elif (
-        len(runnable_actions) == 0
-        and len(running_actions) == 0
-        and len(pending_actions) > 0
-    ):
+    elif len(runnable_actions) == 0 and len(running_actions) == 0 and len(pending_actions) > 0:
         # No runnable or running actions, but still have actions pending - pending actions will never be runnable
         log.error(
             "Found {}",
             _pluralise(pending_actions, "unrunnable action"),
-            details={"UnrunnableActions": [a.label for a in pending_actions]},
+            details={"UnrunnableActions": [a.name for a in pending_actions]},
         )
         return "failure"
 
@@ -224,9 +220,7 @@ def save_actions(task_payload: TaskPayload, specs: list[ActionSpec]) -> None:
     """
     actions = task_payload.actions
 
-    s3_actions_client = MagicS3Client.get_client(
-        Region=actions.bucket_region, DataPath=actions.data_path
-    )
+    s3_actions_client = MagicS3Client.get_client(Region=actions.bucket_region, DataPath=actions.data_path)
 
     s3_actions_client.put_object(
         Bucket=actions.bucket_name,
@@ -280,19 +274,22 @@ def load_state(task_payload: TaskPayload) -> dict:
         ExtraArgs=extra_args,
     )
 
-    state_type = state_download_response.get("ContentType", "application/x-yaml")
+    # assume the mimetype is application/x-yaml if not specified
+    mimetype = state_download_response.get("ContentType") or "application/x-yaml"
 
-    if state_type == "application/x-yaml":
-        state = YAML(typ="safe").load(state_fileobj)
-    elif state_type == "application/json":
+    # read yaml content if context type is yaml
+    if util.is_yaml_mimetype(mimetype):
+        state = util.read_yaml(state_fileobj)
+    # read json content if context type is json
+    elif util.is_json_mimetype(mimetype):
         state = json.loads(state_fileobj.getvalue())
     else:
-        raise Exception("State file unknown content type: {}", state_type)
+        raise Exception("State file unknown content type: {}", mimetype)
 
     # we mutate the state details.  bad on us.
-    state_details.content_type = state_type
+    state_details.content_type = mimetype
 
-    log.debug("Loaded State Content Type: {}", state_type)
+    log.debug("Loaded State Content Type: {}", mimetype)
     log.debug("Loaded State Data: ", details=state)
 
     if state is None:
@@ -326,9 +323,9 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
     log.debug("Saving State Content Type: {}", content_type)
     log.debug("Saving State Data: ", details=state)
 
-    if content_type == "application/x-yaml":
+    if util.is_yaml_mimetype(content_type):
         result_data = util.to_yaml(state)
-    elif content_type == "application/json":
+    elif util.is_json_mimetype:
         result_data = json.dumps(state, indent=2)
 
     log.info("Save state to {}", state_details.key)

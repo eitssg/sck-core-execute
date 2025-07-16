@@ -47,10 +47,10 @@ class CreateCloudFrontInvalidationActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the CreateCloudFrontInvalidationActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-createcloudfrontinvalidation-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::CreateCloudFrontInvalidation"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-createcloudfrontinvalidation-name"
+        if not (values.get("kind") or values.get("kind")):
+            values["kind"] = "AWS::CreateCloudFrontInvalidation"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -71,7 +71,7 @@ class CreateCloudFrontInvalidationAction(BaseAction):
     This action will create a CloudFront invalidation and clear the cache.  The action will wait for the invalidation to complete before returning.
 
     Attributes:
-        Type: Use the value: ``AWS::CreateCloudFrontInvalidation``
+        kind: Use the value: ``AWS::CreateCloudFrontInvalidation``
         Params.Account: The account where CloudFront is located
         Params.Region: The region where CloudFront is located
         Params.DistributionId: The ID of the CloudFront distribution to invalidate (required)
@@ -83,8 +83,8 @@ class CreateCloudFrontInvalidationAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-createcloudfrontinvalidation-label
-              Type: "AWS::CreateCloudFrontInvalidation"
+            - Name: action-aws-createcloudfrontinvalidation-name
+              Kind: "AWS::CreateCloudFrontInvalidation"
               Params:
                   Account: "123456789012"
                   Region: "ap-southeast-1"

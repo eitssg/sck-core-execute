@@ -43,10 +43,10 @@ class PutMetricActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the PutMetricDataActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-putmetricdata-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::PutMetricData"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-putmetricdata-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::PutMetricData"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -79,7 +79,7 @@ class PutMetricDataAction(BaseAction):
     This action will put metric data into AWS CloudWatch.  The action will wait for the data to be recorded before returning.
 
     Attributes:
-        Type: Use the value: ``AWS::PutMetricData``
+        Kind: Use the value: ``AWS::PutMetricData``
         Params.Account: The account where the metric data is to be recorded
         Params.Region: The region where the metric data is to be recorded
         Params.Namespace: The namespace for the metric data (required)
@@ -91,8 +91,8 @@ class PutMetricDataAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-putmetricdata-label
-              Type: "AWS::PutMetricData"
+            - Name: action-aws-putmetricdata-name
+              Kind: "AWS::PutMetricData"
               Params:
                 Account: "154798051514"
                 Region: "ap-southeast-1"

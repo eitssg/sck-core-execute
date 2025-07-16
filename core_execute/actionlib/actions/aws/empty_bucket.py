@@ -39,10 +39,10 @@ class EmptyBucketActionSpec(ActionSpec):
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Validate the parameters for the EmptyBucketActionSpec"""
-        if not (values.get("label") or values.get("Label")):
-            values["label"] = "action-aws-emptybucket-label"
-        if not (values.get("type") or values.get("Type")):
-            values["type"] = "AWS::EmptyBucket"
+        if not (values.get("name") or values.get("Name")):
+            values["name"] = "action-aws-emptybucket-name"
+        if not (values.get("kind") or values.get("Kind")):
+            values["kind"] = "AWS::EmptyBucket"
         if not (values.get("depends_on") or values.get("DependsOn")):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -62,7 +62,7 @@ class EmptyBucketAction(BaseAction):
     This action will empty an S3 bucket.  The action will wait for the deletion to complete before returning.
 
     Attributes:
-        Type: Use the value: ``AWS::EmptyBucket``
+        Kind: Use the value: ``AWS::EmptyBucket``
         Params.Account: The account where the bucket is located
         Params.Region: The region where the bucket is located
         Params.BucketName: The name of the bucket to empty (required)
@@ -73,8 +73,8 @@ class EmptyBucketAction(BaseAction):
 
         .. code-block:: yaml
 
-            - Label: action-aws-emptybucket-label
-              Type: "AWS::EmptyBucket"
+            - Name: action-aws-emptybucket-name
+              Kind: "AWS::EmptyBucket"
               Params:
                 Account: "154798051514"
                 Region: "ap-southeast-1"
