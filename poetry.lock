@@ -2230,7 +2230,7 @@ url = "../sck-core-db"
 
 [[package]]
 name = "sck-core-framework"
-version = "0.0.7-pre.9+31742b2"
+version = "0.0.7-pre.12+9254e69"
 description = "Core-Framework for Core-Automation"
 optional = false
 python-versions = "^3.12"

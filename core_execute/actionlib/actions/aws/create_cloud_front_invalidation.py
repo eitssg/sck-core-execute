@@ -212,7 +212,7 @@ class CreateCloudFrontInvalidationAction(BaseAction):
             return
 
         # Create the invalidation request
-        caller_reference = f"invalidate at {util.get_curreent_timestamp()}"
+        caller_reference = f"invalidate at {util.get_current_timestamp()}"
 
         self.set_running("Creating CloudFront invalidation")
 

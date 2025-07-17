@@ -277,7 +277,7 @@ class CreateImageAction(BaseAction):
 
         # Update state with current image information
         self.set_state("ImageState", state)
-        self.set_state("LastChecked", util.get_curreent_timestamp())
+        self.set_state("LastChecked", util.get_current_timestamp())
 
         if state == "available":
             self.set_running(f"Tagging image '{image_id}'")
@@ -327,7 +327,7 @@ class CreateImageAction(BaseAction):
 
             # Set final completion state
             self.set_state("ImageCreationCompleted", True)
-            self.set_state("CompletionTime", util.get_curreent_timestamp())
+            self.set_state("CompletionTime", util.get_current_timestamp())
             self.set_output("ImageCreationCompleted", True)
 
             self.set_complete("Image creation completed successfully")

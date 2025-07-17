@@ -276,7 +276,7 @@ class CreateGrantsAction(BaseAction):
                         "GrantName": name,
                         "Operations": list(self.operations),
                         "KeyId": self.kms_key_id,
-                        "CreatedAt": util.get_curreent_timestamp(),  # Add timestamp
+                        "CreatedAt": util.get_current_timestamp(),  # Add timestamp
                     }
 
                     created_grants.append(grant_info)
@@ -294,7 +294,7 @@ class CreateGrantsAction(BaseAction):
                         "GrantName": name,
                         "Error": str(e),
                         "ErrorType": type(e).__name__,
-                        "FailedAt": util.get_curreent_timestamp(),
+                        "FailedAt": util.get_current_timestamp(),
                     }
                     failed_principals.append(failure_info)
 
@@ -369,7 +369,7 @@ class CreateGrantsAction(BaseAction):
         self.set_output("GrantedOperations", list(self.operations))
 
         # Store execution metadata
-        self.set_output("ExecutionTimestamp", util.get_curreent_timestamp())
+        self.set_output("ExecutionTimestamp", util.get_current_timestamp())
         self.set_output("IgnoreFailedGrants", self.ignore_failed_grants)
 
     def _check(self):
@@ -416,7 +416,7 @@ class CreateGrantsAction(BaseAction):
             # Update state with current status
             self.set_output("ActiveGrants", active_grants)
             self.set_output("InactiveGrants", inactive_grants)
-            self.set_output("LastChecked", util.get_curreent_timestamp())
+            self.set_output("LastChecked", util.get_current_timestamp())
 
             if inactive_grants:
                 log.warning("Found {} inactive grants out of {} total", len(inactive_grants), len(created_grants))
@@ -471,7 +471,7 @@ class CreateGrantsAction(BaseAction):
             # Update state with retirement results
             self.set_output("RetiredGrants", retired_grants)
             self.set_output("FailedRetirements", failed_retirements)
-            self.set_output("RetirementTimestamp", util.get_curreent_timestamp())
+            self.set_output("RetirementTimestamp", util.get_current_timestamp())
 
             if failed_retirements:
                 log.warning("Failed to retire {} grants out of {} total", len(failed_retirements), len(created_grants))

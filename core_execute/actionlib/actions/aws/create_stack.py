@@ -423,7 +423,7 @@ class CreateStackAction(BaseAction):
             log.trace("Updating existing stack '{}'", self.params.stack_name)
 
             # Create a change set first for safer updates
-            change_set_name = f"update-{util.get_curreent_timestamp()}"
+            change_set_name = f"update-{util.get_current_timestamp()}"
 
             args = {
                 "StackName": stack_id,
