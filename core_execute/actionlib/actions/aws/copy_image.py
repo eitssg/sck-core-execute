@@ -323,7 +323,7 @@ class CopyImageAction(BaseAction):
 
         # Update state with current image information
         self.set_state("ImageState", state)
-        self.set_state("LastChecked", util.get_timestamp_str())  # Assuming this utility exists
+        self.set_state("LastChecked", util.get_curreent_timestamp())  # Assuming this utility exists
 
         if state == "available":
             self.set_running(f"Tagging image '{image_id}'")
@@ -373,7 +373,7 @@ class CopyImageAction(BaseAction):
 
             # Set final completion state
             self.set_state("CopyCompleted", True)
-            self.set_state("CompletionTime", util.get_timestamp_str())
+            self.set_state("CompletionTime", util.get_curreent_timestamp())
             self.set_output("CopyCompleted", True)
 
             self.set_complete(f"Image copy completed successfully. Image is '{state}'")
