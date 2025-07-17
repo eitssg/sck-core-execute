@@ -37,7 +37,6 @@ LC_HOOK_COMPLETE = "Complete"
 
 NO_DEFAULT_PROVIDED = "_!NO!DEFAULT!PROVIDED!_"
 
-
 class StatusCode(enum.Enum):
     """Enum for action status codes."""
 
@@ -443,7 +442,7 @@ class BaseAction:
 
         log.trace("Output '{}' set to '{}'", name, value)
 
-    def get_output(self, name: str) -> str | None:
+    def get_output(self, name: str, default: Any = NO_DEFAULT_PROVIDED) -> str | None:
         """
         Get the output variable from the action within the output namespace.
 
@@ -456,7 +455,7 @@ class BaseAction:
 
         if self.output_namespace is None:
             return None
-        return self.__get_context(self.output_namespace, name)
+        return self.__get_context(self.output_namespace, name, default)
 
     def set_state(self, name: str, value: Any):
         """

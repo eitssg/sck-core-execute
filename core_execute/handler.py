@@ -1,10 +1,11 @@
+import time
 from typing import Any
 
 import core_logging as log
 
 from core_framework.models import TaskPayload
 
-from .actionlib.helper import Helper
+from .actionlib.helper import Helper, FlowControl
 
 from .execute import (
     run_state_machine,
@@ -17,66 +18,117 @@ from .execute import (
 
 def handler(event: dict, context: Any | None = None) -> dict:
     """
-    Recieve an "Actions" event request and run it!
+    Receive an "Actions" event request and execute it.
 
-    Args:
-        event (dict): The "Lambda Event" from the requester.
-        context (dict): lambda context (Ex: cognito, SQS, SNS, etc). This is where you can get, for example,
-                        the lambda runtime lifetime, memory, etc. so you know how long the lambda can run.
-                        This is helpful if you have long-running actions and the lambda function will terminate.
+    This function is the main entry point for Lambda execution within AWS Step Functions.
+    It processes the incoming event, loads actions and state from S3, creates an action
+    helper, and runs the state machine execution loop until completion or timeout.
 
-                        Better use step functions when running long-running actions.
+    :param event: The Lambda event from Step Functions containing TaskPayload data.
+                  This should be a dictionary that can be parsed into a TaskPayload object.
+    :type event: dict
+    :param context: Lambda context providing runtime information such as remaining
+                    execution time, memory limits, and other Lambda runtime details.
+                    This is used to determine when timeout is imminent for long-running actions.
+    :type context: Any | None
+    :return: A dictionary containing the TaskPayload with updated flow_control state.
+             The flow_control will be one of "execute", "success", or "failure".
+    :rtype: dict
+    :raises Exception: If event parsing fails or critical errors occur during execution.
+
+    Example:
+        >>> # Step Functions event with TaskPayload data
+        >>> event = {
+        ...     "task": "my-task",
+        ...     "actions": {...},
+        ...     "state": {...},
+        ...     "flow_control": "execute"
+        ... }
+        >>> result = handler(event, lambda_context)
+        >>> print(f"Execution result: {result['flow_control']}")
+
+    Note:
+        The function automatically sets flow_control to "execute" if not provided
+        in the event. This handler is designed to work with AWS Step Functions
+        for orchestrating long-running task execution.
     """
+    log.trace("Entering core_execute.handler")
+
     try:
-        # Task payload is a model object should have been crated with TaskPayload.model_dump()
+        # Task payload is a model object should have been created with TaskPayload.model_dump()
         task_payload = TaskPayload(**event)
 
-        # If the user has not passed in a flow_control, set it to "execute"
-        # The aws step-function will set this to "execute" (or whatever) when it calls this method during the execution.
-        if not task_payload.flow_control:
-            task_payload.flow_control = "execute"
-
-    except Exception as e:
-        log.error("Error parsing event: {}", e)
-        raise
-
-    try:
         log.setup(task_payload.identity)
-
-        log.trace("Entering core_execute.handler")
-
-        log.info("Entering handler event: {}", task_payload.task)
-
+        log.info("Entering handler for task: {}", task_payload.task)
         log.debug("Event: ", details=task_payload.model_dump())
 
-        # Load actions from the s3 bucket "{task}.actions"
+    except Exception as e:
+        log.error("Error parsing event into TaskPayload: {}", e)
+        log.debug("Original event that failed parsing: ", details=event)
+
+        # Return a failure response that Step Functions can handle
+        return {"flow_control": "failure", "error": f"Failed to parse event: {str(e)}", "original_event": event}
+
+    try:
+        # Load actions from the S3 bucket "{task}.actions"
+        log.debug("Loading actions for task: {}", task_payload.task)
         definitions = load_actions(task_payload)
+        log.debug("Loaded {} action definitions", len(definitions))
 
-        # Load state.  This should have been a document created from "get_facts" for Jinja2 rendering
+        # Load state - this should have been a document created from "get_facts" for Jinja2 rendering
+        log.debug("Loading state for task: {}", task_payload.task)
         context_state = load_state(task_payload)
-        # context_state["name"] = "initial_state"
+        log.debug("Loaded state with {} keys", len(context_state.keys()) if context_state else 0)
 
+        # Create action helper with loaded definitions and state
         action_helper = Helper(definitions, context_state, task_payload)
 
-        # Run the execution state machine ( but we can only stay rnning for X minutes (see deployment spec))
-        while task_payload.flow_control == "execute" and not timeout_imminent(context):
-            task_payload.flow_control = run_state_machine(action_helper, context)
+        # Execute state machine - designed for Step Functions
+        # Instead of a tight loop, do limited iterations
+        max_iterations = 10  # Prevent runaway loops
+        iteration = 0
+        flow_control = FlowControl.EXECUTE
+        while flow_control == FlowControl.EXECUTE and not timeout_imminent(context) and iteration < max_iterations:
 
-        # Save state
+            iteration += 1
+            log.debug("State machine iteration {} (max {})", iteration, max_iterations)
+
+            flow_control = run_state_machine(action_helper, context)
+
+            # Pause briefly to allow other processes to run
+            time.sleep(0.5)
+
+        if flow_control == FlowControl.EXECUTE:
+            # Check if we hit the iteration limit
+            if iteration >= max_iterations:
+                log.warning("Reached maximum iterations ({}), returning 'execute' for Step Functions retry", max_iterations)
+
+            if timeout_imminent(context):
+                log.warning("Execution stopped due to timeout, Step Functions will retry")
+
+        # Update the task payload with the final flow control state
+        task_payload.flow_control = flow_control.value
+
+        # Save state back to S3
+        log.debug("Saving state for task: {}", task_payload.task)
         save_state(task_payload, context_state)
 
-        log.debug("Exiting (FlowControl with state = {})", task_payload.flow_control)
+        log.debug("Exiting handler with flow_control state: {}", task_payload.flow_control)
+        log.debug("Execution completed after {} loops", iteration)
 
         result = task_payload.model_dump()
-
-        log.debug("Execution Complete.")
-
-        log.trace("Result: ", details=result)
+        log.trace("Handler result: ", details=result)
 
         return result
 
     except Exception as e:
-        log.error("Error in handler: {}", e)
+        log.error("Error in handler execution: {}", e)
+        log.debug("Task payload at time of error: ", details=task_payload.model_dump() if task_payload else {})
 
-        task_payload.flow_control = "failure"
-        return task_payload.model_dump()
+        # Ensure we have a valid task_payload for the response
+        if task_payload:
+            task_payload.flow_control = "failure"
+            return task_payload.model_dump()
+        else:
+            # Fallback if task_payload is somehow None
+            return {"flow_control": "failure", "error": f"Handler execution failed: {str(e)}", "original_event": event}

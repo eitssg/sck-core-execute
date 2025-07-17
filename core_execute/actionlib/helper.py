@@ -1,5 +1,6 @@
 """Helper class for managing actions in the actionlib module."""
 
+import enum
 import re
 
 from ..actionlib.action import BaseAction
@@ -72,6 +73,20 @@ def is_valid_action(action_type: str) -> bool:
     return any(action_type == prefix for prefix, _ in valid_actions)
 
 
+class FlowControl(enum.Enum):
+    """Enum for flow control actions."""
+
+    EXECUTE = "execute"
+    FAILURE = "failure"
+    SUCCESS = "success"
+
+    def __str__(self):
+        return self.value
+
+    def __repr__(self):
+        return f"FlowControl.{self.value.upper()}"
+
+
 class Helper:
     """Generate BaseAction list from action definitions"""
 
@@ -86,9 +101,7 @@ class Helper:
 
         self.actions = list(
             map(
-                lambda definition: ActionFactory.load(
-                    definition, state_context, task_payload.deployment_details
-                ),
+                lambda definition: ActionFactory.load(definition, state_context, task_payload.deployment_details),
                 definitions,
             )
         )
@@ -98,15 +111,11 @@ class Helper:
         return pending_actions
 
     def completed_actions(self) -> list[BaseAction]:
-        completed_actions = list(
-            filter(lambda action: action.is_complete(), self.actions)
-        )
+        completed_actions = list(filter(lambda action: action.is_complete(), self.actions))
         return completed_actions
 
     def incomplete_actions(self) -> list[BaseAction]:
-        incompleted_actions = list(
-            filter(lambda action: not action.is_complete(), self.actions)
-        )
+        incompleted_actions = list(filter(lambda action: not action.is_complete(), self.actions))
         return incompleted_actions
 
     def runnable_actions(self) -> list[BaseAction]:
@@ -128,10 +137,7 @@ class Helper:
                 # Can C run if:
                 # - action C after action A
                 # - action C after action B
-                if any(
-                    self.__label_match(incomplete_action.name, dependency)
-                    for dependency in pending_action.after
-                ):
+                if any(self.__label_match(incomplete_action.name, dependency) for dependency in pending_action.after):
                     runnable = False
                     break
 
@@ -139,10 +145,7 @@ class Helper:
                 # Can C run if:
                 # - action A before action C
                 # - action B before action C
-                if any(
-                    self.__label_match(pending_action.name, dependent)
-                    for dependent in incomplete_action.before
-                ):
+                if any(self.__label_match(pending_action.name, dependent) for dependent in incomplete_action.before):
                     runnable = False
                     break
 

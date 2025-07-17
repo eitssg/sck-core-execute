@@ -1,6 +1,7 @@
 from typing import Any
 import traceback
 import pytest
+from unittest.mock import MagicMock
 
 import core_framework as util
 
@@ -8,16 +9,9 @@ from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.kms.create_grants import CreateGrantsActionSpec
 from core_execute.handler import handler as execute_handler
+from core_execute.execute import save_actions, save_state, load_state
 
-
-@pytest.fixture
-def real_aws(pytestconfig):
-    return pytestconfig.getoption("--real-aws")
-
-
-@pytest.fixture
-def mock_aws(pytestconfig):
-    return pytestconfig.getoption("--mock-aws")
+from .aws_fixtures import *
 
 
 @pytest.fixture
@@ -52,7 +46,7 @@ def deploy_spec():
             "KmsKeyId": "kms-key-id-1234567890abcdef",  # Example KMS Key ID
             "GranteePrincipals": ["arn:aws:iam::123456789012:role/ExampleRole"],
             "Operations": ["Decrypt", "Encrypt", "GenerateDataKey"],
-            "IgnoreFailedGrants": False,  # Set to True to ignore failed grants
+            "IgnoreFailedGrants": "false",  # Set to True to ignore failed grants
         }
     }
 
@@ -63,12 +57,35 @@ def deploy_spec():
     return DeploySpec(**deploy_spec)
 
 
-from core_execute.execute import save_actions, save_state
-
-
-def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):
+def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
+
+        # update the mock_session fixtures such that its client() returns a new mock kms client with the create_grants() function return value set appropraitely
+        mock_kms_client = MagicMock()
+        mock_kms_client.create_grant.return_value = {
+            "GrantToken": "example-grant-token",
+            "GrantId": "example-grant-id"
+
+        }
+        # Add list_grants mock for the _check method
+        mock_kms_client.list_grants.return_value = {
+            "Grants": [
+                {
+                    "GrantId": "example-grant-id",
+                    "GrantToken": "example-grant-token", 
+                    "Name": "arn-aws-iam--123456789012-role-ExampleRole",
+                    "GranteePrincipal": "arn:aws:iam::123456789012:role/ExampleRole",
+                    "Operations": ["Decrypt", "Encrypt", "GenerateDataKey"],
+                    "KeyId": "kms-key-id-1234567890abcdef"
+                }
+            ]
+        }
+
+        # Add retire_grant mock for the _unexecute method (if needed)
+        mock_kms_client.retire_grant.return_value = {}
+
+        mock_session.client.return_value = mock_kms_client
 
         save_actions(task_payload, deploy_spec.action_specs)
         save_state(task_payload, {})
@@ -88,6 +105,22 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):
         assert (
             task_payload.flow_control == "success"
         ), "Expected flow_control to be 'success'"
+
+        state = load_state(task_payload)
+
+        assert state is not None, "Expected state to be loaded successfully"
+        
+        assert ("action-aws-kms-creategrants-name/GrantIds" in state), "Expected GrantId to be set in state"
+        
+        assert ( "example-grant-id" in state["action-aws-kms-creategrants-name/GrantIds"]), "Expected GrantIds to be ['example-grant-id']"  
+
+        assert ("action-aws-kms-creategrants-name/GrantTokens" in state), "Expected GrantTokens to be set in state"
+
+        assert ( "example-grant-token" in state["action-aws-kms-creategrants-name/GrantTokens"]), "Expected GrantToken to be ['example-grant-token']"
+
+        assert ("action-aws-kms-creategrants-name/KmsKeyId" in state), "Expected KeyId to be set in state"
+
+        assert ( state["action-aws-kms-creategrants-name/KmsKeyId"] == "kms-key-id-1234567890abcdef"), "Expected KeyId to be 'kms-key-id-1234567890abcdef'"
 
     except Exception as e:
         print(traceback.format_exc())

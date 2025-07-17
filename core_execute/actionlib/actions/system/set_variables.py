@@ -108,8 +108,17 @@ class SetVariablesAction(BaseAction):
         log.trace("SetVariablesAction._resolve()")
 
         for key in self.params.variables:
-            self.params.variables[key] = self.renderer.render_string(
-                self.params.variables[key], self.context
-            )
+            value = self.params.variables[key]
+            if isinstance(value, str):
+                # Render the string using Jinja2 context
+                result = self.renderer.render_string(value, self.context)
+
+                # If the result can be converted to a number, do so, but if it's quoted, keep it as a string
+                try:
+                    result = float(result) if '.' in result else int(result)
+                except ValueError:
+                    pass
+
+                self.params.variables[key] = result
 
         log.trace("SetVariablesAction._resolve()")

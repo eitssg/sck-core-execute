@@ -4,7 +4,7 @@ build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.poetry]
 name = "sck-core-execute"
-version = "0.0.6"
+version = "0.0.7-pre.3+5d59beb"
 description = "Core Automation Engine execute Lambda function"
 authors = ["James Barwick <jbarwick@me.com>"]
 license = "GPL-3.0-only"
@@ -29,6 +29,7 @@ style = "semver"
 python = "^3.12"
 boto3 = ">=1.35.93"
 botocore = ">=1.35.93"
+inflect = "^7.5.0"
 
 [tool.poetry.dependencies.sck-core-db]
 path = "../sck-core-db"

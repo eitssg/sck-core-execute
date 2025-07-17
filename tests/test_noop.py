@@ -51,18 +51,20 @@ def deploy_spec():
     # Define the action specifications with the no-op action
     action_spec = NoOpActionSpec(**{"params": params})
 
+    # Please note that "DeploySpec" is NOT part of sck-core-execute.  However, the model is defined within the core framework
+    # and is intantiated here only to be illustrative.  Plus, if you wanted to test multiple actions in the array, the 
+    # DeploySpec model does have a validator that inspects all actions.
     return DeploySpec(**{"actions": [action_spec]})
 
 
-from .action_utils import save_deploy_spec
-from core_execute.execute import save_state
+from core_execute.execute import save_state, save_actions
 
 
 def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):
 
     try:
 
-        save_deploy_spec(task_payload, deploy_spec)
+        save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
         # Create TaskPayload instance from the payload data.  This validates the structure and populates defauluts.
