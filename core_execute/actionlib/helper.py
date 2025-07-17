@@ -1,5 +1,6 @@
 """Helper class for managing actions in the actionlib module."""
 
+from typing import Any
 import enum
 import re
 
@@ -7,70 +8,6 @@ from ..actionlib.action import BaseAction
 from .factory import ActionFactory
 
 from core_framework.models import TaskPayload, ActionSpec
-
-from .actions.aws.kms.create_grants import CreateGrantsAction
-from .actions.aws.rds.modify_db_instance import ModifyDbInstanceAction
-from .actions.aws.copy_image import CopyImageAction
-from .actions.aws.create_cloud_front_invalidation import (
-    CreateCloudFrontInvalidationAction,
-)
-from .actions.aws.create_image import CreateImageAction
-from .actions.aws.create_stack import CreateStackAction
-from .actions.aws.delete_ecr_repository import DeleteEcrRepositoryAction
-from .actions.aws.delete_image import DeleteImageAction
-from .actions.aws.delete_security_group_enis import DeleteSecurityGroupEnisAction
-from .actions.aws.delete_stack import DeleteStackAction
-from .actions.aws.delete_user import DeleteUserAction
-from .actions.aws.duplicate_image_to_account import DuplicateImageToAccountAction
-from .actions.aws.empty_bucket import EmptyBucketAction
-from .actions.aws.get_stack_outputs import GetStackOutputsAction
-from .actions.aws.get_stack_references import GetStackReferencesAction
-from .actions.aws.put_event import PutEventAction
-from .actions.aws.put_metric_data import PutMetricDataAction
-from .actions.aws.share_image import ShareImageAction
-from .actions.aws.unprotect_elb import UnprotectELBAction
-from .actions.aws.upload_context import UploadContextAction
-from .actions.system.no_op import NoOpAction
-from .actions.system.set_variables import SetVariablesAction
-
-
-# There is an argument that suggests that each and every one of these should be a lambda function
-
-valid_actions = [
-    ("AWS::KMS::CreateGrants", CreateGrantsAction),
-    ("AWS::RDS::ModifyDbInstance", ModifyDbInstanceAction),
-    ("AWS::CopyImage", CopyImageAction),
-    ("AWS::CreateCloudFrontInvalidation", CreateCloudFrontInvalidationAction),
-    ("AWS::CreateImage", CreateImageAction),
-    ("AWS::CreateStack", CreateStackAction),
-    ("AWS::CreateStackSet", NoOpAction),
-    ("AWS::DeleteEcrRepository", DeleteEcrRepositoryAction),
-    ("AWS::DeleteImage", DeleteImageAction),
-    ("AWS::DeleteSecurityGroupEnis", DeleteSecurityGroupEnisAction),
-    ("AWS::DeleteStack", DeleteStackAction),
-    ("AWS::DeleteStackSet", NoOpAction),
-    ("AWS::DeleteUser", DeleteUserAction),
-    ("AWS::DuplicateImageToAccount", DuplicateImageToAccountAction),
-    ("AWS::EmptyBucket", EmptyBucketAction),
-    ("AWS::GetStackOutputs", GetStackOutputsAction),
-    ("AWS::GetStackReferences", GetStackReferencesAction),
-    ("AWS::PutEvent", PutEventAction),
-    ("AWS::PutMetricData", PutMetricDataAction),
-    ("AWS::ShareImage", ShareImageAction),
-    ("AWS::UnprotectElb", UnprotectELBAction),
-    ("AWS::UploadContext", UploadContextAction),
-    ("SYSTEM::NoOp", NoOpAction),
-    ("SYSTEM::SetVariables", SetVariablesAction),
-]
-
-
-def is_valid_action(action_type: str) -> bool:
-    """
-    Check if the action name is valid.
-    :param action_label: The action name to check.
-    :return: True if the action name is valid, False otherwise.
-    """
-    return any(action_type == prefix for prefix, _ in valid_actions)
 
 
 class FlowControl(enum.Enum):

@@ -5,6 +5,7 @@ import json
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.system.no_op import NoOpActionSpec
+from core_execute.actionlib.factory import ActionFactory
 from core_execute.handler import handler as execute_handler
 
 
@@ -52,7 +53,7 @@ def deploy_spec():
     action_spec = NoOpActionSpec(**{"params": params})
 
     # Please note that "DeploySpec" is NOT part of sck-core-execute.  However, the model is defined within the core framework
-    # and is intantiated here only to be illustrative.  Plus, if you wanted to test multiple actions in the array, the 
+    # and is intantiated here only to be illustrative.  Plus, if you wanted to test multiple actions in the array, the
     # DeploySpec model does have a validator that inspects all actions.
     return DeploySpec(**{"actions": [action_spec]})
 

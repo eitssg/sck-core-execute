@@ -1,9 +1,9 @@
 from typing import Any
 import traceback
+from unittest import mock
 import pytest
 from unittest.mock import MagicMock
 
-import core_framework as util
 
 from core_framework.models import TaskPayload, DeploySpec
 
@@ -66,18 +66,62 @@ def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, m
     try:
 
         mock_client = MagicMock()
+
+        # Mock for finding the source image
+        mock_client.describe_images.side_effect = [
+            # First call - finding source image by name
+            {
+                "Images": [
+                    {
+                        "ImageId": "ami-source123",
+                        "Name": "test-image",
+                        "State": "available",
+                        "BlockDeviceMappings": [
+                            {
+                                "DeviceName": "/dev/sda1",
+                                "Ebs": {"SnapshotId": "snap-source123", "VolumeSize": 8, "VolumeType": "gp3", "Encrypted": False},
+                            }
+                        ],
+                    }
+                ]
+            },
+            # Second call - checking copied image status
+            {
+                "Images": [
+                    {
+                        "ImageId": "ami-12345678",
+                        "Name": "test-image-copy",
+                        "State": "available",
+                        "Size": 8,
+                        "Architecture": "x86_64",
+                        "Platform": "Linux",
+                        "Description": "Copy of test-image",
+                        "CreationDate": "2024-01-15T10:30:00.000Z",
+                        "BlockDeviceMappings": [
+                            {
+                                "DeviceName": "/dev/sda1",
+                                "Ebs": {"SnapshotId": "snap-12345678", "VolumeSize": 8, "VolumeType": "gp3", "Encrypted": True},
+                            },
+                            {
+                                "DeviceName": "/dev/sdb",
+                                "Ebs": {"SnapshotId": "snap-87654321", "VolumeSize": 20, "VolumeType": "gp3", "Encrypted": True},
+                            },
+                        ],
+                    }
+                ]
+            },
+        ]
+
         mock_client.copy_image.return_value = {
             "ImageId": "ami-12345678",
             "RequestId": "req-12345678",
         }
-        mock_client.describe_images.return_value = {
-            "Images": [
-                {
-                    "ImageId": "ami-12345678",
-                    "Name": "test-image-copy",
-                    "State": "available",
-                }
-            ]
+
+        mock_client.create_tags.return_value = {
+            "ResponseMetadata": {
+                "RequestId": "req-12345678",
+                "HTTPStatusCode": 200,
+            }
         }
         mock_session.client = MagicMock(return_value=mock_client)
 
@@ -95,6 +139,15 @@ def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, m
 
         # Validate the flow control in the task payload
         assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
+
+        # Validate that create_tags was called for both image and snapshots
+        expected_calls = [
+            # Tag the image
+            mock.call(Resources=["ami-12345678"], Tags=mock.ANY),
+            # Tag the snapshots
+            mock.call(Resources=["snap-12345678", "snap-87654321"], Tags=mock.ANY),
+        ]
+        mock_client.create_tags.assert_has_calls(expected_calls, any_order=True)
 
     except Exception as e:
         print(traceback.format_exc())

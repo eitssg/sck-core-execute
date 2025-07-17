@@ -72,6 +72,14 @@ class NoOpAction(BaseAction):
 
         self.params = NoOpActionParams(**definition.params)
 
+    @classmethod
+    def generate_spec(cls, action_spec: dict) -> ActionSpec:
+        """
+        Return the action specification for the NoOp action
+        This will be a generic class method called from the helper or action factory.
+        """
+        return NoOpActionSpec(**action_spec)
+
     def _execute(self):
 
         log.trace("NoOpAction._execute()")
