@@ -2,6 +2,8 @@ import time
 from typing import Any
 
 import core_logging as log
+import core_framework as util
+import core_helper.aws as aws
 
 from core_framework.models import TaskPayload
 
@@ -42,7 +44,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
         ...     "task": "my-task",
         ...     "actions": {...},
         ...     "state": {...},
-        ...     "flow_control": "execute"
+        ...     "flow_control": FlowControl.EXECUTE.value,
         ... }
         >>> result = handler(event, lambda_context)
         >>> print(f"Execution result: {result['flow_control']}")
@@ -87,13 +89,15 @@ def handler(event: dict, context: Any | None = None) -> dict:
         # Instead of a tight loop, do limited iterations
         max_iterations = 10  # Prevent runaway loops
         iteration = 0
-        flow_control = FlowControl.EXECUTE
+        flow_control = FlowControl.from_value(task_payload.flow_control)
         while flow_control == FlowControl.EXECUTE and not timeout_imminent(context) and iteration < max_iterations:
 
             iteration += 1
             log.debug("State machine iteration {} (max {})", iteration, max_iterations)
 
             flow_control = run_state_machine(action_helper, context)
+            if isinstance(flow_control, str):
+                flow_control = FlowControl.from_value(flow_control)
 
             # Pause briefly to allow other processes to run
             time.sleep(0.5)
@@ -127,8 +131,38 @@ def handler(event: dict, context: Any | None = None) -> dict:
 
         # Ensure we have a valid task_payload for the response
         if task_payload:
-            task_payload.flow_control = "failure"
+            task_payload.flow_control = FlowControl.FAILURE.value
             return task_payload.model_dump()
         else:
             # Fallback if task_payload is somehow None
-            return {"flow_control": "failure", "error": f"Handler execution failed: {str(e)}", "original_event": event}
+            return {
+                "flow_control": FlowControl.FAILURE.value,
+                "error": f"Handler execution failed: {str(e)}",
+                "original_event": event,
+            }
+
+
+def invoke_execute_handler(task_payload: TaskPayload) -> None:
+    """
+    Invoke the execute handler for a given TaskPayload.
+
+    This function is used to trigger the execution of the handler logic
+    for a specific task payload, allowing it to process actions and state.
+
+    :param task_payload: The TaskPayload object containing task details and state.
+    :type task_payload: TaskPayload
+    """
+    log.debug("Invoking execute handler for task: {}", task_payload.task)
+
+    if util.is_local_mode():
+        # Call the main handler function with the task payload
+        response = handler(task_payload.model_dump())
+    else:
+        aws.invoke_lambda(
+            arn=util.get_execute_lambda_arn(),
+            request_payload=task_payload.model_dump(),
+            role=util.get_provisioning_role_arn(),
+            invocation_type="Event",  # Use Event for async execution
+        )
+
+    log.debug("Handler response: ", details=response)

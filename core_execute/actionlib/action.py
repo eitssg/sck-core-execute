@@ -37,6 +37,7 @@ LC_HOOK_COMPLETE = "Complete"
 
 NO_DEFAULT_PROVIDED = "_!NO!DEFAULT!PROVIDED!_"
 
+
 class StatusCode(enum.Enum):
     """Enum for action status codes."""
 
@@ -470,7 +471,7 @@ class BaseAction:
 
         self.__set_context(self.state_namespace, name, value)
 
-    def get_state(self, name: str) -> str:
+    def get_state(self, name: str, default: Any = None) -> str:
         """
         Get a state variable of the action within the action state namespace.
 
@@ -482,7 +483,7 @@ class BaseAction:
         """
         log.trace("Getting state '{}'", name)
 
-        return self.__get_context(self.state_namespace, name)
+        return self.__get_context(self.state_namespace, name, default)
 
     def execute(self) -> Self:
         """
@@ -618,7 +619,11 @@ class BaseAction:
     def __get_status_reason(self):
         return self.__get_context(self.name, STATUS_REASON, None)
 
-    def __get_context(self, prn: str, name: str, default: str = NO_DEFAULT_PROVIDED) -> str:
+    def __get_context(self, prn: str, name: str, default: Any = NO_DEFAULT_PROVIDED) -> Any:
+        """
+        Typical trypes returned are list, str, int, float, dict, datetime or None"""
+
+        log.trace("Getting context '{}' for '{}'", name, prn)
         key = "{}/{}".format(prn, name)
 
         if self.context and key in self.context:

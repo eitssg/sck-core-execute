@@ -123,7 +123,7 @@ def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, m
                 "HTTPStatusCode": 200,
             }
         }
-        mock_session.client = MagicMock(return_value=mock_client)
+        mock_session.client.return_value = mock_client
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})

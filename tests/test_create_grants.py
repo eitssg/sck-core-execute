@@ -63,21 +63,17 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
 
         # update the mock_session fixtures such that its client() returns a new mock kms client with the create_grants() function return value set appropraitely
         mock_kms_client = MagicMock()
-        mock_kms_client.create_grant.return_value = {
-            "GrantToken": "example-grant-token",
-            "GrantId": "example-grant-id"
-
-        }
+        mock_kms_client.create_grant.return_value = {"GrantToken": "example-grant-token", "GrantId": "example-grant-id"}
         # Add list_grants mock for the _check method
         mock_kms_client.list_grants.return_value = {
             "Grants": [
                 {
                     "GrantId": "example-grant-id",
-                    "GrantToken": "example-grant-token", 
+                    "GrantToken": "example-grant-token",
                     "Name": "arn-aws-iam--123456789012-role-ExampleRole",
                     "GranteePrincipal": "arn:aws:iam::123456789012:role/ExampleRole",
                     "Operations": ["Decrypt", "Encrypt", "GenerateDataKey"],
-                    "KeyId": "kms-key-id-1234567890abcdef"
+                    "KeyId": "kms-key-id-1234567890abcdef",
                 }
             ]
         }
@@ -102,25 +98,29 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
 
         assert task_payload.task == "deploy"
 
-        assert (
-            task_payload.flow_control == "success"
-        ), "Expected flow_control to be 'success'"
+        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
 
         state = load_state(task_payload)
 
         assert state is not None, "Expected state to be loaded successfully"
-        
-        assert ("action-aws-kms-creategrants-name/GrantIds" in state), "Expected GrantId to be set in state"
-        
-        assert ( "example-grant-id" in state["action-aws-kms-creategrants-name/GrantIds"]), "Expected GrantIds to be ['example-grant-id']"  
 
-        assert ("action-aws-kms-creategrants-name/GrantTokens" in state), "Expected GrantTokens to be set in state"
+        assert "action-aws-kms-creategrants-name/GrantIds" in state, "Expected GrantId to be set in state"
 
-        assert ( "example-grant-token" in state["action-aws-kms-creategrants-name/GrantTokens"]), "Expected GrantToken to be ['example-grant-token']"
+        assert (
+            "example-grant-id" in state["action-aws-kms-creategrants-name/GrantIds"]
+        ), "Expected GrantIds to be ['example-grant-id']"
 
-        assert ("action-aws-kms-creategrants-name/KmsKeyId" in state), "Expected KeyId to be set in state"
+        assert "action-aws-kms-creategrants-name/GrantTokens" in state, "Expected GrantTokens to be set in state"
 
-        assert ( state["action-aws-kms-creategrants-name/KmsKeyId"] == "kms-key-id-1234567890abcdef"), "Expected KeyId to be 'kms-key-id-1234567890abcdef'"
+        assert (
+            "example-grant-token" in state["action-aws-kms-creategrants-name/GrantTokens"]
+        ), "Expected GrantToken to be ['example-grant-token']"
+
+        assert "action-aws-kms-creategrants-name/KmsKeyId" in state, "Expected KeyId to be set in state"
+
+        assert (
+            state["action-aws-kms-creategrants-name/KmsKeyId"] == "kms-key-id-1234567890abcdef"
+        ), "Expected KeyId to be 'kms-key-id-1234567890abcdef'"
 
     except Exception as e:
         print(traceback.format_exc())

@@ -173,7 +173,7 @@ def run_state_machine(action_helper: Helper, context: Any | None) -> FlowControl
     Example:
         >>> helper = Helper(actions, state)
         >>> result = run_state_machine(helper, lambda_context)
-        >>> if result == "success":
+        >>> if result == FlowControl.SUCCESS:
         ...     log.info("All actions completed successfully")
     """
     log.trace("Entering run_state_machine")
@@ -207,13 +207,13 @@ def run_state_machine(action_helper: Helper, context: Any | None) -> FlowControl
 
             if action.is_failed():
                 log.error("Action {} failed during status check", action.name)
-                return "failure"
+                return FlowControl.FAILURE
             elif action.is_complete():
                 log.info("Action {} completed successfully", action.name)
 
         except Exception as e:
             log.error("Error checking status of action {}: {}", action.name, e)
-            return "failure"
+            return FlowControl.FAILURE
 
     # Execute runnable actions.  Thise that were PENDING or INCOMPLETE
     runnable_actions = action_helper.runnable_actions()
@@ -238,7 +238,7 @@ def run_state_machine(action_helper: Helper, context: Any | None) -> FlowControl
                 log.info("Action {} is still running", action.name)
             elif action.is_failed():
                 log.error("Action {} failed during execution", action.name)
-                return "failure"
+                return FlowControl.FAILURE
 
         except Exception as e:
             log.error("Error executing action {}: {}", action.name, e)
@@ -304,6 +304,10 @@ def load_actions(task_payload: TaskPayload) -> list[ActionSpec]:
     """
     # Load actions and create an action helper object
     log.trace("Loading actions")
+
+    if task_payload.package and task_payload.package.deployspec and task_payload.package.deployspec.actions:
+        log.debug("Using {} actions from package", len(task_payload.package.deployspec.actions))
+        return task_payload.package.deployspec.actions
 
     actions_details = task_payload.actions
     if actions_details is None:

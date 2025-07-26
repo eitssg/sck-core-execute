@@ -116,7 +116,7 @@ def test_create_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
             }
         }
 
-        mock_session.client = MagicMock(return_value=mock_client)
+        mock_session.client.return_value = mock_client
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})

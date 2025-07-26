@@ -64,9 +64,11 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
 
     try:
 
+        creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
+
         mock_client = MagicMock()
 
-        # Mock describe_stacks - first call returns stack doesn't exist, second call after creation returns complete
+        # Mock describe_stacks with a 3-call sequence to simulate the state machine flow
         mock_client.describe_stacks.side_effect = [
             # First call - stack doesn't exist (triggers create)
             ClientError(
@@ -75,7 +77,20 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
                 },
                 operation_name="DescribeStacks",
             ),
-            # Second call - stack exists and is complete
+            # Second call - stack creation in progress (triggers _check with events capture)
+            {
+                "Stacks": [
+                    {
+                        "StackId": "arn:aws:cloudformation:ap-southeast-1:154798051514:stack/my-application-stack/12345678-1234-1234-1234-123456789012",
+                        "StackName": "my-application-stack",
+                        "StackStatus": "CREATE_IN_PROGRESS",
+                        "StackStatusReason": "User Initiated",
+                        "CreationTime": creation_time,
+                        "Description": "My application stack",
+                    }
+                ]
+            },
+            # Third call - stack creation complete (final state)
             {
                 "Stacks": [
                     {
@@ -83,7 +98,8 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
                         "StackName": "my-application-stack",
                         "StackStatus": "CREATE_COMPLETE",
                         "StackStatusReason": "Stack creation completed successfully",
-                        "CreationTime": datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc),
+                        "CreationTime": creation_time,
+                        "LastUpdatedTime": datetime(2023, 10, 1, 12, 15, 0, tzinfo=timezone.utc),
                         "Description": "My application stack",
                         "Tags": [
                             {"Key": "App", "Value": "My application"},
@@ -123,6 +139,42 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
             "StackId": "arn:aws:cloudformation:ap-southeast-1:154798051514:stack/my-application-stack/12345678-1234-1234-1234-123456789012"
         }
 
+        # Mock describe_stack_events - this will be called by _capture_stack_events
+        mock_client.describe_stack_events.return_value = {
+            "StackEvents": [
+                {
+                    "StackId": "arn:aws:cloudformation:ap-southeast-1:154798051514:stack/my-application-stack/12345678-1234-1234-1234-123456789012",
+                    "EventId": "event-123",
+                    "StackName": "my-application-stack",
+                    "LogicalResourceId": "my-application-stack",
+                    "PhysicalResourceId": "arn:aws:cloudformation:ap-southeast-1:154798051514:stack/my-application-stack/12345678-1234-1234-1234-123456789012",
+                    "ResourceType": "AWS::CloudFormation::Stack",
+                    "Timestamp": datetime(2023, 10, 1, 12, 10, 0, tzinfo=timezone.utc),
+                    "ResourceStatus": "CREATE_COMPLETE",
+                },
+                {
+                    "StackId": "arn:aws:cloudformation:ap-southeast-1:154798051514:stack/my-application-stack/12345678-1234-1234-1234-123456789012",
+                    "EventId": "event-124",
+                    "StackName": "my-application-stack",
+                    "LogicalResourceId": "MyS3Bucket",
+                    "PhysicalResourceId": "my-app-bucket-123456",
+                    "ResourceType": "AWS::S3::Bucket",
+                    "Timestamp": datetime(2023, 10, 1, 12, 8, 0, tzinfo=timezone.utc),
+                    "ResourceStatus": "CREATE_COMPLETE",
+                },
+                {
+                    "StackId": "arn:aws:cloudformation:ap-southeast-1:154798051514:stack/my-application-stack/12345678-1234-1234-1234-123456789012",
+                    "EventId": "event-125",
+                    "StackName": "my-application-stack",
+                    "LogicalResourceId": "MyLambdaFunction",
+                    "PhysicalResourceId": "my-app-lambda-function",
+                    "ResourceType": "AWS::Lambda::Function",
+                    "Timestamp": datetime(2023, 10, 1, 12, 5, 0, tzinfo=timezone.utc),
+                    "ResourceStatus": "CREATE_IN_PROGRESS",
+                },
+            ]
+        }
+
         # Mock list_stack_resources - returns resource summary
         mock_client.list_stack_resources.return_value = {
             "StackResourceSummaries": [
@@ -150,51 +202,40 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
             ]
         }
 
-        # Mock describe_stack_events - returns stack events for monitoring
-        mock_client.describe_stack_events.return_value = {
-            "StackEvents": [
-                {
-                    "StackId": "arn:aws:cloudformation:ap-southeast-1:154798051514:stack/my-application-stack/12345678-1234-1234-1234-123456789012",
-                    "EventId": "event-123",
-                    "StackName": "my-application-stack",
-                    "LogicalResourceId": "my-application-stack",
-                    "PhysicalResourceId": "arn:aws:cloudformation:ap-southeast-1:154798051514:stack/my-application-stack/12345678-1234-1234-1234-123456789012",
-                    "ResourceType": "AWS::CloudFormation::Stack",
-                    "Timestamp": datetime(2023, 10, 1, 12, 10, 0, tzinfo=timezone.utc),
-                    "ResourceStatus": "CREATE_COMPLETE",
-                }
-            ]
-        }
-
         # Mock detect_stack_drift - returns drift detection ID
         mock_client.detect_stack_drift.return_value = {"StackDriftDetectionId": "drift-detection-123456"}
 
-        # Mock delete_stack - for rollback scenarios
+        # Mock delete_stack and cancel_update_stack for completeness
         mock_client.delete_stack.return_value = {
             "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
         }
 
-        # Mock cancel_update_stack - for cancellation scenarios
         mock_client.cancel_update_stack.return_value = {
             "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
         }
 
-        mock_session.client = MagicMock(return_value=mock_client)
+        mock_session.client.return_value = mock_client
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
+        # First execution - stack creation starts
         event = task_payload.model_dump()
-
         result = execute_handler(event, None)
 
         assert result is not None, "Result should not be None"
         assert isinstance(result, dict), "Result should be a dictionary"
 
+        # If the first execution doesn't complete, run it again to simulate state machine iterations
         task_payload = TaskPayload(**result)
+        if task_payload.flow_control != "success":
+            print("🔄 Stack creation in progress, running second iteration...")
+            event = task_payload.model_dump()
+            result = execute_handler(event, None)
+            task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
@@ -207,6 +248,8 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert create_call_args["TemplateURL"] == "s3://my-bucket/my-template.yaml"
         assert create_call_args["TimeoutInMinutes"] == 15
 
+        # These should be called during the _check phase
+        mock_client.describe_stack_events.assert_called()
         mock_client.list_stack_resources.assert_called_once()
         mock_client.detect_stack_drift.assert_called_once()
 
@@ -277,9 +320,15 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert f"{action_name}/StackExists" in state
         assert state[f"{action_name}/StackExists"] is False  # Was False initially, then created
 
-        # Verify events were captured
+        # Verify events were captured - THIS SHOULD NOW WORK
         assert f"{action_name}/StackEventsCount" in state
-        assert state[f"{action_name}/StackEventsCount"] == 1
+        assert state[f"{action_name}/StackEventsCount"] == 3  # We have 3 events in our mock
+
+        # Check that the latest event was captured
+        assert f"{action_name}/LatestStackEvent" in state
+        latest_event = state[f"{action_name}/LatestStackEvent"]
+        assert latest_event["ResourceType"] == "AWS::CloudFormation::Stack"
+        assert latest_event["ResourceStatus"] == "CREATE_COMPLETE"
 
         print("✅ All CloudFormation stack creation validations passed")
         print(f"📊 Stack ID: {state.get(f'{action_name}/StackId')}")
@@ -287,6 +336,7 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         print(f"📊 Status: {state.get(f'{action_name}/StackStatus')}")
         print(f"📊 Resource Count: {state.get(f'{action_name}/StackResourceCount')}")
         print(f"📊 Output Count: {state.get(f'{action_name}/StackOutputCount')}")
+        print(f"📊 Events Count: {state.get(f'{action_name}/StackEventsCount')}")
 
     except Exception as e:
         traceback.print_exc()

@@ -13,7 +13,7 @@ def mock_aws(pytestconfig):
     return pytestconfig.getoption("--mock-aws")
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_identity():
     identity = {
         "Arn": "arn:aws:iam::123456789012:user/jbarwick",
@@ -24,7 +24,7 @@ def mock_identity():
     return identity
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_credentials():
 
     credentials = {
@@ -37,7 +37,7 @@ def mock_credentials():
     return credentials
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_client(mock_credentials, mock_identity):
 
     mock_client = MagicMock()
@@ -52,7 +52,7 @@ def mock_client(mock_credentials, mock_identity):
     return mock_client
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_session_credentials(mock_credentials):
 
     mock_frozen_credentials = MagicMock()
@@ -61,19 +61,17 @@ def mock_session_credentials(mock_credentials):
     mock_frozen_credentials.token = mock_credentials["SessionToken"]
 
     mock_session_credentials = MagicMock()
-    mock_session_credentials.get_frozen_credentials.return_value = (
-        mock_frozen_credentials
-    )
+    mock_session_credentials.get_frozen_credentials.return_value = mock_frozen_credentials
 
     return mock_session_credentials
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_session(mock_client, mock_session_credentials):
     mock_session = MagicMock()
     mock_session.region_name = "us-west-2"
     mock_session.get_credentials.return_value = mock_session_credentials
     mock_session.client.return_value = mock_client
-    
+
     with patch("boto3.session.Session", return_value=mock_session):
         yield mock_session

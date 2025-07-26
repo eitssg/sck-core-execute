@@ -17,6 +17,20 @@ class FlowControl(enum.Enum):
     FAILURE = "failure"
     SUCCESS = "success"
 
+    @classmethod
+    def from_value(cls, value: str | None) -> "FlowControl":
+        """Convert a string value to a FlowControl enum."""
+        if value is None:
+            return cls.EXECUTE
+        if value.lower() == "execute":
+            return cls.EXECUTE
+        elif value.lower() == "failure":
+            return cls.FAILURE
+        elif value.lower() == "success":
+            return cls.SUCCESS
+        else:
+            raise ValueError(f"Invalid flow control value: {value}")
+
     def __str__(self):
         return self.value
 
