@@ -210,10 +210,18 @@ class CreateImageAction(BaseAction):
         self.set_running(f"Creating new image '{self.params.image_name}'")
 
         try:
-            response = ec2_client.create_image(InstanceId=self.params.instance_id, Name=self.params.image_name)
+            response = ec2_client.create_image(
+                InstanceId=self.params.instance_id, Name=self.params.image_name
+            )
         except Exception as e:
-            log.error("Failed to create image from instance '{}': {}", self.params.instance_id, e)
-            self.set_failed(f"Failed to create image from instance '{self.params.instance_id}': {e}")
+            log.error(
+                "Failed to create image from instance '{}': {}",
+                self.params.instance_id,
+                e,
+            )
+            self.set_failed(
+                f"Failed to create image from instance '{self.params.instance_id}': {e}"
+            )
             return
 
         image_id = response["ImageId"]
@@ -254,7 +262,9 @@ class CreateImageAction(BaseAction):
         # Wait for image creation to complete / fail
         image_id = self.get_state("ImageId")
         if image_id is None:
-            log.error("Internal error - state variable ImageId should have been set during action execution")
+            log.error(
+                "Internal error - state variable ImageId should have been set during action execution"
+            )
             self.set_failed("No image previously created - cannot continue")
             return
 
@@ -307,7 +317,9 @@ class CreateImageAction(BaseAction):
             # Tag the snapshots
             image_snapshots = self.__get_image_snapshots(describe_images_response)
             if len(image_snapshots) > 0:
-                self.set_running(f"Tagging image snapshots: '{', '.join(image_snapshots)}'")
+                self.set_running(
+                    f"Tagging image snapshots: '{', '.join(image_snapshots)}'"
+                )
 
                 # Store snapshot information
                 self.set_state("SnapshotIds", image_snapshots)
@@ -415,10 +427,18 @@ class CreateImageAction(BaseAction):
         """
         log.trace("Resolving CreateImageAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.image_name = self.renderer.render_string(self.params.image_name, self.context)
-        self.params.instance_id = self.renderer.render_string(self.params.instance_id, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.image_name = self.renderer.render_string(
+            self.params.image_name, self.context
+        )
+        self.params.instance_id = self.renderer.render_string(
+            self.params.instance_id, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
 
         log.trace("CreateImageAction resolved")
 
@@ -447,7 +467,10 @@ class CreateImageAction(BaseAction):
             block_device_mappings = image.get("BlockDeviceMappings", [])
 
             if not block_device_mappings:
-                log.trace("No BlockDeviceMappings found for image '{}'", image.get("ImageId", "unknown"))
+                log.trace(
+                    "No BlockDeviceMappings found for image '{}'",
+                    image.get("ImageId", "unknown"),
+                )
                 return snapshots
 
             for mapping in block_device_mappings:
@@ -457,10 +480,16 @@ class CreateImageAction(BaseAction):
                     snapshot_id = ebs_info.get("SnapshotId")
                     if snapshot_id:
                         snapshots.append(snapshot_id)
-                        log.trace("Found snapshot '{}' for device '{}'", snapshot_id, mapping.get("DeviceName", "unknown"))
+                        log.trace(
+                            "Found snapshot '{}' for device '{}'",
+                            snapshot_id,
+                            mapping.get("DeviceName", "unknown"),
+                        )
 
         except (KeyError, IndexError, TypeError) as e:
-            log.warning("Error extracting snapshot IDs from describe_images response: {}", e)
+            log.warning(
+                "Error extracting snapshot IDs from describe_images response: {}", e
+            )
             log.trace("Response structure: {}", describe_images_response)
 
         log.debug("Found {} snapshots for image: {}", len(snapshots), snapshots)

@@ -87,7 +87,9 @@ class ActionFactory:
         # Work out the class name and module path from the action kind
         split_type = action_type.split("::")
         class_name = split_type[-1] + ActionFactory.ACTION_CLASS_NAME_SUFFIX
-        module_path = ActionFactory.__camel_to_snake_case(".".join(ActionFactory.actions_path + split_type))
+        module_path = ActionFactory.__camel_to_snake_case(
+            ".".join(ActionFactory.actions_path + split_type)
+        )
         return module_path, class_name
 
     @staticmethod
@@ -101,7 +103,9 @@ class ActionFactory:
         if ".." in definition.kind:
             raise NotImplementedError("Unknown action '{}'".format(definition.kind))
 
-        module_path, class_name = ActionFactory.get_module_and_class_name(definition.kind)
+        module_path, class_name = ActionFactory.get_module_and_class_name(
+            definition.kind
+        )
 
         # Import the module and instantiate the action class
         try:
@@ -125,11 +129,15 @@ class ActionFactory:
                     "input_data": definition.params,
                     "error_count": e.error_count(),
                 }
-                log.error("Pydantic validation failed for action '{}': {}", definition.name, e)
+                log.error(
+                    "Pydantic validation failed for action '{}': {}", definition.name, e
+                )
                 log.debug("Detailed validation errors: ", details=error_details)
 
                 # Create a comprehensive error message
-                error_summary = f"Action '{definition.name}' parameter validation failed:\n"
+                error_summary = (
+                    f"Action '{definition.name}' parameter validation failed:\n"
+                )
                 for error in e.errors():
                     field_path = " -> ".join(str(loc) for loc in error["loc"])
                     error_summary += f"  Field '{field_path}': {error['msg']}\n"
@@ -146,10 +154,14 @@ class ActionFactory:
                     "input_data": definition.params,
                 }
                 log.error("Error initializing action '{}': {}", definition.name, e)
-                log.debug("Action initialization error details: ", details=error_details)
+                log.debug(
+                    "Action initialization error details: ", details=error_details
+                )
 
                 # Preserve the original exception info
-                raise RuntimeError(f"Failed to initialize action '{definition.name}': {str(e)}") from e
+                raise RuntimeError(
+                    f"Failed to initialize action '{definition.name}': {str(e)}"
+                ) from e
 
         except AttributeError as e:
             # Class not found error
@@ -158,7 +170,9 @@ class ActionFactory:
         except Exception as e:
             # Module loading or other unexpected errors
             log.error("Unexpected error creating action '{}': {}", definition.name, e)
-            raise RuntimeError(f"Unexpected error creating action '{definition.name}': {str(e)}") from e
+            raise RuntimeError(
+                f"Unexpected error creating action '{definition.name}': {str(e)}"
+            ) from e
 
     @staticmethod
     def get_action_class(action_type: str):
@@ -186,7 +200,9 @@ class ActionFactory:
         if hasattr(action_class, "generate_spec"):
             return action_class.generate_spec(action_spec)
 
-        raise ValueError(f"Action class '{action_class.__name__}' does not have a 'generate_spec' method")
+        raise ValueError(
+            f"Action class '{action_class.__name__}' does not have a 'generate_spec' method"
+        )
 
     @staticmethod
     def is_valid_action(action_type: str) -> bool:

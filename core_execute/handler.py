@@ -69,7 +69,11 @@ def handler(event: dict, context: Any | None = None) -> dict:
         log.debug("Original event that failed parsing: ", details=event)
 
         # Return a failure response that Step Functions can handle
-        return {"flow_control": "failure", "error": f"Failed to parse event: {str(e)}", "original_event": event}
+        return {
+            "flow_control": "failure",
+            "error": f"Failed to parse event: {str(e)}",
+            "original_event": event,
+        }
 
     try:
         # Load actions from the S3 bucket "{task}.actions"
@@ -80,7 +84,10 @@ def handler(event: dict, context: Any | None = None) -> dict:
         # Load state - this should have been a document created from "get_facts" for Jinja2 rendering
         log.debug("Loading state for task: {}", task_payload.task)
         context_state = load_state(task_payload)
-        log.debug("Loaded state with {} keys", len(context_state.keys()) if context_state else 0)
+        log.debug(
+            "Loaded state with {} keys",
+            len(context_state.keys()) if context_state else 0,
+        )
 
         # Create action helper with loaded definitions and state
         action_helper = Helper(definitions, context_state, task_payload)
@@ -90,7 +97,11 @@ def handler(event: dict, context: Any | None = None) -> dict:
         max_iterations = 10  # Prevent runaway loops
         iteration = 0
         flow_control = FlowControl.from_value(task_payload.flow_control)
-        while flow_control == FlowControl.EXECUTE and not timeout_imminent(context) and iteration < max_iterations:
+        while (
+            flow_control == FlowControl.EXECUTE
+            and not timeout_imminent(context)
+            and iteration < max_iterations
+        ):
 
             iteration += 1
             log.debug("State machine iteration {} (max {})", iteration, max_iterations)
@@ -105,10 +116,15 @@ def handler(event: dict, context: Any | None = None) -> dict:
         if flow_control == FlowControl.EXECUTE:
             # Check if we hit the iteration limit
             if iteration >= max_iterations:
-                log.warning("Reached maximum iterations ({}), returning 'execute' for Step Functions retry", max_iterations)
+                log.warning(
+                    "Reached maximum iterations ({}), returning 'execute' for Step Functions retry",
+                    max_iterations,
+                )
 
             if timeout_imminent(context):
-                log.warning("Execution stopped due to timeout, Step Functions will retry")
+                log.warning(
+                    "Execution stopped due to timeout, Step Functions will retry"
+                )
 
         # Update the task payload with the final flow control state
         task_payload.flow_control = flow_control.value
@@ -117,7 +133,9 @@ def handler(event: dict, context: Any | None = None) -> dict:
         log.debug("Saving state for task: {}", task_payload.task)
         save_state(task_payload, context_state)
 
-        log.debug("Exiting handler with flow_control state: {}", task_payload.flow_control)
+        log.debug(
+            "Exiting handler with flow_control state: {}", task_payload.flow_control
+        )
         log.debug("Execution completed after {} loops", iteration)
 
         result = task_payload.model_dump()
@@ -127,7 +145,10 @@ def handler(event: dict, context: Any | None = None) -> dict:
 
     except Exception as e:
         log.error("Error in handler execution: {}", e)
-        log.debug("Task payload at time of error: ", details=task_payload.model_dump() if task_payload else {})
+        log.debug(
+            "Task payload at time of error: ",
+            details=task_payload.model_dump() if task_payload else {},
+        )
 
         # Ensure we have a valid task_payload for the response
         if task_payload:

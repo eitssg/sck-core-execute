@@ -8,7 +8,10 @@ from botocore.exceptions import ClientError
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.create_stack import CreateStackActionSpec, CreateStackActionParams
+from core_execute.actionlib.actions.aws.create_stack import (
+    CreateStackActionSpec,
+    CreateStackActionParams,
+)
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
@@ -60,7 +63,9 @@ def deploy_spec():
     return DeploySpec(**deploy_spec)
 
 
-def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_create_stack_action(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
 
     try:
 
@@ -73,7 +78,10 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
             # First call - stack doesn't exist (triggers create)
             ClientError(
                 error_response={
-                    "Error": {"Code": "ValidationError", "Message": "Stack with id my-application-stack does not exist"}
+                    "Error": {
+                        "Code": "ValidationError",
+                        "Message": "Stack with id my-application-stack does not exist",
+                    }
                 },
                 operation_name="DescribeStacks",
             ),
@@ -99,7 +107,9 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
                         "StackStatus": "CREATE_COMPLETE",
                         "StackStatusReason": "Stack creation completed successfully",
                         "CreationTime": creation_time,
-                        "LastUpdatedTime": datetime(2023, 10, 1, 12, 15, 0, tzinfo=timezone.utc),
+                        "LastUpdatedTime": datetime(
+                            2023, 10, 1, 12, 15, 0, tzinfo=timezone.utc
+                        ),
                         "Description": "My application stack",
                         "Tags": [
                             {"Key": "App", "Value": "My application"},
@@ -183,35 +193,49 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
                     "PhysicalResourceId": "my-app-bucket-123456",
                     "ResourceType": "AWS::S3::Bucket",
                     "ResourceStatus": "CREATE_COMPLETE",
-                    "LastUpdatedTimestamp": datetime(2023, 10, 1, 12, 5, 0, tzinfo=timezone.utc),
+                    "LastUpdatedTimestamp": datetime(
+                        2023, 10, 1, 12, 5, 0, tzinfo=timezone.utc
+                    ),
                 },
                 {
                     "LogicalResourceId": "MyLambdaFunction",
                     "PhysicalResourceId": "my-app-lambda-function",
                     "ResourceType": "AWS::Lambda::Function",
                     "ResourceStatus": "CREATE_COMPLETE",
-                    "LastUpdatedTimestamp": datetime(2023, 10, 1, 12, 8, 0, tzinfo=timezone.utc),
+                    "LastUpdatedTimestamp": datetime(
+                        2023, 10, 1, 12, 8, 0, tzinfo=timezone.utc
+                    ),
                 },
                 {
                     "LogicalResourceId": "MyApiGateway",
                     "PhysicalResourceId": "abc123def456",
                     "ResourceType": "AWS::ApiGateway::RestApi",
                     "ResourceStatus": "CREATE_COMPLETE",
-                    "LastUpdatedTimestamp": datetime(2023, 10, 1, 12, 10, 0, tzinfo=timezone.utc),
+                    "LastUpdatedTimestamp": datetime(
+                        2023, 10, 1, 12, 10, 0, tzinfo=timezone.utc
+                    ),
                 },
             ]
         }
 
         # Mock detect_stack_drift - returns drift detection ID
-        mock_client.detect_stack_drift.return_value = {"StackDriftDetectionId": "drift-detection-123456"}
+        mock_client.detect_stack_drift.return_value = {
+            "StackDriftDetectionId": "drift-detection-123456"
+        }
 
         # Mock delete_stack and cancel_update_stack for completeness
         mock_client.delete_stack.return_value = {
-            "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
+            "ResponseMetadata": {
+                "RequestId": "12345678-1234-1234-1234-123456789012",
+                "HTTPStatusCode": 200,
+            }
         }
 
         mock_client.cancel_update_stack.return_value = {
-            "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
+            "ResponseMetadata": {
+                "RequestId": "12345678-1234-1234-1234-123456789012",
+                "HTTPStatusCode": 200,
+            }
         }
 
         mock_session.client.return_value = mock_client
@@ -235,12 +259,16 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
             task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert (
+            task_payload.flow_control == "success"
+        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
         # Verify CloudFormation client method calls
-        mock_client.validate_template.assert_called_once_with(TemplateURL="s3://my-bucket/my-template.yaml")
+        mock_client.validate_template.assert_called_once_with(
+            TemplateURL="s3://my-bucket/my-template.yaml"
+        )
 
         mock_client.create_stack.assert_called_once()
         create_call_args = mock_client.create_stack.call_args[1]
@@ -318,11 +346,15 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
 
         # Check stack exists flag
         assert f"{action_name}/StackExists" in state
-        assert state[f"{action_name}/StackExists"] is False  # Was False initially, then created
+        assert (
+            state[f"{action_name}/StackExists"] is False
+        )  # Was False initially, then created
 
         # Verify events were captured - THIS SHOULD NOW WORK
         assert f"{action_name}/StackEventsCount" in state
-        assert state[f"{action_name}/StackEventsCount"] == 3  # We have 3 events in our mock
+        assert (
+            state[f"{action_name}/StackEventsCount"] == 3
+        )  # We have 3 events in our mock
 
         # Check that the latest event was captured
         assert f"{action_name}/LatestStackEvent" in state

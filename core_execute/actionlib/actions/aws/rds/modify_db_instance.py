@@ -1,8 +1,8 @@
 """Modify an RDS database instance.
 
 This module defines the ModifyDbInstanceAction which is responsible for calling
-the boto3 RDS client's modify_db_instance() method to make modifications to an RDS 
-instance. The action waits until the modifications are completed as indicated by 
+the boto3 RDS client's modify_db_instance() method to make modifications to an RDS
+instance. The action waits until the modifications are completed as indicated by
 the RDS API before setting its state to complete.
 
 :Example:
@@ -45,6 +45,7 @@ class ModifyDbInstanceActionParams(BaseModel):
            See AWS documentation for available options.
     :type api_params: dict[str, Any]
     """
+
     model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
     account: str = Field(
@@ -60,8 +61,10 @@ class ModifyDbInstanceActionParams(BaseModel):
     api_params: dict[str, Any] = Field(
         ...,
         alias="ApiParams",
-        description=("The parameters to pass to the modify_db_instance call (required). "
-                     "Refer to the AWS documentation for supported options."),
+        description=(
+            "The parameters to pass to the modify_db_instance call (required). "
+            "Refer to the AWS documentation for supported options."
+        ),
     )
 
 
@@ -101,7 +104,7 @@ class ModifyDbInstanceAction(BaseAction):
     """Modify an RDS database instance.
 
     This action modifies an RDS database instance by calling the boto3 RDS client's
-    modify_db_instance() method. It then checks whether the modifications are complete 
+    modify_db_instance() method. It then checks whether the modifications are complete
     based on the 'PendingModifiedValues' returned in the response.
 
     :param definition: The action specification containing parameters.
@@ -127,10 +130,10 @@ class ModifyDbInstanceAction(BaseAction):
         Execute the RDS modify_db_instance operation.
 
         This method obtains an RDS client using the provided region and account's provisioning role.
-        It calls the modify_db_instance() API with the provided ApiParams. If there are no pending 
+        It calls the modify_db_instance() API with the provided ApiParams. If there are no pending
         modifications reported in the response, the action is marked complete. Otherwise, it continues
         running until modifications complete, storing state information about the change.
-        
+
         :raises ClientError: If there is an error calling the modify_db_instance API.
         """
         # Obtain an RDS client
@@ -156,7 +159,9 @@ class ModifyDbInstanceAction(BaseAction):
             else:
                 self.set_output("PendingModifiedValues", pending_modified_values)
                 self.set_running(
-                    "Waiting for modifications to complete: {}".format(pending_modified_values)
+                    "Waiting for modifications to complete: {}".format(
+                        pending_modified_values
+                    )
                 )
         except ClientError as e:
             error_message = e.response.get("Error", {}).get("Message", "")
@@ -190,7 +195,9 @@ class ModifyDbInstanceAction(BaseAction):
             self.set_complete("All modifications complete")
         else:
             self.set_running(
-                "Waiting for modifications to complete: {}".format(pending_modified_values)
+                "Waiting for modifications to complete: {}".format(
+                    pending_modified_values
+                )
             )
 
     def _unexecute(self):
@@ -220,6 +227,12 @@ class ModifyDbInstanceAction(BaseAction):
         This method uses the Jinja2 renderer to resolve any template strings or objects in the
         account, region, and api_params fields.
         """
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.api_params = self.renderer.render_object(self.params.api_params, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.api_params = self.renderer.render_object(
+            self.params.api_params, self.context
+        )

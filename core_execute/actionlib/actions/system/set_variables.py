@@ -115,7 +115,7 @@ class SetVariablesAction(BaseAction):
 
                 # If the result can be converted to a number, do so, but if it's quoted, keep it as a string
                 try:
-                    result = float(result) if '.' in result else int(result)
+                    result = float(result) if "." in result else int(result)
                 except ValueError:
                     pass
 

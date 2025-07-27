@@ -214,18 +214,32 @@ class CreateStackAction(BaseAction):
         """
         log.trace("Resolving CreateStackAction")
 
-        self.params.region = self.renderer.render_string(self.params.region, self.context)  # Fixed: was self.params.r
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
-        self.params.template_url = self.renderer.render_string(self.params.template_url, self.context)
-        self.params.on_failure = self.renderer.render_string(self.params.on_failure, self.context)
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )  # Fixed: was self.params.r
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.stack_name = self.renderer.render_string(
+            self.params.stack_name, self.context
+        )
+        self.params.template_url = self.renderer.render_string(
+            self.params.template_url, self.context
+        )
+        self.params.on_failure = self.renderer.render_string(
+            self.params.on_failure, self.context
+        )
 
         # Handle timeout_in_minutes conversion
-        timeout_rendered = self.renderer.render_string(str(self.params.timeout_in_minutes), self.context)
+        timeout_rendered = self.renderer.render_string(
+            str(self.params.timeout_in_minutes), self.context
+        )
         try:
             self.params.timeout_in_minutes = int(timeout_rendered)
         except (ValueError, TypeError):
-            log.warning("Invalid timeout value '{}', using default 15", timeout_rendered)
+            log.warning(
+                "Invalid timeout value '{}', using default 15", timeout_rendered
+            )
             self.params.timeout_in_minutes = 15
 
         if self.params.stack_parameters:
@@ -292,26 +306,45 @@ class CreateStackAction(BaseAction):
         describe_stack_response = None
 
         try:
-            describe_stack_response = cfn_client.describe_stacks(StackName=self.params.stack_name)
+            describe_stack_response = cfn_client.describe_stacks(
+                StackName=self.params.stack_name
+            )
             if describe_stack_response.get("Stacks"):
                 stack_id = describe_stack_response["Stacks"][0]["StackId"]
                 stack_exists = True
                 self.set_state("StackId", stack_id)
                 self.set_state("StackExists", True)
                 self.set_output("StackId", stack_id)
-                log.debug("Stack '{}' already exists with ID: {}", self.params.stack_name, stack_id)
+                log.debug(
+                    "Stack '{}' already exists with ID: {}",
+                    self.params.stack_name,
+                    stack_id,
+                )
         except ClientError as e:
             if "does not exist" in e.response["Error"]["Message"]:
                 stack_exists = False
                 self.set_state("StackExists", False)
-                log.debug("Stack '{}' does not exist - will create new stack", self.params.stack_name)
+                log.debug(
+                    "Stack '{}' does not exist - will create new stack",
+                    self.params.stack_name,
+                )
             else:
-                log.error("Error describing stack '{}': {}", self.params.stack_name, e.response["Error"]["Message"])
-                self.set_failed(f"Failed to describe stack '{self.params.stack_name}': {e.response['Error']['Message']}")
+                log.error(
+                    "Error describing stack '{}': {}",
+                    self.params.stack_name,
+                    e.response["Error"]["Message"],
+                )
+                self.set_failed(
+                    f"Failed to describe stack '{self.params.stack_name}': {e.response['Error']['Message']}"
+                )
                 return
         except Exception as e:
-            log.error("Unexpected error describing stack '{}': {}", self.params.stack_name, e)
-            self.set_failed(f"Unexpected error describing stack '{self.params.stack_name}': {e}")
+            log.error(
+                "Unexpected error describing stack '{}': {}", self.params.stack_name, e
+            )
+            self.set_failed(
+                f"Unexpected error describing stack '{self.params.stack_name}': {e}"
+            )
             return
 
         # Stack exists, attempt an update, else create a new one
@@ -335,17 +368,25 @@ class CreateStackAction(BaseAction):
             # Validate template before creating stack
             try:
                 cfn_client.validate_template(TemplateURL=self.params.template_url)
-                log.debug("Template validation successful for: {}", self.params.template_url)
+                log.debug(
+                    "Template validation successful for: {}", self.params.template_url
+                )
             except ClientError as e:
-                log.error("Template validation failed: {}", e.response["Error"]["Message"])
-                self.set_failed(f"Template validation failed: {e.response['Error']['Message']}")
+                log.error(
+                    "Template validation failed: {}", e.response["Error"]["Message"]
+                )
+                self.set_failed(
+                    f"Template validation failed: {e.response['Error']['Message']}"
+                )
                 return
 
             args = {
                 "StackName": self.params.stack_name,
                 "TemplateURL": self.params.template_url,
                 "Capabilities": CAPABILITITES,
-                "Parameters": aws.transform_stack_parameter_hash(self.params.stack_parameters),
+                "Parameters": aws.transform_stack_parameter_hash(
+                    self.params.stack_parameters
+                ),
                 "OnFailure": self.params.on_failure,
             }
 
@@ -388,27 +429,45 @@ class CreateStackAction(BaseAction):
 
             # Handle specific CloudFormation errors
             if error_code == "AlreadyExistsException":
-                log.warning("Stack '{}' already exists, will attempt update", self.params.stack_name)
+                log.warning(
+                    "Stack '{}' already exists, will attempt update",
+                    self.params.stack_name,
+                )
                 # This shouldn't happen due to our existence check, but handle gracefully
                 self.set_state("StackExists", True)
                 self.set_failed(f"Stack '{self.params.stack_name}' already exists")
             elif error_code == "InsufficientCapabilitiesException":
-                log.error("Insufficient capabilities for stack creation: {}", error_message)
+                log.error(
+                    "Insufficient capabilities for stack creation: {}", error_message
+                )
                 self.set_failed(f"Insufficient capabilities: {error_message}")
             elif error_code == "LimitExceededException":
                 log.error("CloudFormation limits exceeded: {}", error_message)
                 self.set_failed(f"CloudFormation limits exceeded: {error_message}")
             else:
-                log.error("Failed to create stack '{}': {} - {}", self.params.stack_name, error_code, error_message)
-                self.set_failed(f"Failed to create stack '{self.params.stack_name}': {error_message}")
+                log.error(
+                    "Failed to create stack '{}': {} - {}",
+                    self.params.stack_name,
+                    error_code,
+                    error_message,
+                )
+                self.set_failed(
+                    f"Failed to create stack '{self.params.stack_name}': {error_message}"
+                )
 
         except Exception as e:
-            log.error("Unexpected error creating stack '{}': {}", self.params.stack_name, e)
-            self.set_failed(f"Unexpected error creating stack '{self.params.stack_name}': {e}")
+            log.error(
+                "Unexpected error creating stack '{}': {}", self.params.stack_name, e
+            )
+            self.set_failed(
+                f"Unexpected error creating stack '{self.params.stack_name}': {e}"
+            )
 
         log.trace("Stack creation initiated")
 
-    def __update_stack(self, cfn_client: Any, stack_id: str, describe_stack_response: dict):
+    def __update_stack(
+        self, cfn_client: Any, stack_id: str, describe_stack_response: dict
+    ):
         """
         Update an existing CloudFormation stack using change sets for safety.
 
@@ -429,7 +488,9 @@ class CreateStackAction(BaseAction):
                 "StackName": stack_id,
                 "TemplateURL": self.params.template_url,
                 "Capabilities": CAPABILITITES,
-                "Parameters": aws.transform_stack_parameter_hash(self.params.stack_parameters or {}),
+                "Parameters": aws.transform_stack_parameter_hash(
+                    self.params.stack_parameters or {}
+                ),
                 "ChangeSetName": change_set_name,
             }
             if self.params.tags:
@@ -453,15 +514,22 @@ class CreateStackAction(BaseAction):
                 time.sleep(2)
 
                 # Describe the change set to see what changes
-                change_set_details = cfn_client.describe_change_set(StackName=stack_id, ChangeSetName=change_set_name)
+                change_set_details = cfn_client.describe_change_set(
+                    StackName=stack_id, ChangeSetName=change_set_name
+                )
 
                 changes = change_set_details.get("Changes", [])
                 if not changes:
                     # No changes detected
-                    log.debug("No changes detected in change set for stack '{}'", self.params.stack_name)
+                    log.debug(
+                        "No changes detected in change set for stack '{}'",
+                        self.params.stack_name,
+                    )
 
                     # Delete the empty change set
-                    cfn_client.delete_change_set(StackName=stack_id, ChangeSetName=change_set_name)
+                    cfn_client.delete_change_set(
+                        StackName=stack_id, ChangeSetName=change_set_name
+                    )
 
                     self.set_state("StackOperation", "NO_UPDATE")
                     self.set_state("NoUpdatesRequired", True)
@@ -475,7 +543,9 @@ class CreateStackAction(BaseAction):
                 log.debug("Change set contains {} changes", len(changes))
 
                 # Execute the change set
-                cfn_client.execute_change_set(StackName=stack_id, ChangeSetName=change_set_name)
+                cfn_client.execute_change_set(
+                    StackName=stack_id, ChangeSetName=change_set_name
+                )
 
                 # Set comprehensive state outputs
                 self.set_state("StackOperation", "UPDATE")
@@ -493,7 +563,9 @@ class CreateStackAction(BaseAction):
                     "No updates" in cs_error.response["Error"]["Message"]
                     or "didn't contain changes" in cs_error.response["Error"]["Message"]
                 ):
-                    log.debug("No updates required for stack '{}'", self.params.stack_name)
+                    log.debug(
+                        "No updates required for stack '{}'", self.params.stack_name
+                    )
                     self.set_state("StackOperation", "NO_UPDATE")
                     self.set_state("NoUpdatesRequired", True)
                     self.set_output("StackOperation", "NO_UPDATE")
@@ -505,11 +577,22 @@ class CreateStackAction(BaseAction):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
-            log.error("Error updating stack '{}': {} - {}", self.params.stack_name, error_code, error_message)
-            self.set_failed(f"Failed to update stack '{self.params.stack_name}': {error_message}")
+            log.error(
+                "Error updating stack '{}': {} - {}",
+                self.params.stack_name,
+                error_code,
+                error_message,
+            )
+            self.set_failed(
+                f"Failed to update stack '{self.params.stack_name}': {error_message}"
+            )
         except Exception as e:
-            log.error("Unexpected error updating stack '{}': {}", self.params.stack_name, e)
-            self.set_failed(f"Unexpected error updating stack '{self.params.stack_name}': {e}")
+            log.error(
+                "Unexpected error updating stack '{}': {}", self.params.stack_name, e
+            )
+            self.set_failed(
+                f"Unexpected error updating stack '{self.params.stack_name}': {e}"
+            )
 
         log.trace("Stack update initiated")
 
@@ -557,7 +640,11 @@ class CreateStackAction(BaseAction):
             self.set_output("StackStatus", stack_status)
 
             # Enhanced status classification
-            creation_complete_states = ["CREATE_COMPLETE", "UPDATE_COMPLETE", "IMPORT_COMPLETE"]
+            creation_complete_states = [
+                "CREATE_COMPLETE",
+                "UPDATE_COMPLETE",
+                "IMPORT_COMPLETE",
+            ]
             creation_failed_states = [
                 "CREATE_FAILED",
                 "UPDATE_FAILED",
@@ -602,18 +689,24 @@ class CreateStackAction(BaseAction):
                 # Try to get stack events for more details
                 self._capture_stack_events(cfn_client, stack_id, failed=True)
 
-                self.set_failed(f"Stack operation failed: {stack_status} - {failure_reason}")
+                self.set_failed(
+                    f"Stack operation failed: {stack_status} - {failure_reason}"
+                )
 
             elif stack_status in rollback_states:
                 # Stack rolled back - this is usually a failure scenario
-                rollback_reason = stack_info.get("StackStatusReason", "Stack rolled back")
+                rollback_reason = stack_info.get(
+                    "StackStatusReason", "Stack rolled back"
+                )
                 self.set_state("StackOperationFailed", True)
                 self.set_state("StackRolledBack", True)
                 self.set_state("RollbackReason", rollback_reason)
 
                 self._capture_stack_events(cfn_client, stack_id, failed=True)
 
-                self.set_failed(f"Stack rolled back: {stack_status} - {rollback_reason}")
+                self.set_failed(
+                    f"Stack rolled back: {stack_status} - {rollback_reason}"
+                )
 
             elif stack_status in in_progress_states:
                 # Operation still in progress
@@ -630,8 +723,14 @@ class CreateStackAction(BaseAction):
                 self.set_running(f"Stack in unknown state: {stack_status}")
 
         except ClientError as e:
-            log.error("Failed to describe stack '{}': {}", stack_id, e.response["Error"]["Message"])
-            self.set_failed(f"Failed to describe stack '{stack_id}': {e.response['Error']['Message']}")
+            log.error(
+                "Failed to describe stack '{}': {}",
+                stack_id,
+                e.response["Error"]["Message"],
+            )
+            self.set_failed(
+                f"Failed to describe stack '{stack_id}': {e.response['Error']['Message']}"
+            )
             return
         except Exception as e:
             log.error("Unexpected error describing stack '{}': {}", stack_id, e)
@@ -675,8 +774,14 @@ class CreateStackAction(BaseAction):
             self.set_running(f"Deleting stack '{self.params.stack_name}'")
 
         except ClientError as e:
-            log.error("Failed to delete stack '{}': {}", stack_id, e.response["Error"]["Message"])
-            self.set_failed(f"Failed to delete stack '{stack_id}': {e.response['Error']['Message']}")
+            log.error(
+                "Failed to delete stack '{}': {}",
+                stack_id,
+                e.response["Error"]["Message"],
+            )
+            self.set_failed(
+                f"Failed to delete stack '{stack_id}': {e.response['Error']['Message']}"
+            )
         except Exception as e:
             log.error("Unexpected error deleting stack '{}': {}", stack_id, e)
             self.set_failed(f"Unexpected error deleting stack '{stack_id}': {e}")
@@ -713,10 +818,16 @@ class CreateStackAction(BaseAction):
             if "No updates are currently in progress" in e.response["Error"]["Message"]:
                 self.set_complete("No stack operation in progress to cancel")
             else:
-                log.warning("Failed to cancel stack operation '{}': {}", stack_id, e.response["Error"]["Message"])
+                log.warning(
+                    "Failed to cancel stack operation '{}': {}",
+                    stack_id,
+                    e.response["Error"]["Message"],
+                )
                 self.set_complete("Stack operation cancellation failed")
         except Exception as e:
-            log.warning("Unexpected error cancelling stack operation '{}': {}", stack_id, e)
+            log.warning(
+                "Unexpected error cancelling stack operation '{}': {}", stack_id, e
+            )
             self.set_complete("Stack operation cancellation failed")
 
     def _capture_stack_events(self, cfn_client, stack_id: str, failed: bool = False):
@@ -746,8 +857,14 @@ class CreateStackAction(BaseAction):
                             "ResourceType": event.get("ResourceType", ""),
                             "LogicalResourceId": event.get("LogicalResourceId", ""),
                             "ResourceStatus": event.get("ResourceStatus", ""),
-                            "ResourceStatusReason": event.get("ResourceStatusReason", ""),
-                            "Timestamp": event.get("Timestamp", "").isoformat() if event.get("Timestamp") else "",
+                            "ResourceStatusReason": event.get(
+                                "ResourceStatusReason", ""
+                            ),
+                            "Timestamp": (
+                                event.get("Timestamp", "").isoformat()
+                                if event.get("Timestamp")
+                                else ""
+                            ),
                         }
                         failed_events.append(failed_event)
 
@@ -772,7 +889,11 @@ class CreateStackAction(BaseAction):
                         "ResourceType": latest_event.get("ResourceType", ""),
                         "ResourceStatus": latest_event.get("ResourceStatus", ""),
                         "LogicalResourceId": latest_event.get("LogicalResourceId", ""),
-                        "Timestamp": latest_event.get("Timestamp", "").isoformat() if latest_event.get("Timestamp") else "",
+                        "Timestamp": (
+                            latest_event.get("Timestamp", "").isoformat()
+                            if latest_event.get("Timestamp")
+                            else ""
+                        ),
                     },
                 )
 
@@ -800,7 +921,12 @@ class CreateStackAction(BaseAction):
 
                 if output_key and output_value is not None:
                     self.set_output(output_key, output_value)
-                    log.trace("Saved stack output: {} = {} ({})", output_key, output_value, output_description)
+                    log.trace(
+                        "Saved stack output: {} = {} ({})",
+                        output_key,
+                        output_value,
+                        output_description,
+                    )
 
             self.set_state("StackOutputCount", output_count)
             self.set_output("StackOutputCount", output_count)
@@ -808,11 +934,20 @@ class CreateStackAction(BaseAction):
             # Save additional stack metadata
             self.set_state("StackDescription", stack_info.get("Description", ""))
             self.set_state(
-                "StackCreationTime", stack_info.get("CreationTime", "").isoformat() if stack_info.get("CreationTime") else ""
+                "StackCreationTime",
+                (
+                    stack_info.get("CreationTime", "").isoformat()
+                    if stack_info.get("CreationTime")
+                    else ""
+                ),
             )
             self.set_state(
                 "StackLastUpdatedTime",
-                stack_info.get("LastUpdatedTime", "").isoformat() if stack_info.get("LastUpdatedTime") else "",
+                (
+                    stack_info.get("LastUpdatedTime", "").isoformat()
+                    if stack_info.get("LastUpdatedTime")
+                    else ""
+                ),
             )
 
             # Capture stack tags for reference
@@ -850,13 +985,19 @@ class CreateStackAction(BaseAction):
             resource_counts = {}
             for resource in resources:
                 resource_type = resource.get("ResourceType", "Unknown")
-                resource_counts[resource_type] = resource_counts.get(resource_type, 0) + 1
+                resource_counts[resource_type] = (
+                    resource_counts.get(resource_type, 0) + 1
+                )
 
             self.set_state("StackResourceCount", len(resources))
             self.set_state("StackResourceTypes", resource_counts)
             self.set_output("StackResourceCount", len(resources))
 
-            log.debug("Stack contains {} resources across {} types", len(resources), len(resource_counts))
+            log.debug(
+                "Stack contains {} resources across {} types",
+                len(resources),
+                len(resource_counts),
+            )
 
         except Exception as e:
             log.warning("Failed to capture resource summary: {}", e)
@@ -883,4 +1024,6 @@ class CreateStackAction(BaseAction):
                 # but store the ID for potential future reference
 
         except Exception as e:
-            log.warning("Failed to initiate drift detection for stack '{}': {}", stack_id, e)
+            log.warning(
+                "Failed to initiate drift detection for stack '{}': {}", stack_id, e
+            )

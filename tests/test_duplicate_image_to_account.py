@@ -8,7 +8,9 @@ from botocore.exceptions import ClientError
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.duplicate_image_to_account import DuplicateImageToAccountActionSpec
+from core_execute.actionlib.actions.aws.duplicate_image_to_account import (
+    DuplicateImageToAccountActionSpec,
+)
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
@@ -96,12 +98,15 @@ def mock_source_ec2_client():
             "AccessKeyId": "SourceAccessKeyId",
             "SecretAccessKey": "SourceSecretAccessKey",
             "SessionToken": "SourceSessionToken",
-            "Expiration": datetime.now(timezone.utc) + timedelta(hours=1),  # Set expiration to 1 hour from now
+            "Expiration": datetime.now(timezone.utc)
+            + timedelta(hours=1),  # Set expiration to 1 hour from now
         }
     }
 
     # Mock snapshot sharing (modify_snapshot_attribute)
-    mock_source_ec2_client.modify_snapshot_attribute.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
+    mock_source_ec2_client.modify_snapshot_attribute.return_value = {
+        "ResponseMetadata": {"HTTPStatusCode": 200}
+    }
 
     return mock_source_ec2_client
 
@@ -118,7 +123,14 @@ def mock_target_ec2_client():
                 "State": "available",
                 "Name": "my-application-ami-v1.0-copy-123456789012",
                 "BlockDeviceMappings": [
-                    {"DeviceName": "/dev/sda1", "Ebs": {"SnapshotId": "snap-target123", "VolumeSize": 20, "VolumeType": "gp3"}}
+                    {
+                        "DeviceName": "/dev/sda1",
+                        "Ebs": {
+                            "SnapshotId": "snap-target123",
+                            "VolumeSize": 20,
+                            "VolumeType": "gp3",
+                        },
+                    }
                 ],
             }
         ]
@@ -129,12 +141,15 @@ def mock_target_ec2_client():
             "AccessKeyId": "TargetAccessKeyId",
             "SecretAccessKey": "wJalExExampleKey",
             "SessionToken": "FwoGZXhZ2ExaW5nZXJzZXhhbXBsZQ==",
-            "Expiration": datetime.now(timezone.utc) + timedelta(hours=1),  # Set expiration to 1 hour from now
+            "Expiration": datetime.now(timezone.utc)
+            + timedelta(hours=1),  # Set expiration to 1 hour from now
         }
     }
 
     # Mock target EC2 client tagging
-    mock_target_ec2_client.create_tags.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
+    mock_target_ec2_client.create_tags.return_value = {
+        "ResponseMetadata": {"HTTPStatusCode": 200}
+    }
 
     # Mock target account describe_images for _check() method
     return mock_target_ec2_client
@@ -214,10 +229,14 @@ def test_duplicate_image_to_account(
             if role_arn:
                 for a in ["123456789012", "123456789013"]:
                     if a in role_arn:
-                        print(f"DEBUG: Found account {a} in role_arn, returning mock_target_ec2_client")
+                        print(
+                            f"DEBUG: Found account {a} in role_arn, returning mock_target_ec2_client"
+                        )
                         return mock_target_ec2_client
             if access_key and access_key == "TargetAccessKeyId":
-                print("DEBUG: Found TargetAccessKeyId, returning mock_target_ec2_client")
+                print(
+                    "DEBUG: Found TargetAccessKeyId, returning mock_target_ec2_client"
+                )
                 return mock_target_ec2_client
 
             print("DEBUG: Returning mock_source_ec2_client for source account")
@@ -230,10 +249,14 @@ def test_duplicate_image_to_account(
             if role_arn:
                 for a in ["123456789012", "123456789013"]:
                     if a in role_arn:
-                        print(f"DEBUG: Found account {a} in role_arn, returning mock_target_ec2_client")
+                        print(
+                            f"DEBUG: Found account {a} in role_arn, returning mock_target_ec2_client"
+                        )
                         return mock_target_ec2_resource
             if access_key and access_key == "TargetAccessKeyId":
-                print("DEBUG: Found TargetAccessKeyId, returning mock_target_ec2_client")
+                print(
+                    "DEBUG: Found TargetAccessKeyId, returning mock_target_ec2_client"
+                )
                 return mock_target_ec2_client
 
             print("DEBUG: Returning mock_source_ec2_resource for source account")
@@ -254,7 +277,9 @@ def test_duplicate_image_to_account(
         ):
 
             # Execute the test
-            save_actions(task_payload, deploy_spec.actions)  # Fixed: use .actions instead of .action_specs
+            save_actions(
+                task_payload, deploy_spec.actions
+            )  # Fixed: use .actions instead of .action_specs
             save_state(task_payload, {})
 
             # Execute the handler
@@ -294,7 +319,9 @@ def test_duplicate_image_to_account(
             mock_source_ec2_client.modify_snapshot_attribute.assert_called()
             get_target_mock_resource.register_image.assert_called()
 
-            print("✅ test_duplicate_image_to_account passed - AMI duplicated successfully")
+            print(
+                "✅ test_duplicate_image_to_account passed - AMI duplicated successfully"
+            )
 
     except Exception as e:
         traceback.print_exc()

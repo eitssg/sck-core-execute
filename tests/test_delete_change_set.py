@@ -8,7 +8,10 @@ from botocore.exceptions import ClientError
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.delete_change_set import DeleteChangeSetActionSpec, DeleteChangeSetActionParams
+from core_execute.actionlib.actions.aws.delete_change_set import (
+    DeleteChangeSetActionSpec,
+    DeleteChangeSetActionParams,
+)
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
@@ -43,7 +46,12 @@ def deploy_spec():
     Parameters are fore: DeleteChangeSetActionParams
     """
     spec: dict[str, Any] = {
-        "Params": {"Account": "154798051514", "Region": "ap-southeast-1", "StackName": "my-stack", "ChangeSetName": "my-changeset"}
+        "Params": {
+            "Account": "154798051514",
+            "Region": "ap-southeast-1",
+            "StackName": "my-stack",
+            "ChangeSetName": "my-changeset",
+        }
     }
 
     action_spec = DeleteChangeSetActionSpec(**spec)
@@ -53,7 +61,9 @@ def deploy_spec():
     return DeploySpec(**deploy_spec)
 
 
-def test_delete_change_set_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_delete_change_set_action(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
 
     try:
 
@@ -85,9 +95,14 @@ def test_delete_change_set_action(task_payload: TaskPayload, deploy_spec: Deploy
                 stack_name = kwargs.get("StackName", "")
 
                 # Test case for non-existent change set
-                if "non-existent" in str(changeset_name) or "non-existent" in str(stack_name):
+                if "non-existent" in str(changeset_name) or "non-existent" in str(
+                    stack_name
+                ):
                     error_response = {
-                        "Error": {"Code": "ChangeSetNotFoundException", "Message": f"ChangeSet [{changeset_name}] does not exist"}
+                        "Error": {
+                            "Code": "ChangeSetNotFoundException",
+                            "Message": f"ChangeSet [{changeset_name}] does not exist",
+                        }
                     }
                     raise ClientError(error_response, "DescribeChangeSet")
             return mock_client.describe_change_set.return_value
@@ -101,7 +116,10 @@ def test_delete_change_set_action(task_payload: TaskPayload, deploy_spec: Deploy
                 # Test case for change set already deleted (race condition)
                 if "already-deleted" in str(changeset_name):
                     error_response = {
-                        "Error": {"Code": "ChangeSetNotFoundException", "Message": f"ChangeSet [{changeset_name}] does not exist"}
+                        "Error": {
+                            "Code": "ChangeSetNotFoundException",
+                            "Message": f"ChangeSet [{changeset_name}] does not exist",
+                        }
                     }
                     raise ClientError(error_response, "DeleteChangeSet")
 
@@ -135,7 +153,9 @@ def test_delete_change_set_action(task_payload: TaskPayload, deploy_spec: Deploy
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert (
+            task_payload.flow_control == "success"
+        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
@@ -162,7 +182,12 @@ def test_delete_change_set_action(task_payload: TaskPayload, deploy_spec: Deploy
         assert state["action-aws-deletechangeset-name/ChangeSetExists"] == True
 
         # Validate output variables
-        outputs = [key for key in state.keys() if key.startswith("action-aws-deletechangeset-name/") and not key.endswith("/state")]
+        outputs = [
+            key
+            for key in state.keys()
+            if key.startswith("action-aws-deletechangeset-name/")
+            and not key.endswith("/state")
+        ]
         assert len(outputs) > 0, "Should have output variables set"
 
     except Exception as e:

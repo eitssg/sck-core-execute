@@ -156,13 +156,19 @@ class PutUserAction(BaseAction):
         """
         log.trace("Resolving PutUserAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
 
         if isinstance(self.params.user_names, list):
             for i, user_name in enumerate(self.params.user_names):
                 # If user_names is a list, render each item as a Jinja2 template
-                self.params.user_names[i] = self.renderer.render_string(user_name, self.context)
+                self.params.user_names[i] = self.renderer.render_string(
+                    user_name, self.context
+                )
         elif isinstance(self.params.user_names, str):
             # If user_names is a string, render it as a Jinja2 template
             names = self.renderer.render_string(self.params.user_names, self.context)
@@ -213,8 +219,12 @@ class PutUserAction(BaseAction):
 
         # Validate required parameters
         if not self.params.user_names:
-            self.set_failed("UserNames parameter is required and must contain at least one user")
-            log.error("UserNames parameter is required and must contain at least one user")
+            self.set_failed(
+                "UserNames parameter is required and must contain at least one user"
+            )
+            log.error(
+                "UserNames parameter is required and must contain at least one user"
+            )
             return
 
         # Set initial state information
@@ -285,7 +295,10 @@ class PutUserAction(BaseAction):
 
             # Attach policies to the user
             if not self.params.roles:
-                log.warning("No roles specified for user '{}', skipping role attachment", user_name)
+                log.warning(
+                    "No roles specified for user '{}', skipping role attachment",
+                    user_name,
+                )
                 continue
 
             # Ensure roles is a list
@@ -296,21 +309,29 @@ class PutUserAction(BaseAction):
 
             try:
                 # Create and attach inline policy that allows assuming the specified roles
-                policy_name, policy_document = self._attach_inline_policy_to_user(iam_client, user_name, self.params.roles)
-                log.info("Successfully attached/updated role assumption policy for user '{}'", user_name)
+                policy_name, policy_document = self._attach_inline_policy_to_user(
+                    iam_client, user_name, self.params.roles
+                )
+                log.info(
+                    "Successfully attached/updated role assumption policy for user '{}'",
+                    user_name,
+                )
                 users_with_policies.append(user_name)
-                
+
                 # ADD THIS - Store the final policy for this user
                 final_policies[user_name] = {
                     "PolicyName": policy_name,
-                    "PolicyDocument": policy_document
+                    "PolicyDocument": policy_document,
                 }
 
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 error_message = e.response["Error"]["Message"]
                 log.error(
-                    "Failed to attach/update role assumption policy for user '{}': {} - {}", user_name, error_code, error_message
+                    "Failed to attach/update role assumption policy for user '{}': {} - {}",
+                    user_name,
+                    error_code,
+                    error_message,
                 )
                 failed_users.append(
                     {
@@ -322,7 +343,11 @@ class PutUserAction(BaseAction):
                 )
                 continue
             except Exception as e:
-                log.error("Unexpected error attaching/updating policy for user '{}': {}", user_name, e)
+                log.error(
+                    "Unexpected error attaching/updating policy for user '{}': {}",
+                    user_name,
+                    e,
+                )
                 failed_users.append(
                     {
                         "UserName": user_name,
@@ -340,7 +365,7 @@ class PutUserAction(BaseAction):
         self.set_state("FailedUsers", failed_users)
         self.set_state("SkippedUsers", skipped_users)
         self.set_state("UsersWithPolicies", users_with_policies)
-        # REMOVE THIS LINE: self.set_state("AssignedRoles", self.params.roles)  
+        # REMOVE THIS LINE: self.set_state("AssignedRoles", self.params.roles)
         self.set_state("FinalPolicies", final_policies)
 
         # Set outputs
@@ -356,8 +381,12 @@ class PutUserAction(BaseAction):
         if failed_users:
             self.set_state("CreationResult", "PARTIAL_FAILURE")
             self.set_output("CreationResult", "PARTIAL_FAILURE")
-            failure_details = [f"{user['UserName']} ({user['Operation']})" for user in failed_users]
-            self.set_failed(f"Failed operations for users: {', '.join(failure_details)}")
+            failure_details = [
+                f"{user['UserName']} ({user['Operation']})" for user in failed_users
+            ]
+            self.set_failed(
+                f"Failed operations for users: {', '.join(failure_details)}"
+            )
         else:
             self.set_state("CreationResult", "SUCCESS")
             self.set_output("CreationResult", "SUCCESS")
@@ -435,7 +464,9 @@ class PutUserAction(BaseAction):
                 # Re-raise other errors
                 raise
 
-    def _attach_inline_policy_to_user(self, iam_client, user_name: str, roles: list[str]) -> tuple[str, dict]:
+    def _attach_inline_policy_to_user(
+        self, iam_client, user_name: str, roles: list[str]
+    ) -> tuple[str, dict]:
         """
         Create and attach an inline policy to a user that allows assuming specified roles.
         If the policy already exists, replace only the sts:AssumeRole resources with the new ones,
@@ -475,7 +506,9 @@ class PutUserAction(BaseAction):
             # Try to get existing policy first
             existing_policy = None
             try:
-                response = iam_client.get_user_policy(UserName=user_name, PolicyName=policy_name)
+                response = iam_client.get_user_policy(
+                    UserName=user_name, PolicyName=policy_name
+                )
                 existing_policy_doc = response["PolicyDocument"]
 
                 # Parse the URL-decoded policy document
@@ -489,7 +522,10 @@ class PutUserAction(BaseAction):
 
             except ClientError as e:
                 if e.response["Error"]["Code"] == "NoSuchEntity":
-                    log.debug("No existing policy found for user '{}', will create new one", user_name)
+                    log.debug(
+                        "No existing policy found for user '{}', will create new one",
+                        user_name,
+                    )
                     existing_policy = None
                 else:
                     raise
@@ -497,7 +533,9 @@ class PutUserAction(BaseAction):
             # Create the final policy document
             if existing_policy:
                 # Update existing policy by replacing sts:AssumeRole resources
-                policy_document = self._replace_assume_role_resources(existing_policy, new_role_arns)
+                policy_document = self._replace_assume_role_resources(
+                    existing_policy, new_role_arns
+                )
             else:
                 # Create new policy with just the assume role statement
                 policy_document = self._create_policy_with_role_arns(new_role_arns)
@@ -517,16 +555,27 @@ class PutUserAction(BaseAction):
                 PolicyDocument=util.to_json(policy_document),
             )
 
-            log.info("Successfully set inline policy '{}' for user '{}'", policy_name, user_name)
-            
+            log.info(
+                "Successfully set inline policy '{}' for user '{}'",
+                policy_name,
+                user_name,
+            )
+
             # CHANGE THIS - Return both policy name and document
             return policy_name, policy_document
 
         except ClientError as e:
-            log.error("Failed to set inline policy '{}' for user '{}': {}", policy_name, user_name, e)
+            log.error(
+                "Failed to set inline policy '{}' for user '{}': {}",
+                policy_name,
+                user_name,
+                e,
+            )
             raise
 
-    def _replace_assume_role_resources(self, existing_policy: dict, new_role_arns: set) -> dict:
+    def _replace_assume_role_resources(
+        self, existing_policy: dict, new_role_arns: set
+    ) -> dict:
         """
         Replace the resources in sts:AssumeRole statements with new role ARNs,
         while preserving all other policy statements.
@@ -539,7 +588,10 @@ class PutUserAction(BaseAction):
         :rtype: dict
         """
         # Start with a copy of the existing policy
-        updated_policy = {"Version": existing_policy.get("Version", "2012-10-17"), "Statement": []}
+        updated_policy = {
+            "Version": existing_policy.get("Version", "2012-10-17"),
+            "Statement": [],
+        }
 
         statements = existing_policy.get("Statement", [])
         assume_role_statement_found = False
@@ -565,11 +617,18 @@ class PutUserAction(BaseAction):
             else:
                 # Keep other statements unchanged
                 updated_policy["Statement"].append(statement)
-                log.debug("Preserved non-AssumeRole statement: {}", statement.get("Effect", "Unknown"))
+                log.debug(
+                    "Preserved non-AssumeRole statement: {}",
+                    statement.get("Effect", "Unknown"),
+                )
 
         # If no sts:AssumeRole statement was found, add one
         if not assume_role_statement_found:
-            new_statement = {"Effect": "Allow", "Action": "sts:AssumeRole", "Resource": sorted(list(new_role_arns))}
+            new_statement = {
+                "Effect": "Allow",
+                "Action": "sts:AssumeRole",
+                "Resource": sorted(list(new_role_arns)),
+            }
             updated_policy["Statement"].append(new_statement)
             log.debug("Added new sts:AssumeRole statement")
 

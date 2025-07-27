@@ -64,7 +64,12 @@ def test_put_user(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_sessi
         from botocore.exceptions import ClientError
 
         mock_client.get_user.side_effect = ClientError(
-            error_response={"Error": {"Code": "NoSuchEntity", "Message": "The user with name My Name cannot be found."}},
+            error_response={
+                "Error": {
+                    "Code": "NoSuchEntity",
+                    "Message": "The user with name My Name cannot be found.",
+                }
+            },
             operation_name="GetUser",
         )
 
@@ -81,13 +86,21 @@ def test_put_user(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_sessi
 
         # Mock no existing policy initially
         mock_client.get_user_policy.side_effect = ClientError(
-            error_response={"Error": {"Code": "NoSuchEntity", "Message": "The user policy does not exist."}},
+            error_response={
+                "Error": {
+                    "Code": "NoSuchEntity",
+                    "Message": "The user policy does not exist.",
+                }
+            },
             operation_name="GetUserPolicy",
         )
 
         # Mock successful policy attachment
         mock_client.put_user_policy.return_value = {
-            "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
+            "ResponseMetadata": {
+                "RequestId": "12345678-1234-1234-1234-123456789012",
+                "HTTPStatusCode": 200,
+            }
         }
 
         mock_session.client.return_value = mock_client

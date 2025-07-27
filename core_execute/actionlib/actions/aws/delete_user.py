@@ -186,11 +186,17 @@ class DeleteUserAction(BaseAction):
         """
         log.trace("Resolving DeleteUserAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
 
         for i, user_name in enumerate(self.params.user_names):
-            self.params.user_names[i] = self.renderer.render_string(user_name, self.context)
+            self.params.user_names[i] = self.renderer.render_string(
+                user_name, self.context
+            )
 
         log.trace("DeleteUserAction resolved")
 
@@ -207,8 +213,12 @@ class DeleteUserAction(BaseAction):
 
         # Validate required parameters
         if not self.params.user_names:
-            self.set_failed("UserNames parameter is required and must contain at least one user")
-            log.error("UserNames parameter is required and must contain at least one user")
+            self.set_failed(
+                "UserNames parameter is required and must contain at least one user"
+            )
+            log.error(
+                "UserNames parameter is required and must contain at least one user"
+            )
             return
 
         # Set initial state information
@@ -250,7 +260,9 @@ class DeleteUserAction(BaseAction):
 
                 if not user_exists:
                     log.warning("User '{}' does not exist, skipping", user_name)
-                    skipped_users.append({"UserName": user_name, "Reason": "User does not exist"})
+                    skipped_users.append(
+                        {"UserName": user_name, "Reason": "User does not exist"}
+                    )
                     continue
 
                 # Delete user and all associated resources
@@ -263,12 +275,29 @@ class DeleteUserAction(BaseAction):
                 error_code = e.response["Error"]["Code"]
                 error_message = e.response["Error"]["Message"]
 
-                log.error("Failed to delete user '{}': {} - {}", user_name, error_code, error_message)
-                failed_users.append({"UserName": user_name, "ErrorCode": error_code, "ErrorMessage": error_message})
+                log.error(
+                    "Failed to delete user '{}': {} - {}",
+                    user_name,
+                    error_code,
+                    error_message,
+                )
+                failed_users.append(
+                    {
+                        "UserName": user_name,
+                        "ErrorCode": error_code,
+                        "ErrorMessage": error_message,
+                    }
+                )
 
             except Exception as e:
                 log.error("Unexpected error deleting user '{}': {}", user_name, e)
-                failed_users.append({"UserName": user_name, "ErrorCode": "UnexpectedError", "ErrorMessage": str(e)})
+                failed_users.append(
+                    {
+                        "UserName": user_name,
+                        "ErrorCode": "UnexpectedError",
+                        "ErrorMessage": str(e),
+                    }
+                )
 
         # Set completion state
         self.set_state("DeletionCompleted", True)
@@ -287,13 +316,17 @@ class DeleteUserAction(BaseAction):
         if failed_users:
             self.set_state("DeletionResult", "PARTIAL_FAILURE")
             self.set_output("DeletionResult", "PARTIAL_FAILURE")
-            self.set_failed(f"Failed to delete {len(failed_users)} out of {len(self.params.user_names)} users")
+            self.set_failed(
+                f"Failed to delete {len(failed_users)} out of {len(self.params.user_names)} users"
+            )
         else:
             self.set_state("DeletionResult", "SUCCESS")
             self.set_output("DeletionResult", "SUCCESS")
 
             if skipped_users and not deleted_users:
-                self.set_complete(f"All {len(skipped_users)} users were already deleted or did not exist")
+                self.set_complete(
+                    f"All {len(skipped_users)} users were already deleted or did not exist"
+                )
             else:
                 self.set_complete(
                     f"Successfully processed {len(self.params.user_names)} users: {len(deleted_users)} deleted, {len(skipped_users)} skipped"
@@ -324,11 +357,16 @@ class DeleteUserAction(BaseAction):
         log.trace("Unexecuting DeleteUserAction")
 
         # User deletion cannot be undone
-        log.warning("User deletion cannot be rolled back - deleted users cannot be restored")
+        log.warning(
+            "User deletion cannot be rolled back - deleted users cannot be restored"
+        )
 
         deleted_users = self.get_state("DeletedUsers", [])
         if deleted_users:
-            log.warning("The following users were deleted and cannot be restored: {}", deleted_users)
+            log.warning(
+                "The following users were deleted and cannot be restored: {}",
+                deleted_users,
+            )
 
         self.set_state("RollbackAttempted", True)
         self.set_state("RollbackResult", "NOT_POSSIBLE")
@@ -347,7 +385,9 @@ class DeleteUserAction(BaseAction):
         log.trace("Cancelling DeleteUserAction")
 
         # User deletion is immediate and cannot be cancelled
-        self.set_complete("User deletion operations are immediate and cannot be cancelled")
+        self.set_complete(
+            "User deletion operations are immediate and cannot be cancelled"
+        )
 
         log.trace("DeleteUserAction cancellation completed")
 
@@ -388,20 +428,28 @@ class DeleteUserAction(BaseAction):
         try:
             response = iam_client.list_signing_certificates(UserName=user_name)
             for certificate in response["Certificates"]:
-                log.debug("Deleting signing certificate '{}'", certificate["CertificateId"])
+                log.debug(
+                    "Deleting signing certificate '{}'", certificate["CertificateId"]
+                )
                 iam_client.delete_signing_certificate(
                     UserName=user_name,
                     CertificateId=certificate["CertificateId"],
                 )
         except ClientError as e:
-            log.warning("Failed to delete signing certificates for user '{}': {}", user_name, e)
+            log.warning(
+                "Failed to delete signing certificates for user '{}': {}", user_name, e
+            )
 
         # 2. Remove user from groups
         try:
             response = iam_client.list_groups_for_user(UserName=user_name)
             for group in response["Groups"]:
-                log.debug("Removing user '{}' from group '{}'", user_name, group["GroupName"])
-                iam_client.remove_user_from_group(UserName=user_name, GroupName=group["GroupName"])
+                log.debug(
+                    "Removing user '{}' from group '{}'", user_name, group["GroupName"]
+                )
+                iam_client.remove_user_from_group(
+                    UserName=user_name, GroupName=group["GroupName"]
+                )
         except ClientError as e:
             log.warning("Failed to remove user '{}' from groups: {}", user_name, e)
 
@@ -409,26 +457,46 @@ class DeleteUserAction(BaseAction):
         try:
             response = iam_client.list_user_policies(UserName=user_name)
             for policy_name in response["PolicyNames"]:
-                log.debug("Deleting inline policy '{}' from user '{}'", policy_name, user_name)
-                iam_client.delete_user_policy(UserName=user_name, PolicyName=policy_name)
+                log.debug(
+                    "Deleting inline policy '{}' from user '{}'", policy_name, user_name
+                )
+                iam_client.delete_user_policy(
+                    UserName=user_name, PolicyName=policy_name
+                )
         except ClientError as e:
-            log.warning("Failed to delete inline policies for user '{}': {}", user_name, e)
+            log.warning(
+                "Failed to delete inline policies for user '{}': {}", user_name, e
+            )
 
         # 4. Detach managed user policies
         try:
             response = iam_client.list_attached_user_policies(UserName=user_name)
             for policy in response["AttachedPolicies"]:
-                log.debug("Detaching managed policy '{}' from user '{}'", policy["PolicyArn"], user_name)
-                iam_client.detach_user_policy(UserName=user_name, PolicyArn=policy["PolicyArn"])
+                log.debug(
+                    "Detaching managed policy '{}' from user '{}'",
+                    policy["PolicyArn"],
+                    user_name,
+                )
+                iam_client.detach_user_policy(
+                    UserName=user_name, PolicyArn=policy["PolicyArn"]
+                )
         except ClientError as e:
-            log.warning("Failed to detach managed policies for user '{}': {}", user_name, e)
+            log.warning(
+                "Failed to detach managed policies for user '{}': {}", user_name, e
+            )
 
         # 5. Delete access keys
         try:
             response = iam_client.list_access_keys(UserName=user_name)
             for access_key in response["AccessKeyMetadata"]:
-                log.debug("Deleting access key '{}' for user '{}'", access_key["AccessKeyId"], user_name)
-                iam_client.delete_access_key(UserName=user_name, AccessKeyId=access_key["AccessKeyId"])
+                log.debug(
+                    "Deleting access key '{}' for user '{}'",
+                    access_key["AccessKeyId"],
+                    user_name,
+                )
+                iam_client.delete_access_key(
+                    UserName=user_name, AccessKeyId=access_key["AccessKeyId"]
+                )
         except ClientError as e:
             log.warning("Failed to delete access keys for user '{}': {}", user_name, e)
 
@@ -440,38 +508,65 @@ class DeleteUserAction(BaseAction):
             if e.response["Error"]["Code"] == "NoSuchEntity":
                 log.debug("User '{}' has no login profile", user_name)
             else:
-                log.warning("Failed to delete login profile for user '{}': {}", user_name, e)
+                log.warning(
+                    "Failed to delete login profile for user '{}': {}", user_name, e
+                )
 
         # 7. Delete MFA devices
         try:
             response = iam_client.list_mfa_devices(UserName=user_name)
             for device in response["MFADevices"]:
-                log.debug("Deactivating MFA device '{}' for user '{}'", device["SerialNumber"], user_name)
-                iam_client.deactivate_mfa_device(UserName=user_name, SerialNumber=device["SerialNumber"])
+                log.debug(
+                    "Deactivating MFA device '{}' for user '{}'",
+                    device["SerialNumber"],
+                    user_name,
+                )
+                iam_client.deactivate_mfa_device(
+                    UserName=user_name, SerialNumber=device["SerialNumber"]
+                )
         except ClientError as e:
-            log.warning("Failed to deactivate MFA devices for user '{}': {}", user_name, e)
+            log.warning(
+                "Failed to deactivate MFA devices for user '{}': {}", user_name, e
+            )
 
         # 8. Delete SSH public keys
         try:
             response = iam_client.list_ssh_public_keys(UserName=user_name)
             for key in response["SSHPublicKeys"]:
-                log.debug("Deleting SSH public key '{}' for user '{}'", key["SSHPublicKeyId"], user_name)
-                iam_client.delete_ssh_public_key(UserName=user_name, SSHPublicKeyId=key["SSHPublicKeyId"])
+                log.debug(
+                    "Deleting SSH public key '{}' for user '{}'",
+                    key["SSHPublicKeyId"],
+                    user_name,
+                )
+                iam_client.delete_ssh_public_key(
+                    UserName=user_name, SSHPublicKeyId=key["SSHPublicKeyId"]
+                )
         except ClientError as e:
-            log.warning("Failed to delete SSH public keys for user '{}': {}", user_name, e)
+            log.warning(
+                "Failed to delete SSH public keys for user '{}': {}", user_name, e
+            )
 
         # 9. Delete service-specific credentials
         try:
             response = iam_client.list_service_specific_credentials(UserName=user_name)
             for credential in response["ServiceSpecificCredentials"]:
                 log.debug(
-                    "Deleting service-specific credential '{}' for user '{}'", credential["ServiceSpecificCredentialId"], user_name
+                    "Deleting service-specific credential '{}' for user '{}'",
+                    credential["ServiceSpecificCredentialId"],
+                    user_name,
                 )
                 iam_client.delete_service_specific_credential(
-                    UserName=user_name, ServiceSpecificCredentialId=credential["ServiceSpecificCredentialId"]
+                    UserName=user_name,
+                    ServiceSpecificCredentialId=credential[
+                        "ServiceSpecificCredentialId"
+                    ],
                 )
         except ClientError as e:
-            log.warning("Failed to delete service-specific credentials for user '{}': {}", user_name, e)
+            log.warning(
+                "Failed to delete service-specific credentials for user '{}': {}",
+                user_name,
+                e,
+            )
 
         # 10. Finally, delete the user
         log.debug("Deleting IAM user '{}'", user_name)

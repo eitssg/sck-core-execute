@@ -18,10 +18,20 @@ class DeleteChangeSetActionParams(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
-    account: str = Field(..., alias="Account", description="The account where the action is located")
-    region: str = Field(..., alias="Region", description="The region where the action is located")
-    stack_name: str = Field(..., alias="StackName", description="The name of the stack containing the change set")
-    change_set_name: str = Field(..., alias="ChangeSetName", description="The name of the change set to delete")
+    account: str = Field(
+        ..., alias="Account", description="The account where the action is located"
+    )
+    region: str = Field(
+        ..., alias="Region", description="The region where the action is located"
+    )
+    stack_name: str = Field(
+        ...,
+        alias="StackName",
+        description="The name of the stack containing the change set",
+    )
+    change_set_name: str = Field(
+        ..., alias="ChangeSetName", description="The name of the change set to delete"
+    )
 
 
 class DeleteChangeSetActionSpec(ActionSpec):
@@ -104,10 +114,18 @@ class DeleteChangeSetAction(BaseAction):
         """
         log.trace("Resolving DeleteChangeSetAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
-        self.params.change_set_name = self.renderer.render_string(self.params.change_set_name, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.stack_name = self.renderer.render_string(
+            self.params.stack_name, self.context
+        )
+        self.params.change_set_name = self.renderer.render_string(
+            self.params.change_set_name, self.context
+        )
 
         log.trace("DeleteChangeSetAction resolved")
 
@@ -160,13 +178,20 @@ class DeleteChangeSetAction(BaseAction):
         # Check if change set exists first
         change_set_exists = False
         try:
-            response = cfn_client.describe_change_set(StackName=self.params.stack_name, ChangeSetName=self.params.change_set_name)
+            response = cfn_client.describe_change_set(
+                StackName=self.params.stack_name,
+                ChangeSetName=self.params.change_set_name,
+            )
 
             change_set_exists = True
             change_set_status = response.get("Status", "UNKNOWN")
             change_set_arn = response.get("Id", "")
 
-            log.debug("Change set '{}' exists with status: {}", self.params.change_set_name, change_set_status)
+            log.debug(
+                "Change set '{}' exists with status: {}",
+                self.params.change_set_name,
+                change_set_status,
+            )
 
             # Store change set information
             self.set_state("ChangeSetExists", True)
@@ -178,16 +203,33 @@ class DeleteChangeSetAction(BaseAction):
 
             if error_code == "ChangeSetNotFoundException":
                 change_set_exists = False
-                log.debug("Change set '{}' does not exist for stack '{}'", self.params.change_set_name, self.params.stack_name)
+                log.debug(
+                    "Change set '{}' does not exist for stack '{}'",
+                    self.params.change_set_name,
+                    self.params.stack_name,
+                )
             else:
                 error_message = e.response["Error"]["Message"]
-                log.error("Error checking change set '{}': {} - {}", self.params.change_set_name, error_code, error_message)
-                self.set_failed(f"Failed to check change set '{self.params.change_set_name}': {error_message}")
+                log.error(
+                    "Error checking change set '{}': {} - {}",
+                    self.params.change_set_name,
+                    error_code,
+                    error_message,
+                )
+                self.set_failed(
+                    f"Failed to check change set '{self.params.change_set_name}': {error_message}"
+                )
                 return
 
         except Exception as e:
-            log.error("Unexpected error checking change set '{}': {}", self.params.change_set_name, e)
-            self.set_failed(f"Unexpected error checking change set '{self.params.change_set_name}': {e}")
+            log.error(
+                "Unexpected error checking change set '{}': {}",
+                self.params.change_set_name,
+                e,
+            )
+            self.set_failed(
+                f"Unexpected error checking change set '{self.params.change_set_name}': {e}"
+            )
             return
 
         self.set_state("ChangeSetExists", change_set_exists)
@@ -195,9 +237,16 @@ class DeleteChangeSetAction(BaseAction):
         # Perform the deletion
         if change_set_exists:
             try:
-                log.info("Deleting change set '{}' from stack '{}'", self.params.change_set_name, self.params.stack_name)
+                log.info(
+                    "Deleting change set '{}' from stack '{}'",
+                    self.params.change_set_name,
+                    self.params.stack_name,
+                )
 
-                cfn_client.delete_change_set(StackName=self.params.stack_name, ChangeSetName=self.params.change_set_name)
+                cfn_client.delete_change_set(
+                    StackName=self.params.stack_name,
+                    ChangeSetName=self.params.change_set_name,
+                )
 
                 # Set successful deletion state
                 self.set_state("DeletionCompleted", True)
@@ -212,7 +261,9 @@ class DeleteChangeSetAction(BaseAction):
                     f"Change set '{self.params.change_set_name}' deleted successfully from stack '{self.params.stack_name}'"
                 )
                 log.info(
-                    "Change set '{}' deleted successfully from stack '{}'", self.params.change_set_name, self.params.stack_name
+                    "Change set '{}' deleted successfully from stack '{}'",
+                    self.params.change_set_name,
+                    self.params.stack_name,
                 )
 
             except ClientError as e:
@@ -222,7 +273,9 @@ class DeleteChangeSetAction(BaseAction):
                 if error_code == "ChangeSetNotFoundException":
                     # Change set was already deleted (race condition)
                     log.info(
-                        "Change set '{}' was already deleted from stack '{}'", self.params.change_set_name, self.params.stack_name
+                        "Change set '{}' was already deleted from stack '{}'",
+                        self.params.change_set_name,
+                        self.params.stack_name,
                     )
                     self.set_state("DeletionCompleted", True)
                     self.set_state("CompletionTime", util.get_current_timestamp())
@@ -235,16 +288,29 @@ class DeleteChangeSetAction(BaseAction):
                         f"Change set '{self.params.change_set_name}' was already deleted from stack '{self.params.stack_name}'"
                     )
                 else:
-                    log.error("Error deleting change set '{}': {} - {}", self.params.change_set_name, error_code, error_message)
+                    log.error(
+                        "Error deleting change set '{}': {} - {}",
+                        self.params.change_set_name,
+                        error_code,
+                        error_message,
+                    )
                     self.set_state("DeletionResult", "FAILED")
                     self.set_state("FailureReason", f"{error_code}: {error_message}")
-                    self.set_failed(f"Failed to delete change set '{self.params.change_set_name}': {error_message}")
+                    self.set_failed(
+                        f"Failed to delete change set '{self.params.change_set_name}': {error_message}"
+                    )
 
             except Exception as e:
-                log.error("Unexpected error deleting change set '{}': {}", self.params.change_set_name, e)
+                log.error(
+                    "Unexpected error deleting change set '{}': {}",
+                    self.params.change_set_name,
+                    e,
+                )
                 self.set_state("DeletionResult", "FAILED")
                 self.set_state("FailureReason", str(e))
-                self.set_failed(f"Unexpected error deleting change set '{self.params.change_set_name}': {e}")
+                self.set_failed(
+                    f"Unexpected error deleting change set '{self.params.change_set_name}': {e}"
+                )
         else:
             # Change set doesn't exist - treat as successful deletion
             log.info(
@@ -275,7 +341,9 @@ class DeleteChangeSetAction(BaseAction):
         log.trace("DeleteChangeSetAction check")
 
         # Change set deletion is synchronous, so this shouldn't be called
-        self.set_failed("Internal error - _check() should not have been called for change set deletion")
+        self.set_failed(
+            "Internal error - _check() should not have been called for change set deletion"
+        )
 
     def _unexecute(self):
         """
@@ -288,11 +356,14 @@ class DeleteChangeSetAction(BaseAction):
         log.trace("Unexecuting DeleteChangeSetAction")
 
         log.info(
-            "Change set deletion cannot be rolled back - change set '{}' would need to be recreated", self.params.change_set_name
+            "Change set deletion cannot be rolled back - change set '{}' would need to be recreated",
+            self.params.change_set_name,
         )
 
         self.set_state("RollbackResult", "NOT_POSSIBLE")
-        self.set_complete(f"Change set deletion cannot be rolled back - '{self.params.change_set_name}' would need to be recreated")
+        self.set_complete(
+            f"Change set deletion cannot be rolled back - '{self.params.change_set_name}' would need to be recreated"
+        )
 
         log.trace("DeleteChangeSetAction unexecution completed")
 

@@ -161,9 +161,15 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         """
         log.trace("Resolving CreateCloudFrontInvalidationAction")
 
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.distribution_id = self.renderer.render_string(self.params.distribution_id, self.context)
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.distribution_id = self.renderer.render_string(
+            self.params.distribution_id, self.context
+        )
 
         # Render each path in the paths list
         rendered_paths = []
@@ -236,7 +242,11 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         invalidation = response["Invalidation"]
         invalidation_id = invalidation["Id"]
         invalidation_status = invalidation["Status"]
-        creation_time = invalidation["CreateTime"].isoformat() if invalidation.get("CreateTime") else None
+        creation_time = (
+            invalidation["CreateTime"].isoformat()
+            if invalidation.get("CreateTime")
+            else None
+        )
 
         # Set comprehensive state outputs
         self.set_state("InvalidationId", invalidation_id)
@@ -280,7 +290,9 @@ class CreateCloudFrontInvalidationAction(BaseAction):
             return
 
         try:
-            response = cloudfront_client.get_invalidation(DistributionId=self.params.distribution_id, Id=invalidation_id)
+            response = cloudfront_client.get_invalidation(
+                DistributionId=self.params.distribution_id, Id=invalidation_id
+            )
         except Exception as e:
             log.error("Failed to get invalidation status: {}", e)
             self.set_failed(f"Failed to get invalidation status: {e}")

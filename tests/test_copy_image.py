@@ -7,7 +7,10 @@ from unittest.mock import MagicMock
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.copy_image import CopyImageActionSpec, CopyImageActionParams
+from core_execute.actionlib.actions.aws.copy_image import (
+    CopyImageActionSpec,
+    CopyImageActionParams,
+)
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
@@ -61,7 +64,9 @@ def deploy_spec():
     return DeploySpec(**deploy_spec)
 
 
-def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_copy_image_action(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
 
     try:
 
@@ -79,7 +84,12 @@ def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, m
                         "BlockDeviceMappings": [
                             {
                                 "DeviceName": "/dev/sda1",
-                                "Ebs": {"SnapshotId": "snap-source123", "VolumeSize": 8, "VolumeType": "gp3", "Encrypted": False},
+                                "Ebs": {
+                                    "SnapshotId": "snap-source123",
+                                    "VolumeSize": 8,
+                                    "VolumeType": "gp3",
+                                    "Encrypted": False,
+                                },
                             }
                         ],
                     }
@@ -100,11 +110,21 @@ def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, m
                         "BlockDeviceMappings": [
                             {
                                 "DeviceName": "/dev/sda1",
-                                "Ebs": {"SnapshotId": "snap-12345678", "VolumeSize": 8, "VolumeType": "gp3", "Encrypted": True},
+                                "Ebs": {
+                                    "SnapshotId": "snap-12345678",
+                                    "VolumeSize": 8,
+                                    "VolumeType": "gp3",
+                                    "Encrypted": True,
+                                },
                             },
                             {
                                 "DeviceName": "/dev/sdb",
-                                "Ebs": {"SnapshotId": "snap-87654321", "VolumeSize": 20, "VolumeType": "gp3", "Encrypted": True},
+                                "Ebs": {
+                                    "SnapshotId": "snap-87654321",
+                                    "VolumeSize": 20,
+                                    "VolumeType": "gp3",
+                                    "Encrypted": True,
+                                },
                             },
                         ],
                     }
@@ -138,7 +158,9 @@ def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, m
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
+        assert (
+            task_payload.flow_control == "success"
+        ), "Expected flow_control to be 'success'"
 
         # Validate that create_tags was called for both image and snapshots
         expected_calls = [

@@ -58,7 +58,11 @@ def timeout_imminent(context: Any | None = None) -> bool:
         elapsed_time_ms = int((current_time - __bootup_time__) * 1000)
         remaining_time_in_millis = __max_runtime__ - elapsed_time_ms
 
-        log.trace("Local mode - elapsed: {} ms, remaining: {} ms", elapsed_time_ms, remaining_time_in_millis)
+        log.trace(
+            "Local mode - elapsed: {} ms, remaining: {} ms",
+            elapsed_time_ms,
+            remaining_time_in_millis,
+        )
 
         # Ensure we don't return negative values
         if remaining_time_in_millis < 0:
@@ -68,7 +72,11 @@ def timeout_imminent(context: Any | None = None) -> bool:
     is_imminent = remaining_time_in_millis < timeout_threshold_ms
 
     if is_imminent:
-        log.debug("Timeout imminent: {} ms remaining (threshold: {} ms)", remaining_time_in_millis, timeout_threshold_ms)
+        log.debug(
+            "Timeout imminent: {} ms remaining (threshold: {} ms)",
+            remaining_time_in_millis,
+            timeout_threshold_ms,
+        )
 
     return is_imminent
 
@@ -135,7 +143,11 @@ def __get_next_status(action_helper: Helper) -> FlowControl:
         # Execute executing actions
         return FlowControl.EXECUTE
 
-    elif len(runnable_actions) == 0 and len(running_actions) == 0 and len(pending_actions) > 0:
+    elif (
+        len(runnable_actions) == 0
+        and len(running_actions) == 0
+        and len(pending_actions) > 0
+    ):
         # No runnable or running actions, but still have actions pending - pending actions will never be runnable
         log.error(
             "Found {}",
@@ -181,7 +193,11 @@ def run_state_machine(action_helper: Helper, context: Any | None) -> FlowControl
     # First, check if there are any failed actions - fail fast
     failed_actions = action_helper.failed_actions()
     if len(failed_actions) > 0:
-        log.error("Found {} failed actions: {}", len(failed_actions), [a.name for a in failed_actions])
+        log.error(
+            "Found {} failed actions: {}",
+            len(failed_actions),
+            [a.name for a in failed_actions],
+        )
         return FlowControl.FAILURE
 
     # Track progress for logging
@@ -244,7 +260,11 @@ def run_state_machine(action_helper: Helper, context: Any | None) -> FlowControl
             log.error("Error executing action {}: {}", action.name, e)
             return FlowControl.FAILURE
 
-    log.debug("Processed {} actions ({} executed) in this iteration", actions_processed, actions_executed)
+    log.debug(
+        "Processed {} actions ({} executed) in this iteration",
+        actions_processed,
+        actions_executed,
+    )
 
     # Determine next state based on current action states
     next_state = __get_next_status(action_helper)
@@ -305,8 +325,15 @@ def load_actions(task_payload: TaskPayload) -> list[ActionSpec]:
     # Load actions and create an action helper object
     log.trace("Loading actions")
 
-    if task_payload.package and task_payload.package.deployspec and task_payload.package.deployspec.actions:
-        log.debug("Using {} actions from package", len(task_payload.package.deployspec.actions))
+    if (
+        task_payload.package
+        and task_payload.package.deployspec
+        and task_payload.package.deployspec.actions
+    ):
+        log.debug(
+            "Using {} actions from package",
+            len(task_payload.package.deployspec.actions),
+        )
         return task_payload.package.deployspec.actions
 
     actions_details = task_payload.actions
@@ -322,18 +349,30 @@ def load_actions(task_payload: TaskPayload) -> list[ActionSpec]:
         s3_client = MagicS3Client.get_client(Region=bucket_region)
 
         actions_fileobj = io.BytesIO()
-        download_details: dict = s3_client.download_fileobj(Bucket=bucket_name, Key=actions_details.key, Fileobj=actions_fileobj)
+        download_details: dict = s3_client.download_fileobj(
+            Bucket=bucket_name, Key=actions_details.key, Fileobj=actions_fileobj
+        )
 
         content_type = download_details.get("ContentType", "application/x-yaml")
         version_id = download_details.get("VersionId", None)
 
         log.debug(
             "Actions download successful",
-            details={"bucket": bucket_name, "key": actions_details.key, "version_id": version_id, "content_type": content_type},
+            details={
+                "bucket": bucket_name,
+                "key": actions_details.key,
+                "version_id": version_id,
+                "content_type": content_type,
+            },
         )
 
     except Exception as e:
-        log.error("Failed to download actions from S3 bucket {} key {}: {}", bucket_name, actions_details.key, e)
+        log.error(
+            "Failed to download actions from S3 bucket {} key {}: {}",
+            bucket_name,
+            actions_details.key,
+            e,
+        )
         raise Exception(f"Failed to load actions from S3: {str(e)}") from e
 
     try:
@@ -360,7 +399,9 @@ def load_actions(task_payload: TaskPayload) -> list[ActionSpec]:
         return actions
 
     except Exception as e:
-        log.error("Failed to parse actions data with content type {}: {}", content_type, e)
+        log.error(
+            "Failed to parse actions data with content type {}: {}", content_type, e
+        )
         raise Exception(f"Failed to parse actions data: {str(e)}") from e
 
 
@@ -411,7 +452,9 @@ def save_actions(task_payload: TaskPayload, specs: list[ActionSpec]) -> None:
         raise Exception(f"Failed to serialize actions data: {str(e)}") from e
 
     try:
-        s3_client = MagicS3Client.get_client(Region=actions_details.bucket_region, DataPath=actions_details.data_path)
+        s3_client = MagicS3Client.get_client(
+            Region=actions_details.bucket_region, DataPath=actions_details.data_path
+        )
 
         response = s3_client.put_object(
             Bucket=actions_details.bucket_name,
@@ -428,7 +471,12 @@ def save_actions(task_payload: TaskPayload, specs: list[ActionSpec]) -> None:
         log.trace("Actions saved successfully to S3")
 
     except Exception as e:
-        log.error("Failed to save actions to S3 bucket {} key {}: {}", actions_details.bucket_name, actions_details.key, e)
+        log.error(
+            "Failed to save actions to S3 bucket {} key {}: {}",
+            actions_details.bucket_name,
+            actions_details.key,
+            e,
+        )
         raise Exception(f"Failed to save actions to S3: {str(e)}") from e
 
     log.trace("Exit Save actions")
@@ -528,7 +576,9 @@ def load_state(task_payload: TaskPayload) -> dict:
         return state
 
     except Exception as e:
-        log.error("Failed to parse state data with content type {}: {}", content_type, e)
+        log.error(
+            "Failed to parse state data with content type {}: {}", content_type, e
+        )
         raise Exception(f"Failed to parse state data: {str(e)}") from e
 
 
@@ -569,9 +619,13 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
         elif util.is_json_mimetype(content_type):
             result_data = util.to_json(state)
         else:
-            raise ValueError(f"Unsupported content type for state serialization: {content_type}")
+            raise ValueError(
+                f"Unsupported content type for state serialization: {content_type}"
+            )
     except Exception as e:
-        log.error("Failed to serialize state data with content type {}: {}", content_type, e)
+        log.error(
+            "Failed to serialize state data with content type {}: {}", content_type, e
+        )
         raise Exception(f"Failed to serialize state data: {str(e)}") from e
 
     log.info("Save state to {}", state_details.key)
@@ -594,7 +648,12 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
         log.trace("State saved successfully to S3")
 
     except Exception as e:
-        log.error("Failed to save state to S3 bucket {} key {}: {}", state_details.bucket_name, state_details.key, e)
+        log.error(
+            "Failed to save state to S3 bucket {} key {}: {}",
+            state_details.bucket_name,
+            state_details.key,
+            e,
+        )
         raise Exception(f"Failed to save state to S3: {str(e)}") from e
 
     log.trace("Exit Save state")

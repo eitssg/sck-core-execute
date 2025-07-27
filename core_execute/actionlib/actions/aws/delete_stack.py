@@ -156,9 +156,15 @@ class DeleteStackAction(BaseAction):
         """
         log.trace("Resolving DeleteStackAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.stack_name = self.renderer.render_string(
+            self.params.stack_name, self.context
+        )
 
         log.trace("DeleteStackAction resolved")
 
@@ -213,7 +219,9 @@ class DeleteStackAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "ALREADY_DELETED")
 
-            self.set_complete(f"Stack '{self.params.stack_name}' does not exist, it may have been previously deleted")
+            self.set_complete(
+                f"Stack '{self.params.stack_name}' does not exist, it may have been previously deleted"
+            )
             return
 
         # Stack exists - store initial information
@@ -235,13 +243,21 @@ class DeleteStackAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "ALREADY_DELETED")
 
-            self.set_complete(f"Stack '{self.params.stack_name}' has been previously deleted")
+            self.set_complete(
+                f"Stack '{self.params.stack_name}' has been previously deleted"
+            )
             return
 
         elif "DELETE_IN_PROGRESS" in stack_status:
             # Stack deletion already in progress
-            log.info("Stack '{}' deletion already in progress with status '{}'", self.params.stack_name, stack_status)
-            self.set_running(f"Stack '{self.params.stack_name}' deletion already in progress")
+            log.info(
+                "Stack '{}' deletion already in progress with status '{}'",
+                self.params.stack_name,
+                stack_status,
+            )
+            self.set_running(
+                f"Stack '{self.params.stack_name}' deletion already in progress"
+            )
             return
 
         elif stack_status in self.params.success_statuses:
@@ -253,7 +269,9 @@ class DeleteStackAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "SKIPPED_SUCCESS_STATUS")
 
-            self.set_complete(f"Stack '{self.params.stack_name}' not deleted - status '{stack_status}' is configured as success")
+            self.set_complete(
+                f"Stack '{self.params.stack_name}' not deleted - status '{stack_status}' is configured as success"
+            )
             return
 
         # Initiate stack deletion
@@ -270,7 +288,12 @@ class DeleteStackAction(BaseAction):
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
 
-            log.error("Failed to initiate stack deletion for '{}': {} - {}", self.params.stack_name, error_code, error_message)
+            log.error(
+                "Failed to initiate stack deletion for '{}': {} - {}",
+                self.params.stack_name,
+                error_code,
+                error_message,
+            )
 
             self.set_state("DeletionInitiated", False)
             self.set_state("DeletionError", f"{error_code}: {error_message}")
@@ -341,12 +364,18 @@ class DeleteStackAction(BaseAction):
 
         elif "DELETE_IN_PROGRESS" in stack_status:
             # Deletion still in progress
-            log.debug("Stack '{}' deletion in progress with status '{}'", self.params.stack_name, stack_status)
+            log.debug(
+                "Stack '{}' deletion in progress with status '{}'",
+                self.params.stack_name,
+                stack_status,
+            )
 
             # Track failed resources if available
             self._track_stack_events(cfn_client)
 
-            self.set_running(f"Stack '{self.params.stack_name}' deletion in progress (status: {stack_status})")
+            self.set_running(
+                f"Stack '{self.params.stack_name}' deletion in progress (status: {stack_status})"
+            )
             return
 
         elif stack_status == "DELETE_FAILED":
@@ -379,12 +408,18 @@ class DeleteStackAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "SKIPPED_SUCCESS_STATUS")
 
-            self.set_complete(f"Stack '{self.params.stack_name}' not deleted - status '{stack_status}' is configured as success")
+            self.set_complete(
+                f"Stack '{self.params.stack_name}' not deleted - status '{stack_status}' is configured as success"
+            )
             return
 
         else:
             # Unexpected status
-            log.warning("Stack '{}' has unexpected status '{}'", self.params.stack_name, stack_status)
+            log.warning(
+                "Stack '{}' has unexpected status '{}'",
+                self.params.stack_name,
+                stack_status,
+            )
 
             self.set_state("DeletionCompleted", True)
             self.set_state("CompletionTime", util.get_current_timestamp())
@@ -394,7 +429,9 @@ class DeleteStackAction(BaseAction):
             self.set_output("DeletionResult", "UNEXPECTED_STATUS")
             self.set_output("UnexpectedStatus", stack_status)
 
-            self.set_failed(f"Stack '{self.params.stack_name}' has unexpected status '{stack_status}'")
+            self.set_failed(
+                f"Stack '{self.params.stack_name}' has unexpected status '{stack_status}'"
+            )
             return
 
         log.trace("DeleteStackAction check completed")
@@ -409,7 +446,10 @@ class DeleteStackAction(BaseAction):
         log.trace("Unexecuting DeleteStackAction")
 
         # Stack deletion cannot be undone
-        log.warning("Stack deletion cannot be rolled back - Stack '{}' remains in its current state", self.params.stack_name)
+        log.warning(
+            "Stack deletion cannot be rolled back - Stack '{}' remains in its current state",
+            self.params.stack_name,
+        )
 
         self.set_state("RollbackAttempted", True)
         self.set_state("RollbackResult", "NOT_POSSIBLE")
@@ -462,11 +502,18 @@ class DeleteStackAction(BaseAction):
                 log.debug("Stack '{}' does not exist", self.params.stack_name)
                 return {"exists": False}
             else:
-                log.error("Error describing stack '{}': {} - {}", self.params.stack_name, error_code, error_message)
+                log.error(
+                    "Error describing stack '{}': {} - {}",
+                    self.params.stack_name,
+                    error_code,
+                    error_message,
+                )
                 raise
 
         except Exception as e:
-            log.error("Unexpected error describing stack '{}': {}", self.params.stack_name, e)
+            log.error(
+                "Unexpected error describing stack '{}': {}", self.params.stack_name, e
+            )
             raise
 
     def _track_stack_events(self, cfn_client):
@@ -489,7 +536,11 @@ class DeleteStackAction(BaseAction):
             for event in events[:10]:
                 recent_events.append(
                     {
-                        "Timestamp": event.get("Timestamp").isoformat() if event.get("Timestamp") else None,
+                        "Timestamp": (
+                            event.get("Timestamp").isoformat()
+                            if event.get("Timestamp")
+                            else None
+                        ),
                         "LogicalResourceId": event.get("LogicalResourceId"),
                         "ResourceType": event.get("ResourceType"),
                         "ResourceStatus": event.get("ResourceStatus"),
@@ -530,9 +581,13 @@ class DeleteStackAction(BaseAction):
                             "PhysicalResourceId": resource.get("PhysicalResourceId"),
                             "ResourceType": resource.get("ResourceType"),
                             "ResourceStatus": resource_status,
-                            "ResourceStatusReason": resource.get("ResourceStatusReason"),
+                            "ResourceStatusReason": resource.get(
+                                "ResourceStatusReason"
+                            ),
                             "LastUpdatedTimestamp": (
-                                resource.get("LastUpdatedTimestamp").isoformat() if resource.get("LastUpdatedTimestamp") else None
+                                resource.get("LastUpdatedTimestamp").isoformat()
+                                if resource.get("LastUpdatedTimestamp")
+                                else None
                             ),
                         }
                     )

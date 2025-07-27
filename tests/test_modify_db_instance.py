@@ -5,7 +5,9 @@ from unittest.mock import MagicMock
 import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.rds.modify_db_instance import ModifyDbInstanceActionSpec
+from core_execute.actionlib.actions.aws.rds.modify_db_instance import (
+    ModifyDbInstanceActionSpec,
+)
 
 from core_execute.execute import save_state, save_actions
 
@@ -39,7 +41,11 @@ def minimal_deploy_spec():
     params = {
         "Account": "test-db-account",
         "Region": "us-east-1",
-        "ApiParams": {"DBInstanceIdentifier": "test-db-instance", "DBInstanceClass": "db.t3.small", "ApplyImmediately": True},
+        "ApiParams": {
+            "DBInstanceIdentifier": "test-db-instance",
+            "DBInstanceClass": "db.t3.small",
+            "ApplyImmediately": True,
+        },
     }
     modify_db_instance_action = ModifyDbInstanceActionSpec(**{"params": params})
     return DeploySpec(**{"actions": [modify_db_instance_action]})
@@ -73,7 +79,10 @@ def deploy_spec(task_payload: TaskPayload):
             "PreferredMaintenanceWindow": "sun:04:00-sun:05:00",
             "ApplyImmediately": True,
             "DeletionProtection": False,
-            "Tags": [{"Key": "Environment", "Value": "production"}, {"Key": "Application", "Value": "test-app"}],
+            "Tags": [
+                {"Key": "Environment", "Value": "production"},
+                {"Key": "Application", "Value": "test-app"},
+            ],
         },
     }
 
@@ -82,7 +91,9 @@ def deploy_spec(task_payload: TaskPayload):
     return DeploySpec(**{"actions": [modify_db_instance_action]})
 
 
-def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_lambda_handler(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
 
     try:
 
@@ -94,7 +105,7 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
                 "DBInstanceClass": "db.t3.micro",
                 "PendingModifiedValues": {
                     "AllocatedStorage": 25,
-                    "DBInstanceClass": "db.t3.medium"
+                    "DBInstanceClass": "db.t3.medium",
                 },
             },
             "ResponseMetadata": {"HTTPStatusCode": 200},
@@ -126,7 +137,9 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
         task_payload = TaskPayload(**response)
 
         # Validate the flow control in the task payload
-        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
+        assert (
+            task_payload.flow_control == "success"
+        ), "Expected flow_control to be 'success'"
 
         # Additional checks can be added here as needed
 

@@ -115,7 +115,7 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):
         ), "Expected variable 'Weight' to be set in state"
         assert (
             state["action-system-set-variables-name/Weight"] == 180
-        ), "Expected variable 'Weight' to be 180"   
+        ), "Expected variable 'Weight' to be 180"
 
     except Exception as e:
         print(traceback.format_exc())

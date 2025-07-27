@@ -8,7 +8,10 @@ from botocore.exceptions import ClientError
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.delete_image import DeleteImageActionSpec, DeleteImageActionParams
+from core_execute.actionlib.actions.aws.delete_image import (
+    DeleteImageActionSpec,
+    DeleteImageActionParams,
+)
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
@@ -42,7 +45,13 @@ def deploy_spec():
     This can be used to mock the deployspec in tests.
     Parameters are fore: DeleteImageActionParams
     """
-    spec: dict[str, Any] = {"Params": {"Account": "154798051514", "Region": "ap-southeast-1", "ImageName": "my-image-name"}}
+    spec: dict[str, Any] = {
+        "Params": {
+            "Account": "154798051514",
+            "Region": "ap-southeast-1",
+            "ImageName": "my-image-name",
+        }
+    }
 
     action_spec = DeleteImageActionSpec(**spec)
 
@@ -51,7 +60,9 @@ def deploy_spec():
     return DeploySpec(**deploy_spec)
 
 
-def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_delete_image_action(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
 
     try:
 
@@ -97,19 +108,28 @@ def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
                             },
                         },
                     ],
-                    "Tags": [{"Key": "Name", "Value": "my-image-name"}, {"Key": "Environment", "Value": "production"}],
+                    "Tags": [
+                        {"Key": "Name", "Value": "my-image-name"},
+                        {"Key": "Environment", "Value": "production"},
+                    ],
                 }
             ]
         }
 
         # Mock deregister_image - returns successful deregistration
         mock_client.deregister_image.return_value = {
-            "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
+            "ResponseMetadata": {
+                "RequestId": "12345678-1234-1234-1234-123456789012",
+                "HTTPStatusCode": 200,
+            }
         }
 
         # Mock delete_snapshot - returns successful deletion for both snapshots
         mock_client.delete_snapshot.return_value = {
-            "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
+            "ResponseMetadata": {
+                "RequestId": "12345678-1234-1234-1234-123456789012",
+                "HTTPStatusCode": 200,
+            }
         }
 
         mock_session.client.return_value = mock_client
@@ -127,18 +147,26 @@ def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert (
+            task_payload.flow_control == "success"
+        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
         # Verify EC2 client method calls
-        mock_client.describe_images.assert_called_once_with(Filters=[{"Name": "name", "Values": ["my-image-name"]}])
+        mock_client.describe_images.assert_called_once_with(
+            Filters=[{"Name": "name", "Values": ["my-image-name"]}]
+        )
 
-        mock_client.deregister_image.assert_called_once_with(ImageId="ami-1234567890abcdef0")
+        mock_client.deregister_image.assert_called_once_with(
+            ImageId="ami-1234567890abcdef0"
+        )
 
         # Should be called twice for both snapshots
         assert mock_client.delete_snapshot.call_count == 2
-        snapshot_calls = [call.kwargs for call in mock_client.delete_snapshot.call_args_list]
+        snapshot_calls = [
+            call.kwargs for call in mock_client.delete_snapshot.call_args_list
+        ]
         snapshot_ids = [call["SnapshotId"] for call in snapshot_calls]
         assert "snap-1234567890abcdef0" in snapshot_ids
         assert "snap-0987654321fedcba0" in snapshot_ids
@@ -222,7 +250,9 @@ def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         print(f"📊 Image: {state.get(f'{action_name}/ImageName')}")
         print(f"📊 Image ID: {state.get(f'{action_name}/ImageId')}")
         print(f"📊 Deletion Result: {state.get(f'{action_name}/DeletionResult')}")
-        print(f"📊 Snapshots Deleted: {state.get(f'{action_name}/DeletedSnapshotCount')}")
+        print(
+            f"📊 Snapshots Deleted: {state.get(f'{action_name}/DeletedSnapshotCount')}"
+        )
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -230,7 +260,9 @@ def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         pytest.fail(f"Test failed due to an exception: {e}")
 
 
-def test_delete_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_delete_image_not_found(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     """Test deletion of an image that doesn't exist."""
 
     try:
@@ -253,7 +285,9 @@ def test_delete_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySp
         task_payload = TaskPayload(**result)
 
         # Should still succeed when image doesn't exist
-        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert (
+            task_payload.flow_control == "success"
+        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
@@ -280,7 +314,9 @@ def test_delete_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySp
         pytest.fail(f"Test failed due to an exception: {e}")
 
 
-def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_delete_image_deregistration_error(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     """Test image deregistration failure scenario."""
 
     try:
@@ -300,7 +336,11 @@ def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spe
                     "BlockDeviceMappings": [
                         {
                             "DeviceName": "/dev/sda1",
-                            "Ebs": {"SnapshotId": "snap-1234567890abcdef0", "VolumeSize": 20, "VolumeType": "gp3"},
+                            "Ebs": {
+                                "SnapshotId": "snap-1234567890abcdef0",
+                                "VolumeSize": 20,
+                                "VolumeType": "gp3",
+                            },
                         }
                     ],
                 }
@@ -310,7 +350,10 @@ def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spe
         # Mock deregister_image - fails with access denied
         mock_client.deregister_image.side_effect = ClientError(
             error_response={
-                "Error": {"Code": "UnauthorizedOperation", "Message": "You are not authorized to perform this operation"}
+                "Error": {
+                    "Code": "UnauthorizedOperation",
+                    "Message": "You are not authorized to perform this operation",
+                }
             },
             operation_name="DeregisterImage",
         )
@@ -327,7 +370,9 @@ def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spe
         task_payload = TaskPayload(**result)
 
         # Should fail when deregistration encounters an error
-        assert task_payload.flow_control == "failure", f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
+        assert (
+            task_payload.flow_control == "failure"
+        ), f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
@@ -341,7 +386,10 @@ def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spe
         assert state[f"{action_name}/ImageDeregistrationFailed"] is True
 
         assert f"{action_name}/DeregistrationFailureReason" in state
-        assert "UnauthorizedOperation" in state[f"{action_name}/DeregistrationFailureReason"]
+        assert (
+            "UnauthorizedOperation"
+            in state[f"{action_name}/DeregistrationFailureReason"]
+        )
 
         print("✅ Image deregistration error test passed")
 

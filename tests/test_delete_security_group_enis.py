@@ -46,7 +46,11 @@ def deploy_spec():
     Parameters are fore: DeleteSecurityGroupEnisActionParams
     """
     spec: dict[str, Any] = {
-        "Params": {"Account": "154798051514", "Region": "ap-southeast-1", "SecurityGroupId": "sg-1234567890abcdef0"}
+        "Params": {
+            "Account": "154798051514",
+            "Region": "ap-southeast-1",
+            "SecurityGroupId": "sg-1234567890abcdef0",
+        }
     }
 
     action_spec = DeleteSecurityGroupEnisActionSpec(**spec)
@@ -56,7 +60,9 @@ def deploy_spec():
     return DeploySpec(**deploy_spec)
 
 
-def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_delete_security_group_enis(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
 
     try:
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -149,11 +155,17 @@ def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: Depl
 
         # Mock successful operations
         mock_client.delete_network_interface.return_value = {
-            "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
+            "ResponseMetadata": {
+                "RequestId": "12345678-1234-1234-1234-123456789012",
+                "HTTPStatusCode": 200,
+            }
         }
 
         mock_client.detach_network_interface.return_value = {
-            "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
+            "ResponseMetadata": {
+                "RequestId": "12345678-1234-1234-1234-123456789012",
+                "HTTPStatusCode": 200,
+            }
         }
 
         mock_session.client.return_value = mock_client
@@ -168,14 +180,18 @@ def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: Depl
         task_payload = TaskPayload(**result)
 
         # Should be complete after internal iterations
-        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert (
+            task_payload.flow_control == "success"
+        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
         action_name = "action-aws-deletesecuritygroupenis-name"
 
         # Verify final completion state
         assert state[f"{action_name}/TotalEnisFound"] == 3
-        assert state[f"{action_name}/DeletedEniCount"] == 2  # Both available ENIs deleted
+        assert (
+            state[f"{action_name}/DeletedEniCount"] == 2
+        )  # Both available ENIs deleted
         assert state[f"{action_name}/DetachedEniCount"] == 1  # One ENI was detached
         assert state[f"{action_name}/SkippedEniCount"] == 1  # Hyperplane ENI skipped
         assert state[f"{action_name}/InUseEniCount"] == 0  # No ENIs waiting anymore
@@ -184,17 +200,23 @@ def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: Depl
         assert state[f"{action_name}/StatusCode"] == "complete"
 
         # Verify all EC2 operations were called
-        assert mock_client.describe_network_interfaces.call_count == 2  # Called in _execute and _check
+        assert (
+            mock_client.describe_network_interfaces.call_count == 2
+        )  # Called in _execute and _check
         assert mock_client.delete_network_interface.call_count == 2  # Two ENIs deleted
         assert mock_client.detach_network_interface.call_count == 1  # One ENI detached
 
         # Verify specific operation calls
         delete_calls = mock_client.delete_network_interface.call_args_list
         delete_eni_ids = [call[1]["NetworkInterfaceId"] for call in delete_calls]
-        assert "eni-1234567890abcdef0" in delete_eni_ids  # Available ENI deleted immediately
+        assert (
+            "eni-1234567890abcdef0" in delete_eni_ids
+        )  # Available ENI deleted immediately
         assert "eni-0987654321fedcba0" in delete_eni_ids  # Detached ENI deleted later
 
-        mock_client.detach_network_interface.assert_called_with(AttachmentId="eni-attach-1234567890abcdef0", Force=True)
+        mock_client.detach_network_interface.assert_called_with(
+            AttachmentId="eni-attach-1234567890abcdef0", Force=True
+        )
 
         # Verify final state tracking
         deleted_enis = state[f"{action_name}/DeletedEnis"]
@@ -220,7 +242,9 @@ def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: Depl
         pytest.fail(f"Test failed due to an exception: {e}")
 
 
-def test_delete_security_group_enis_immediate_completion(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_delete_security_group_enis_immediate_completion(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     """Test immediate completion when all ENIs disappear after first iteration"""
 
     try:
@@ -266,14 +290,23 @@ def test_delete_security_group_enis_immediate_completion(task_payload: TaskPaylo
         # Second call: 0 ENIs (AWS cleaned them up)
         second_call_response = {"NetworkInterfaces": []}
 
-        mock_client.describe_network_interfaces.side_effect = [first_call_response, second_call_response]
+        mock_client.describe_network_interfaces.side_effect = [
+            first_call_response,
+            second_call_response,
+        ]
 
         mock_client.delete_network_interface.return_value = {
-            "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
+            "ResponseMetadata": {
+                "RequestId": "12345678-1234-1234-1234-123456789012",
+                "HTTPStatusCode": 200,
+            }
         }
 
         mock_client.detach_network_interface.return_value = {
-            "ResponseMetadata": {"RequestId": "12345678-1234-1234-1234-123456789012", "HTTPStatusCode": 200}
+            "ResponseMetadata": {
+                "RequestId": "12345678-1234-1234-1234-123456789012",
+                "HTTPStatusCode": 200,
+            }
         }
 
         mock_session.client.return_value = mock_client

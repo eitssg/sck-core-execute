@@ -150,9 +150,15 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         """
         log.trace("Resolving DeleteSecurityGroupEnisAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.security_group_id = self.renderer.render_string(self.params.security_group_id, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.security_group_id = self.renderer.render_string(
+            self.params.security_group_id, self.context
+        )
 
         log.trace("DeleteSecurityGroupEnisAction resolved")
 
@@ -184,7 +190,9 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         self.set_output("Region", self.params.region)
         self.set_output("DeletionStarted", True)
 
-        self.set_running(f"Deleting ENIs attached to security group '{self.params.security_group_id}'")
+        self.set_running(
+            f"Deleting ENIs attached to security group '{self.params.security_group_id}'"
+        )
         self._detach_enis()
 
         log.trace("DeleteSecurityGroupEnisAction execution completed")
@@ -213,7 +221,8 @@ class DeleteSecurityGroupEnisAction(BaseAction):
 
         # ENI deletion cannot be undone
         log.warning(
-            "ENI deletion cannot be rolled back - ENIs for security group '{}' remain deleted", self.params.security_group_id
+            "ENI deletion cannot be rolled back - ENIs for security group '{}' remain deleted",
+            self.params.security_group_id,
         )
 
         self.set_state("RollbackAttempted", True)
@@ -244,7 +253,9 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         This method handles the core logic of finding, detaching, and deleting ENIs
         while properly handling different ENI states and error conditions.
         """
-        log.trace("Processing ENIs for security group '{}'", self.params.security_group_id)
+        log.trace(
+            "Processing ENIs for security group '{}'", self.params.security_group_id
+        )
 
         # Obtain an EC2 client
         try:
@@ -260,18 +271,28 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         # Retrieve security group ENIs
         try:
             response = ec2_client.describe_network_interfaces(
-                Filters=[{"Name": "group-id", "Values": [self.params.security_group_id]}]
+                Filters=[
+                    {"Name": "group-id", "Values": [self.params.security_group_id]}
+                ]
             )
             network_interfaces = response["NetworkInterfaces"]
 
-            log.debug("Found {} ENIs attached to security group '{}'", len(network_interfaces), self.params.security_group_id)
+            log.debug(
+                "Found {} ENIs attached to security group '{}'",
+                len(network_interfaces),
+                self.params.security_group_id,
+            )
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
 
             if error_code == "InvalidGroup.NotFound":
-                log.warning("Security group '{}' not found: {}", self.params.security_group_id, error_message)
+                log.warning(
+                    "Security group '{}' not found: {}",
+                    self.params.security_group_id,
+                    error_message,
+                )
                 self.set_state("SecurityGroupExists", False)
                 self.set_state("DeletionCompleted", True)
                 self.set_state("CompletionTime", util.get_current_timestamp())
@@ -280,7 +301,9 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                 self.set_output("DeletionCompleted", True)
                 self.set_output("DeletionResult", "SECURITY_GROUP_NOT_FOUND")
 
-                self.set_complete(f"Security group '{self.params.security_group_id}' not found, no ENIs to delete")
+                self.set_complete(
+                    f"Security group '{self.params.security_group_id}' not found, no ENIs to delete"
+                )
                 return
             else:
                 log.error(
@@ -289,7 +312,9 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                     error_code,
                     error_message,
                 )
-                self.set_failed(f"Failed to describe network interfaces: {error_message}")
+                self.set_failed(
+                    f"Failed to describe network interfaces: {error_message}"
+                )
                 return
 
         except Exception as e:
@@ -333,7 +358,9 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                 self.set_output("DeletionResult", "SUCCESS")
                 self.set_output("ProcessedEniCount", 0)
 
-                self.set_complete(f"No ENIs found attached to security group '{self.params.security_group_id}'")
+                self.set_complete(
+                    f"No ENIs found attached to security group '{self.params.security_group_id}'"
+                )
                 return
             else:
                 # No more ENIs found - all previous ENIs have been processed
@@ -350,7 +377,8 @@ class DeleteSecurityGroupEnisAction(BaseAction):
 
             # Check if this ENI was already processed
             already_processed = any(
-                eni_id == item.get("EniId") for item in (detached_enis + deleted_enis + skipped_enis + failed_enis)
+                eni_id == item.get("EniId")
+                for item in (detached_enis + deleted_enis + skipped_enis + failed_enis)
             )
 
             if already_processed:
@@ -364,27 +392,47 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                 ):
 
                     try:
-                        log.debug("Deleting previously detached ENI '{}' which is now available", eni_id)
+                        log.debug(
+                            "Deleting previously detached ENI '{}' which is now available",
+                            eni_id,
+                        )
                         ec2_client.delete_network_interface(NetworkInterfaceId=eni_id)
 
                         # Move from detached to deleted
                         deleted_enis.append({"EniId": eni_id, "Status": eni_status})
                         in_use_enis.remove(eni_id)  # Remove from in_use tracking
 
-                        log.debug("Successfully deleted previously detached ENI '{}'", eni_id)
+                        log.debug(
+                            "Successfully deleted previously detached ENI '{}'", eni_id
+                        )
 
                     except ClientError as e:
                         error_code = e.response["Error"]["Code"]
                         error_message = e.response["Error"]["Message"]
 
-                        log.error("Error deleting previously detached ENI '{}': {} - {}", eni_id, error_code, error_message)
-                        failed_enis.append({"EniId": eni_id, "Error": f"{error_code}: {error_message}"})
-                        in_use_enis.remove(eni_id)  # Remove from in_use tracking even on failure
+                        log.error(
+                            "Error deleting previously detached ENI '{}': {} - {}",
+                            eni_id,
+                            error_code,
+                            error_message,
+                        )
+                        failed_enis.append(
+                            {"EniId": eni_id, "Error": f"{error_code}: {error_message}"}
+                        )
+                        in_use_enis.remove(
+                            eni_id
+                        )  # Remove from in_use tracking even on failure
 
                     except Exception as e:
-                        log.error("Unexpected error deleting previously detached ENI '{}': {}", eni_id, e)
+                        log.error(
+                            "Unexpected error deleting previously detached ENI '{}': {}",
+                            eni_id,
+                            e,
+                        )
                         failed_enis.append({"EniId": eni_id, "Error": str(e)})
-                        in_use_enis.remove(eni_id)  # Remove from in_use tracking even on failure
+                        in_use_enis.remove(
+                            eni_id
+                        )  # Remove from in_use tracking even on failure
 
                 continue  # Skip to next ENI
 
@@ -396,13 +444,26 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                     instance_owner_id = attachment.get("InstanceOwnerId", "")
 
                     if instance_owner_id == ENI_OWNER_HYPERPLANE:
-                        log.debug("Skipping hyperplane-managed ENI '{}' - AWS will handle detachment", eni_id)
-                        skipped_enis.append({"EniId": eni_id, "Reason": "Hyperplane-managed", "Status": eni_status})
+                        log.debug(
+                            "Skipping hyperplane-managed ENI '{}' - AWS will handle detachment",
+                            eni_id,
+                        )
+                        skipped_enis.append(
+                            {
+                                "EniId": eni_id,
+                                "Reason": "Hyperplane-managed",
+                                "Status": eni_status,
+                            }
+                        )
                     else:
                         # Detach 'in-use' ENIs that are not hyperplane-managed
                         attachment_id = attachment.get("AttachmentId")
                         if attachment_id:
-                            log.debug("Detaching ENI '{}' from security group '{}'", eni_id, self.params.security_group_id)
+                            log.debug(
+                                "Detaching ENI '{}' from security group '{}'",
+                                eni_id,
+                                self.params.security_group_id,
+                            )
 
                             ec2_client.detach_network_interface(
                                 AttachmentId=attachment_id,
@@ -410,14 +471,25 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                             )
 
                             detached_enis.append(
-                                {"EniId": eni_id, "AttachmentId": attachment_id, "InstanceOwnerId": instance_owner_id}
+                                {
+                                    "EniId": eni_id,
+                                    "AttachmentId": attachment_id,
+                                    "InstanceOwnerId": instance_owner_id,
+                                }
                             )
                             in_use_enis.append(eni_id)
 
                             log.debug("Successfully detached ENI '{}'", eni_id)
                         else:
-                            log.warning("ENI '{}' is in-use but has no attachment ID", eni_id)
-                            failed_enis.append({"EniId": eni_id, "Error": "No attachment ID found for in-use ENI"})
+                            log.warning(
+                                "ENI '{}' is in-use but has no attachment ID", eni_id
+                            )
+                            failed_enis.append(
+                                {
+                                    "EniId": eni_id,
+                                    "Error": "No attachment ID found for in-use ENI",
+                                }
+                            )
 
                 elif eni_status == "available":
                     # Delete 'available' ENIs
@@ -430,15 +502,32 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                     log.debug("Successfully deleted ENI '{}'", eni_id)
 
                 else:
-                    log.warning("ENI '{}' has unexpected status '{}', skipping", eni_id, eni_status)
-                    skipped_enis.append({"EniId": eni_id, "Reason": f"Unexpected status: {eni_status}", "Status": eni_status})
+                    log.warning(
+                        "ENI '{}' has unexpected status '{}', skipping",
+                        eni_id,
+                        eni_status,
+                    )
+                    skipped_enis.append(
+                        {
+                            "EniId": eni_id,
+                            "Reason": f"Unexpected status: {eni_status}",
+                            "Status": eni_status,
+                        }
+                    )
 
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 error_message = e.response["Error"]["Message"]
 
-                log.error("Error processing ENI '{}': {} - {}", eni_id, error_code, error_message)
-                failed_enis.append({"EniId": eni_id, "Error": f"{error_code}: {error_message}"})
+                log.error(
+                    "Error processing ENI '{}': {} - {}",
+                    eni_id,
+                    error_code,
+                    error_message,
+                )
+                failed_enis.append(
+                    {"EniId": eni_id, "Error": f"{error_code}: {error_message}"}
+                )
 
             except Exception as e:
                 log.error("Unexpected error processing ENI '{}': {}", eni_id, e)
@@ -460,8 +549,14 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         # Determine if operation is complete
         if in_use_enis:
             # Still have in-use ENIs that were detached, need to wait for them to become available
-            log.debug("Waiting for {} detached ENIs to become available: {}", len(in_use_enis), in_use_enis)
-            self.set_running(f"Waiting for {len(in_use_enis)} detached ENIs to become available for deletion")
+            log.debug(
+                "Waiting for {} detached ENIs to become available: {}",
+                len(in_use_enis),
+                in_use_enis,
+            )
+            self.set_running(
+                f"Waiting for {len(in_use_enis)} detached ENIs to become available for deletion"
+            )
             return
 
         # Operation complete
@@ -478,7 +573,11 @@ class DeleteSecurityGroupEnisAction(BaseAction):
             self.set_output("ProcessedEniCount", total_processed)
             self.set_output("FailedEniCount", len(failed_enis))
 
-            log.warning("Completed ENI deletion with {} failures out of {} total ENIs", len(failed_enis), total_enis)
+            log.warning(
+                "Completed ENI deletion with {} failures out of {} total ENIs",
+                len(failed_enis),
+                total_enis,
+            )
             self.set_complete(
                 f"Processed {total_processed} ENIs with {len(failed_enis)} failures for security group '{self.params.security_group_id}'"
             )
@@ -495,4 +594,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                 f"Successfully processed all {total_processed} ENIs for security group '{self.params.security_group_id}'"
             )
 
-        log.trace("ENI processing completed for security group '{}'", self.params.security_group_id)
+        log.trace(
+            "ENI processing completed for security group '{}'",
+            self.params.security_group_id,
+        )

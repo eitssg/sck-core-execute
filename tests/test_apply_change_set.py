@@ -47,7 +47,12 @@ def deploy_spec():
     Parameters are fore: ApplyChangeSetActionParams
     """
     spec: dict[str, Any] = {
-        "Params": {"Account": "154798051514", "Region": "ap-southeast-1", "StackName": "my-stack", "ChangeSetName": "my-changeset"}
+        "Params": {
+            "Account": "154798051514",
+            "Region": "ap-southeast-1",
+            "StackName": "my-stack",
+            "ChangeSetName": "my-changeset",
+        }
     }
 
     action_spec = ApplyChangeSetActionSpec(**spec)
@@ -57,7 +62,9 @@ def deploy_spec():
     return DeploySpec(**deploy_spec)
 
 
-def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_apply_change_set_action(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
 
     try:
 
@@ -89,7 +96,11 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
                         "Scope": ["Properties"],
                         "Details": [
                             {
-                                "Target": {"Attribute": "Properties", "Name": "InstanceType", "RequiresRecreation": "Never"},
+                                "Target": {
+                                    "Attribute": "Properties",
+                                    "Name": "InstanceType",
+                                    "RequiresRecreation": "Never",
+                                },
                                 "Evaluation": "Static",
                                 "ChangeSource": "DirectModification",
                             }
@@ -112,8 +123,16 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
                     "CreationTime": creation_time,
                     "LastUpdatedTime": creation_time,
                     "Outputs": [
-                        {"OutputKey": "InstanceId", "OutputValue": "i-1234567890abcdef0", "Description": "EC2 Instance ID"},
-                        {"OutputKey": "PublicIP", "OutputValue": "203.0.113.12", "Description": "Public IP address"},
+                        {
+                            "OutputKey": "InstanceId",
+                            "OutputValue": "i-1234567890abcdef0",
+                            "Description": "EC2 Instance ID",
+                        },
+                        {
+                            "OutputKey": "PublicIP",
+                            "OutputValue": "203.0.113.12",
+                            "Description": "Public IP address",
+                        },
                     ],
                 }
             ]
@@ -146,7 +165,9 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
 
         # Mock for error scenarios - change set not found case
         def describe_change_set_side_effect(*args, **kwargs):
-            if "ChangeSetName" in kwargs and "non-existent" in str(kwargs["ChangeSetName"]):
+            if "ChangeSetName" in kwargs and "non-existent" in str(
+                kwargs["ChangeSetName"]
+            ):
                 error_response = {
                     "Error": {
                         "Code": "ChangeSetNotFoundException",
@@ -160,7 +181,10 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
         def describe_stacks_side_effect(*args, **kwargs):
             if "StackName" in kwargs and "non-existent" in str(kwargs["StackName"]):
                 error_response = {
-                    "Error": {"Code": "StackNotFoundException", "Message": f"Stack with id {kwargs['StackName']} does not exist"}
+                    "Error": {
+                        "Code": "StackNotFoundException",
+                        "Message": f"Stack with id {kwargs['StackName']} does not exist",
+                    }
                 }
                 raise ClientError(error_response, "DescribeStacks")
             return mock_client.describe_stacks.return_value
@@ -190,7 +214,9 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert (
+            task_payload.flow_control == "success"
+        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 

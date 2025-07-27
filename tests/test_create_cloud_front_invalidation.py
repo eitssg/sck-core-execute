@@ -62,7 +62,9 @@ def deploy_spec():
     return DeploySpec(**deploy_spec)
 
 
-def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_lambda_handler(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     try:
         mock_cloudfront_client = MagicMock()
 
@@ -100,7 +102,9 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
         # Set the mock session to return our CloudFront client
         mock_session.client.return_value = mock_cloudfront_client
 
-        save_actions(task_payload, deploy_spec.actions)  # Fixed: should be .actions not .action_specs
+        save_actions(
+            task_payload, deploy_spec.actions
+        )  # Fixed: should be .actions not .action_specs
         save_state(task_payload, {})
 
         # Create TaskPayload instance from the payload data
@@ -122,53 +126,84 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
         # Verify the call arguments
         call_args = mock_cloudfront_client.create_invalidation.call_args
         assert call_args[1]["DistributionId"] == "E1234567890ABC"
-        assert call_args[1]["InvalidationBatch"]["Paths"]["Items"] == ["/path/to/invalidate/*"]
+        assert call_args[1]["InvalidationBatch"]["Paths"]["Items"] == [
+            "/path/to/invalidate/*"
+        ]
 
         # Validate state outputs that should be set by the action
         action_name = "action-aws-createcloudfrontinvalidation-name"
 
         # Verify basic distribution and path information
-        assert f"{action_name}/DistributionId" in state, "DistributionId should be in state"
-        assert state[f"{action_name}/DistributionId"] == "E1234567890ABC", "DistributionId should match expected value"
+        assert (
+            f"{action_name}/DistributionId" in state
+        ), "DistributionId should be in state"
+        assert (
+            state[f"{action_name}/DistributionId"] == "E1234567890ABC"
+        ), "DistributionId should match expected value"
 
-        assert f"{action_name}/InvalidationPaths" in state, "InvalidationPaths should be in state"
+        assert (
+            f"{action_name}/InvalidationPaths" in state
+        ), "InvalidationPaths should be in state"
         assert state[f"{action_name}/InvalidationPaths"] == [
             "/path/to/invalidate/*"
         ], "InvalidationPaths should match expected value"
 
         assert f"{action_name}/Region" in state, "Region should be in state"
-        assert state[f"{action_name}/Region"] == "us-east-1", "Region should match expected value"
+        assert (
+            state[f"{action_name}/Region"] == "us-east-1"
+        ), "Region should match expected value"
 
         # Verify invalidation creation results
-        assert f"{action_name}/InvalidationId" in state, "InvalidationId should be in state"
-        assert state[f"{action_name}/InvalidationId"] == "I2J3K4L5M6N7O8P9Q0", "InvalidationId should match mock response"
+        assert (
+            f"{action_name}/InvalidationId" in state
+        ), "InvalidationId should be in state"
+        assert (
+            state[f"{action_name}/InvalidationId"] == "I2J3K4L5M6N7O8P9Q0"
+        ), "InvalidationId should match mock response"
 
-        assert f"{action_name}/InvalidationStatus" in state, "InvalidationStatus should be in state"
-        assert state[f"{action_name}/InvalidationStatus"] in ["InProgress", "Completed"], "InvalidationStatus should be valid"
+        assert (
+            f"{action_name}/InvalidationStatus" in state
+        ), "InvalidationStatus should be in state"
+        assert state[f"{action_name}/InvalidationStatus"] in [
+            "InProgress",
+            "Completed",
+        ], "InvalidationStatus should be valid"
 
-        assert f"{action_name}/InvalidationStarted" in state, "InvalidationStarted should be in state"
-        assert state[f"{action_name}/InvalidationStarted"] is True, "InvalidationStarted should be True"
+        assert (
+            f"{action_name}/InvalidationStarted" in state
+        ), "InvalidationStarted should be in state"
+        assert (
+            state[f"{action_name}/InvalidationStarted"] is True
+        ), "InvalidationStarted should be True"
 
         # Verify timestamp fields exist and are valid
         assert f"{action_name}/CreationTime" in state, "CreationTime should be in state"
         creation_time_str = state[f"{action_name}/CreationTime"]
         assert creation_time_str == create_time, "CreationTime should be in ISO format"
 
-        assert f"{action_name}/CallerReference" in state, "CallerReference should be in state"
+        assert (
+            f"{action_name}/CallerReference" in state
+        ), "CallerReference should be in state"
         caller_reference = state[f"{action_name}/CallerReference"]
         assert caller_reference is not None, "CallerReference should not be None"
         assert isinstance(caller_reference, str), "CallerReference should be a string"
 
         # Verify action completion status
         assert f"{action_name}/StatusCode" in state, "StatusCode should be in state"
-        assert state[f"{action_name}/StatusCode"] == "complete", "Action should be completed"
+        assert (
+            state[f"{action_name}/StatusCode"] == "complete"
+        ), "Action should be completed"
 
         assert f"{action_name}/StatusReason" in state, "StatusReason should be in state"
         status_reason = state[f"{action_name}/StatusReason"]
-        assert "successfully" in status_reason.lower(), "StatusReason should indicate success"
+        assert (
+            "successfully" in status_reason.lower()
+        ), "StatusReason should indicate success"
 
         # Verify the action executed properly
-        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
+        assert (
+            task_payload.flow_control == "success"
+        ), "Expected flow_control to be 'success'"
 
         # Optional: Verify account information if it's being tracked
         if f"{action_name}/Account" in state:
@@ -178,7 +213,9 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
 
         # Optional: If completion tracking is implemented
         if f"{action_name}/InvalidationCompleted" in state:
-            assert isinstance(state[f"{action_name}/InvalidationCompleted"], bool), "InvalidationCompleted should be boolean"
+            assert isinstance(
+                state[f"{action_name}/InvalidationCompleted"], bool
+            ), "InvalidationCompleted should be boolean"
 
         print(f"✅ All state validations passed. Found {len(state)} state items.")
         print(

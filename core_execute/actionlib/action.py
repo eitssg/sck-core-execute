@@ -243,7 +243,9 @@ class BaseAction:
 
         # Set output_namespace if user specified SaveOutputs = True
         if definition.save_outputs:
-            self.output_namespace = self.name.split("/", 1)[0].replace(":action", ":output")
+            self.output_namespace = self.name.split("/", 1)[0].replace(
+                ":action", ":output"
+            )
         else:
             self.output_namespace = None
 
@@ -435,7 +437,9 @@ class BaseAction:
 
         # Set output variable (if user chose to save outputs)
         if self.output_namespace is not None:
-            log.debug("Setting output '{}/{}' = '{}'", self.output_namespace, name, value)
+            log.debug(
+                "Setting output '{}/{}' = '{}'", self.output_namespace, name, value
+            )
             self.__set_context(self.output_namespace, name, value)
 
         # Set state variable
@@ -513,7 +517,9 @@ class BaseAction:
             log.trace("Executing action for {}", self.name)
 
             # Render the action condition, and see if it evaluates to true
-            condition_result = self.renderer.render_string("{{ " + self.condition + " }}", self.context)
+            condition_result = self.renderer.render_string(
+                "{{ " + self.condition + " }}", self.context
+            )
 
             if condition_result.lower() == "true":
                 # Condition is true, execute the action
@@ -538,7 +544,9 @@ class BaseAction:
                 lineno = -1
             tb_str = "".join(traceback.format_exception(exc_type, exc_obj, exc_tb))
             self.set_failed(
-                "Internal error {} in {} at {} - {}\nTraceback:\n{}".format(exc_type.__name__, fname, lineno, str(e), tb_str)
+                "Internal error {} in {} at {} - {}\nTraceback:\n{}".format(
+                    exc_type.__name__, fname, lineno, str(e), tb_str
+                )
             )
             log.error(
                 "Internal error {} in {} at {} - {}",
@@ -597,7 +605,9 @@ class BaseAction:
                 lineno = -1
             tb_str = "".join(traceback.format_exception(exc_type, exc_obj, exc_tb))
             self.set_failed(
-                "Internal error {} in {} at {} - {}\nTraceback:\n{}".format(exc_type.__name__, fname, lineno, str(e), tb_str)
+                "Internal error {} in {} at {} - {}\nTraceback:\n{}".format(
+                    exc_type.__name__, fname, lineno, str(e), tb_str
+                )
             )
             log.error(
                 "Internal error {} in {} at {} - {}",
@@ -619,7 +629,9 @@ class BaseAction:
     def __get_status_reason(self):
         return self.__get_context(self.name, STATUS_REASON, None)
 
-    def __get_context(self, prn: str, name: str, default: Any = NO_DEFAULT_PROVIDED) -> Any:
+    def __get_context(
+        self, prn: str, name: str, default: Any = NO_DEFAULT_PROVIDED
+    ) -> Any:
         """
         Typical trypes returned are list, str, int, float, dict, datetime or None"""
 
@@ -631,7 +643,11 @@ class BaseAction:
 
         else:
             if default == NO_DEFAULT_PROVIDED:
-                raise KeyError("Key '{}' is not in the context and no default was provided".format(name))
+                raise KeyError(
+                    "Key '{}' is not in the context and no default was provided".format(
+                        name
+                    )
+                )
             else:
                 return default
 
@@ -650,7 +666,9 @@ class BaseAction:
             hook_type = event_hook["Type"]
             self.__execute_lifecycle_hook(event, hook_type, event_hook, reason)
 
-    def __execute_lifecycle_hook(self, event: str, hook_type: str, hook: dict[str, Any], reason: str):
+    def __execute_lifecycle_hook(
+        self, event: str, hook_type: str, hook: dict[str, Any], reason: str
+    ):
         if hook_type == LC_TYPE_STATUS:
             self.__execute_status_hook(event, hook, reason)
         else:
@@ -686,7 +704,9 @@ class BaseAction:
             return parms["Details"]
         return None
 
-    def __update_item_status(self, identity: str, status: str, message: str, details: Any):
+    def __update_item_status(
+        self, identity: str, status: str, message: str, details: Any
+    ):
         try:
             # Log the status
             log.set_identity(identity)
@@ -698,7 +718,9 @@ class BaseAction:
                 build_prn = ":".join(prn_sections[0:5])
 
                 # Update the build status
-                update_status(prn=build_prn, status=status, message=message, details=details)
+                update_status(
+                    prn=build_prn, status=status, message=message, details=details
+                )
 
                 # If a new build is being released, update the branch's released_build_prn pointer
                 if status == RELEASE_IN_PROGRESS:
@@ -710,7 +732,9 @@ class BaseAction:
                 component_prn = ":".join(prn_sections[0:6])
 
                 # Update the component status
-                update_status(prn=component_prn, status=status, message=message, details=details)
+                update_status(
+                    prn=component_prn, status=status, message=message, details=details
+                )
 
                 # If component has failed, update the build status to failed
                 if "_FAILED" in status:
@@ -725,7 +749,9 @@ class BaseAction:
         finally:
             log.reset_identity()
 
-    def __execute_status_hook(self, event: str, hook: dict[str, Any], reason: str | None):
+    def __execute_status_hook(
+        self, event: str, hook: dict[str, Any], reason: str | None
+    ):
 
         # Extract hook["Parameter"]["On<event>"]["Status"], then try hook["Status"]
         status = self.__get_status_parameter(event, hook)

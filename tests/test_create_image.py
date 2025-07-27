@@ -7,7 +7,10 @@ from unittest.mock import MagicMock
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.create_image import CreateImageActionSpec, CreateImageActionParams
+from core_execute.actionlib.actions.aws.create_image import (
+    CreateImageActionSpec,
+    CreateImageActionParams,
+)
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
@@ -57,7 +60,9 @@ def deploy_spec():
     return DeploySpec(**deploy_spec)
 
 
-def test_create_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_create_image_action(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
 
     try:
 
@@ -81,11 +86,21 @@ def test_create_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
                     "BlockDeviceMappings": [
                         {
                             "DeviceName": "/dev/sda1",
-                            "Ebs": {"SnapshotId": "snap-12345678", "VolumeSize": 8, "VolumeType": "gp3", "Encrypted": True},
+                            "Ebs": {
+                                "SnapshotId": "snap-12345678",
+                                "VolumeSize": 8,
+                                "VolumeType": "gp3",
+                                "Encrypted": True,
+                            },
                         },
                         {
                             "DeviceName": "/dev/sdb",
-                            "Ebs": {"SnapshotId": "snap-87654321", "VolumeSize": 20, "VolumeType": "gp3", "Encrypted": True},
+                            "Ebs": {
+                                "SnapshotId": "snap-87654321",
+                                "VolumeSize": 20,
+                                "VolumeType": "gp3",
+                                "Encrypted": True,
+                            },
                         },
                     ],
                 }
@@ -131,13 +146,16 @@ def test_create_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
+        assert (
+            task_payload.flow_control == "success"
+        ), "Expected flow_control to be 'success'"
 
         state = load_state(task_payload)
 
         # Verify that create_image was called with correct parameters
         mock_client.create_image.assert_called_once_with(
-            InstanceId="i-1234567890abcdef0", Name="My-Image-Name"  # Matches parameter  # Matches parameter
+            InstanceId="i-1234567890abcdef0",
+            Name="My-Image-Name",  # Matches parameter  # Matches parameter
         )
 
         # Verify that create_tags was called for both image and snapshots
