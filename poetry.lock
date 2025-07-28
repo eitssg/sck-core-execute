@@ -2230,14 +2230,14 @@ reference = "nexus"
 
 [[package]]
 name = "sck-core-db"
-version = "0.0.7"
+version = "0.0.8"
 description = "Core Database Library to access DynamoDB for Core-Automation"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "sck_core_db-0.0.7-py3-none-any.whl", hash = "sha256:c7157df391cb560d96ca582fa0090a393981e5a3280e9eaa26bc6f01b4920683"},
-    {file = "sck_core_db-0.0.7.tar.gz", hash = "sha256:360b2bfa76051b5b2a50201b71c56b5c8e03b42a2a624a8ae11ccc20579eb606"},
+    {file = "sck_core_db-0.0.8-py3-none-any.whl", hash = "sha256:695a7d61e809b5a8c60c352a3c852590dac00ca3cab2d051018a44a2ba650889"},
+    {file = "sck_core_db-0.0.8.tar.gz", hash = "sha256:92e1b3c1193ad43e35aa29a9e2e275bc2ec3b0af3be50a4f4d459eeb2aff7fc4"},
 ]
 
 [package.dependencies]
@@ -2245,7 +2245,7 @@ boto3 = ">=1.39.9"
 botocore = ">=1.39.9"
 pydantic = ">=2.10.3,<3.0.0"
 pynamodb = ">=6.0.1,<7.0.0"
-sck-core-framework = ">=0.0.7,<0.0.8"
+sck-core-framework = ">=0.0.8,<0.0.9"
 
 [package.source]
 type = "legacy"
@@ -2254,14 +2254,14 @@ reference = "nexus"
 
 [[package]]
 name = "sck-core-framework"
-version = "0.0.7"
+version = "0.0.8"
 description = "Core-Framework for Core-Automation"
 optional = false
 python-versions = ">=3.12,<4.0"
 groups = ["main"]
 files = [
-    {file = "sck_core_framework-0.0.7-py3-none-any.whl", hash = "sha256:2a9e3b38196ef1c34bb8fa665335dba1b78c71ec92120c253fc748cbbfc77071"},
-    {file = "sck_core_framework-0.0.7.tar.gz", hash = "sha256:33f2797e22aa7dd1e59a3f243b427b3f209d13762bb0f26b5f70ffe2924ef670"},
+    {file = "sck_core_framework-0.0.8-py3-none-any.whl", hash = "sha256:faa4ec5731feb3a6d3a5b35c47024ddd88aef79609f2d735ee4f34b521d4fd21"},
+    {file = "sck_core_framework-0.0.8.tar.gz", hash = "sha256:0cbc8eb53e9e7b1f8e760822931845d4bdce0abf8e655fd895b5aee7ac1d996e"},
 ]
 
 [package.dependencies]
@@ -2454,4 +2454,4 @@ reference = "nexus"
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "52403091321376e42a24c0d6598bebcad2c25c1faaaef2f6379796c51ba022e5"
+content-hash = "0c6e67bb3a72db8a5dc65ca19e8347a2bca409579c34bb2fe26c499ba00a3712"
