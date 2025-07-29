@@ -58,14 +58,10 @@ def deploy_spec():
 
     action_spec = CreateChangeSetActionSpec(**spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_spec]}
-
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_spec])
 
 
-def test_create_change_set_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_create_change_set_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
@@ -176,9 +172,7 @@ def test_create_change_set_action(
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert (
-            task_payload.flow_control == "success"
-        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
@@ -187,10 +181,7 @@ def test_create_change_set_action(
         create_call_args = mock_client.create_change_set.call_args
         assert create_call_args[1]["StackName"] == "my-stack"
         assert create_call_args[1]["ChangeSetName"] == "my-changeset"
-        assert (
-            create_call_args[1]["TemplateURL"]
-            == "s3://my-bucket/portfolio/my-template.yaml"
-        )
+        assert create_call_args[1]["TemplateURL"] == "s3://my-bucket/portfolio/my-template.yaml"
         assert create_call_args[1]["ChangeSetType"] == "UPDATE"
         assert "CAPABILITY_IAM" in create_call_args[1]["Capabilities"]
         assert "CAPABILITY_NAMED_IAM" in create_call_args[1]["Capabilities"]
