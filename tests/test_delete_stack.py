@@ -2,7 +2,6 @@ import traceback
 import pytest
 from unittest.mock import MagicMock
 
-import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.delete_stack import (
@@ -48,9 +47,7 @@ def deploy_spec():
     return DeploySpec(**{"actions": [delete_stack_action]})
 
 
-def test_delete_stack_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_delete_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
         # FIRST ITERATION: Stack exists and needs to be deleted
@@ -124,16 +121,12 @@ def test_delete_stack_action(
         task_payload = TaskPayload(**response)
 
         # Should be "execute" after initiating deletion (to continue checking status)
-        assert (
-            task_payload.flow_control == "execute"
-        ), f"Expected flow_control to be 'execute', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "execute", f"Expected flow_control to be 'execute', got '{task_payload.flow_control}'"
 
         # Verify delete_stack was called
         mock_client.delete_stack.assert_called_once()
 
-        print(
-            f"✅ First iteration completed with flow_control: {task_payload.flow_control}"
-        )
+        print(f"✅ First iteration completed with flow_control: {task_payload.flow_control}")
 
         # SECOND ITERATION: Stack deletion completed
         print("🔄 Second iteration: Stack deletion completed...")
@@ -169,9 +162,7 @@ def test_delete_stack_action(
         task_payload = TaskPayload(**response)
 
         # Should be "success" after finding DELETE_COMPLETE status
-        assert (
-            task_payload.flow_control == "success"
-        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
         assert state is not None, "State should not be None"
@@ -181,9 +172,7 @@ def test_delete_stack_action(
         assert state[f"{action_name}/DeletionCompleted"] is True
         assert state[f"{action_name}/DeletionResult"] == "SUCCESS"
 
-        print(
-            f"✅ Second iteration completed with flow_control: {task_payload.flow_control}"
-        )
+        print(f"✅ Second iteration completed with flow_control: {task_payload.flow_control}")
         print("✅ All stack deletion test iterations passed successfully!")
 
     except Exception as e:
@@ -192,9 +181,7 @@ def test_delete_stack_action(
         assert False, str(e)
 
 
-def test_lambda_handler_delete_in_progress(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_lambda_handler_delete_in_progress(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test scenario where stack deletion is in progress"""
 
     try:
@@ -227,9 +214,7 @@ def test_lambda_handler_delete_in_progress(
         task_payload = TaskPayload(**response)
 
         # Should be "execute" when deletion is in progress (to continue checking)
-        assert (
-            task_payload.flow_control == "execute"
-        ), f"Expected flow_control to be 'execute', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "execute", f"Expected flow_control to be 'execute', got '{task_payload.flow_control}'"
 
         # delete_stack should NOT be called since deletion is already in progress
         mock_client.delete_stack.assert_not_called()
@@ -241,9 +226,7 @@ def test_lambda_handler_delete_in_progress(
         assert False, str(e)
 
 
-def test_lambda_handler_delete_failed(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_lambda_handler_delete_failed(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test scenario where stack deletion fails"""
 
     try:
@@ -289,9 +272,7 @@ def test_lambda_handler_delete_failed(
         task_payload = TaskPayload(**response)
 
         # Should be "failure" when deletion fails
-        assert (
-            task_payload.flow_control == "failure"
-        ), f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "failure", f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
         action_name = "action-aws-deletestack-name"

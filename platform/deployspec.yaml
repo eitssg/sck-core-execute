@@ -1,0 +1,14 @@
+- name: core-automation-step-function
+  kind: create-stack
+  depends_on: []
+  params:
+    stack_name: {{scope}}{{ client }}-core-automation-step-function
+    template: core_execute_cf.yaml
+    accounts:
+      - {{ automation_account_id }}
+    parameters:
+      Scope: "{{ scope }}"
+      Client: "{{ client }}"
+      AutomationAccountId: "{{ automation_account_id }}"
+      IsAutomationAccount: "{{ is_automation_account }}"
+    

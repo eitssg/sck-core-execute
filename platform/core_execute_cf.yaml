@@ -1,0 +1,246 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Core Execute Lambda and Step Function for Core Automation Platform'
+
+Parameters:
+  Scope:
+    Type: String
+    Default: ''
+    Description: 'Optional scope prefix for resource naming'
+  
+  Client:
+    Type: String
+    Default: 'client'
+    Description: 'Client name for resource naming'
+  
+  PipelineProvisioningRoleArn:
+    Type: String
+    Description: 'ARN of the existing PipelineProvisioningRole'
+  
+  LambdaCodeBucket:
+    Type: String
+    Description: 'S3 bucket containing the Lambda deployment package'
+  
+  LambdaCodeKey:
+    Type: String
+    Description: 'S3 key for the Lambda deployment package (e.g., core-execute-1.0.0.zip)'
+
+Conditions:
+  HasScope: !Not [!Equals [!Ref Scope, '']]
+
+Resources:
+  # IAM Role for Step Functions
+  CoreExecuteStepFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-stepfunction-role'
+        - !Sub '${Client}-core-execute-stepfunction-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaRole
+      Policies:
+        - PolicyName: CoreExecuteStepFunctionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !GetAtt CoreExecuteLambda.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+
+  # IAM Role for Lambda Function
+  CoreExecuteLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-lambda-role'
+        - !Sub '${Client}-core-execute-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CoreExecuteLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # STS permissions to assume roles (REQUIRED for cross-account/role assumption)
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                  - sts:GetCallerIdentity
+                Resource: 
+                  - !Ref PipelineProvisioningRoleArn  # Allow assuming the pipeline role
+                  - !Sub 'arn:aws:iam::*:role/*-pipeline-provisioning-role'  # Pattern for cross-account roles
+                  - !Sub 'arn:aws:iam::*:role/*pipeline*'  # Broader pattern if needed
+              
+              # DynamoDB access for Core DB (minimal, read-only for tracking)
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*core-automation*'
+              
+              # SSM access for parameters (to get role ARNs and config)
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/core-automation/*'
+              
+              # Step Functions access (for updating execution status)
+              - Effect: Allow
+                Action:
+                  - states:DescribeExecution
+                  - states:SendTaskSuccess
+                  - states:SendTaskFailure
+                Resource: '*'
+
+  # Lambda Function
+  CoreExecuteLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-lambda'
+        - !Sub '${Client}-core-execute-lambda'
+      Runtime: python3.12
+      Handler: core_execute.handler.handler
+      Role: !GetAtt CoreExecuteLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 900  # 15 minutes max
+      MemorySize: 512
+      Environment:
+        Variables:
+          SCOPE: !Ref Scope
+          CLIENT: !Ref Client
+          REGION: !Ref AWS::Region
+          LOG_LEVEL: INFO
+      Description: 'Core Execute Lambda for processing automation actions'
+
+  # Lambda Permission for Step Functions
+  CoreExecuteLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CoreExecuteLambda
+      Action: lambda:InvokeFunction
+      Principal: states.amazonaws.com
+      SourceArn: !GetAtt CoreExecuteStepFunction.Arn
+
+  # Lambda Permission for PipelineProvisioningRole
+  CoreExecuteLambdaPermissionForRole:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CoreExecuteLambda
+      Action: lambda:InvokeFunction
+      Principal: !Ref PipelineProvisioningRoleArn
+
+  # Step Function State Machine
+  CoreExecuteStepFunction:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-stepfunction'
+        - !Sub '${Client}-core-execute-stepfunction'
+      RoleArn: !GetAtt CoreExecuteStepFunctionRole.Arn
+      Definition:
+        Comment: 'Core Execute Step Function for processing automation actions'
+        TimeoutSeconds: 3600  # 1 hour max for entire workflow
+        StartAt: ProcessActions
+        States:
+          ProcessActions:
+            Type: Task
+            Resource: !GetAtt CoreExecuteLambda.Arn
+            TimeoutSeconds: 900  # 15 minutes per Lambda invocation
+            Retry:
+              - ErrorEquals: 
+                  - States.TaskFailed
+                  - States.Timeout
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                Next: HandleFailure
+                ResultPath: '$.error'
+            Next: CheckExecutionStatus
+          
+          CheckExecutionStatus:
+            Type: Choice
+            Choices:
+              - Variable: '$.status'
+                StringEquals: 'complete'
+                Next: ExecutionComplete
+              - Variable: '$.status'
+                StringEquals: 'continue'
+                Next: ProcessActions
+              - Variable: '$.status'
+                StringEquals: 'error'
+                Next: HandleFailure
+            Default: ExecutionComplete
+          
+          HandleFailure:
+            Type: Fail
+            Cause: 'Core Execute Step Function execution failed'
+            Error: 'ExecutionFailed'
+          
+          ExecutionComplete:
+            Type: Succeed
+
+  # CloudWatch Log Group for Step Functions
+  CoreExecuteStepFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !If
+        - HasScope
+        - !Sub '/aws/stepfunctions/${Scope}${Client}-core-execute-stepfunction'
+        - !Sub '/aws/stepfunctions/${Client}-core-execute-stepfunction'
+      RetentionInDays: 30
+
+Outputs:
+  CoreExecuteLambdaArn:
+    Description: 'ARN of the Core Execute Lambda function'
+    Value: !GetAtt CoreExecuteLambda.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-CoreExecuteLambdaArn'
+
+  CoreExecuteStepFunctionArn:
+    Description: 'ARN of the Core Execute Step Function'
+    Value: !GetAtt CoreExecuteStepFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-CoreExecuteStepFunctionArn'
+
+  CoreExecuteStepFunctionName:
+    Description: 'Name of the Core Execute Step Function'
+    Value: !Ref CoreExecuteStepFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-CoreExecuteStepFunctionName'
