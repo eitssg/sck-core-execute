@@ -29,8 +29,14 @@ class GetStackOutputsActionParams(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
-    account: str = Field(..., alias="Account", description="The account to use for the action (required)")
-    region: str = Field(..., alias="Region", description="The region where the stack is located (required)")
+    account: str = Field(
+        ..., alias="Account", description="The account to use for the action (required)"
+    )
+    region: str = Field(
+        ...,
+        alias="Region",
+        description="The region where the stack is located (required)",
+    )
     stack_name: str = Field(
         ...,
         alias="StackName",
@@ -163,7 +169,9 @@ class GetStackOutputsAction(BaseAction):
         self.set_state("account", self.params.account)
         self.set_state("region", self.params.region)
 
-        self.set_running(f"Retrieving outputs from CloudFormation stack '{self.params.stack_name}'")
+        self.set_running(
+            f"Retrieving outputs from CloudFormation stack '{self.params.stack_name}'"
+        )
 
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
@@ -172,13 +180,19 @@ class GetStackOutputsAction(BaseAction):
         )
 
         try:
-            describe_stack_response = cfn_client.describe_stacks(StackName=self.params.stack_name)
+            describe_stack_response = cfn_client.describe_stacks(
+                StackName=self.params.stack_name
+            )
             stack = describe_stack_response["Stacks"][0]
 
             # Extract stack information
             stack_id = stack["StackId"]
             stack_status = stack["StackStatus"]
-            creation_time = stack.get("CreationTime", "").isoformat() if stack.get("CreationTime") else ""
+            creation_time = (
+                stack.get("CreationTime", "").isoformat()
+                if stack.get("CreationTime")
+                else ""
+            )
 
             # Save comprehensive state
             completion_time = util.get_current_timestamp()
@@ -202,9 +216,14 @@ class GetStackOutputsAction(BaseAction):
             self.set_output("start_time", start_time)
             self.set_output("completion_time", completion_time)
             self.set_output("status", "success")
-            self.set_output("message", f"Successfully retrieved {outputs_count} outputs from stack '{self.params.stack_name}'")
+            self.set_output(
+                "message",
+                f"Successfully retrieved {outputs_count} outputs from stack '{self.params.stack_name}'",
+            )
 
-            self.set_complete(f"Retrieved {outputs_count} outputs from stack '{self.params.stack_name}'")
+            self.set_complete(
+                f"Retrieved {outputs_count} outputs from stack '{self.params.stack_name}'"
+            )
 
         except ClientError as e:
             completion_time = util.get_current_timestamp()
@@ -223,7 +242,10 @@ class GetStackOutputsAction(BaseAction):
                 self.set_output("start_time", start_time)
                 self.set_output("completion_time", completion_time)
                 self.set_output("status", "success")
-                self.set_output("message", f"Stack '{self.params.stack_name}' does not exist, no outputs retrieved")
+                self.set_output(
+                    "message",
+                    f"Stack '{self.params.stack_name}' does not exist, no outputs retrieved",
+                )
 
                 log.warning(
                     "Stack '{}' does not exist, could not retrieve stack outputs",
@@ -245,7 +267,10 @@ class GetStackOutputsAction(BaseAction):
                 self.set_output("error_time", completion_time)
                 self.set_output("status", "error")
                 self.set_output("error_message", error_message)
-                self.set_output("message", f"Error retrieving outputs from stack '{self.params.stack_name}': {error_message}")
+                self.set_output(
+                    "message",
+                    f"Error retrieving outputs from stack '{self.params.stack_name}': {error_message}",
+                )
 
                 log.error("Error getting stack outputs: {}", e)
                 raise
@@ -292,9 +317,15 @@ class GetStackOutputsAction(BaseAction):
         """
         log.trace("GetStackOutputsAction._resolve()")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.stack_name = self.renderer.render_string(
+            self.params.stack_name, self.context
+        )
 
         log.trace("GetStackOutputsAction._resolve() complete")
 

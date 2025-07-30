@@ -32,8 +32,14 @@ class GetStackReferencesActionParams(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
-    account: str = Field(..., alias="Account", description="The account to use for the action (required)")
-    region: str = Field(..., alias="Region", description="The region where the stack is located (required)")
+    account: str = Field(
+        ..., alias="Account", description="The account to use for the action (required)"
+    )
+    region: str = Field(
+        ...,
+        alias="Region",
+        description="The region where the stack is located (required)",
+    )
     stack_name: str = Field(
         ...,
         alias="StackName",
@@ -218,7 +224,10 @@ class GetStackReferencesAction(BaseAction):
             self.set_output("start_time", start_time)
             self.set_output("completion_time", completion_time)
             self.set_output("status", "success")
-            self.set_output("message", f"Export '{output_export_name}' is referenced by {num_references} stack(s)")
+            self.set_output(
+                "message",
+                f"Export '{output_export_name}' is referenced by {num_references} stack(s)",
+            )
 
             log.debug(
                 "Stack export is being referenced",
@@ -233,7 +242,9 @@ class GetStackReferencesAction(BaseAction):
             )
 
             # Complete the action
-            self.set_complete(f"Export '{output_export_name}' is referenced by {num_references} stack(s)")
+            self.set_complete(
+                f"Export '{output_export_name}' is referenced by {num_references} stack(s)"
+            )
 
         except ClientError as e:
             completion_time = util.get_current_timestamp()
@@ -258,9 +269,14 @@ class GetStackReferencesAction(BaseAction):
                 self.set_output("start_time", start_time)
                 self.set_output("completion_time", completion_time)
                 self.set_output("status", "success")
-                self.set_output("message", f"Export '{output_export_name}' does not exist, treating as no references")
+                self.set_output(
+                    "message",
+                    f"Export '{output_export_name}' does not exist, treating as no references",
+                )
 
-                self.set_complete(f"Export '{output_export_name}' does not exist, treating stack as unreferenced")
+                self.set_complete(
+                    f"Export '{output_export_name}' does not exist, treating stack as unreferenced"
+                )
 
             elif "not imported" in error_message:
                 # Export exists but isn't imported by any stacks
@@ -281,7 +297,10 @@ class GetStackReferencesAction(BaseAction):
                 self.set_output("start_time", start_time)
                 self.set_output("completion_time", completion_time)
                 self.set_output("status", "success")
-                self.set_output("message", f"Export '{output_export_name}' is not referenced by any stacks")
+                self.set_output(
+                    "message",
+                    f"Export '{output_export_name}' is not referenced by any stacks",
+                )
 
                 log.warning(
                     "Stack export is not referenced",
@@ -291,7 +310,9 @@ class GetStackReferencesAction(BaseAction):
                         "ExportName": output_export_name,
                     },
                 )
-                self.set_complete(f"Export '{output_export_name}' is not referenced by any stacks")
+                self.set_complete(
+                    f"Export '{output_export_name}' is not referenced by any stacks"
+                )
 
             else:
                 # Other error - set error state
@@ -309,7 +330,10 @@ class GetStackReferencesAction(BaseAction):
                 self.set_output("error_time", completion_time)
                 self.set_output("status", "error")
                 self.set_output("error_message", error_message)
-                self.set_output("message", f"Error checking references for export '{output_export_name}': {error_message}")
+                self.set_output(
+                    "message",
+                    f"Error checking references for export '{output_export_name}': {error_message}",
+                )
 
                 log.error(
                     "Error getting references for stack '{}': {}",
@@ -360,9 +384,17 @@ class GetStackReferencesAction(BaseAction):
         """
         log.trace("GetStackReferencesAction._resolve()")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
-        self.params.output_name = self.renderer.render_string(self.params.output_name, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.stack_name = self.renderer.render_string(
+            self.params.stack_name, self.context
+        )
+        self.params.output_name = self.renderer.render_string(
+            self.params.output_name, self.context
+        )
 
         log.trace("GetStackReferencesAction._resolve() complete")

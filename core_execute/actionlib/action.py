@@ -47,7 +47,7 @@ class StatusCode(enum.Enum):
     FAILED = "failed"
 
 
-class BaseAction:
+class BaseAction(object):
     """
     Base class for all actions in the Simple Cloud Kit execution framework.
 
@@ -222,39 +222,25 @@ class BaseAction:
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
-
         log.trace("BaseAction.__init__()")
 
         # All actions can use the Jinja2 renderer to parse CloudFormation.j2 templates
         self.renderer = Jinja2Renderer()
 
         # Extract action details from the definition
+        self.definition = definition
         self.name = definition.name
+        self.context = context
+        self.deployment_details = deployment_details
+        self.action_name = definition.action_name
+        self.save_outputs = definition.save_outputs
+        self.output_namespace = definition.output_namespace
+        self.state_namespace = definition.state_namespace
 
         log.debug("Action name is: {}", self.name)
-
-        self.context = context
-
+        log.debug("Action output namespace is: {}", self.output_namespace)
+        log.debug("Action state namespace is: {}", self.state_namespace)
         log.debug("Action context is: ", details=self.context)
-
-        self.deployment_details = deployment_details
-
-        self.action_name = self.name.split("/", 1)[-1]
-
-        # Set output_namespace if user specified SaveOutputs = True
-        if definition.save_outputs:
-            self.output_namespace = self.name.split("/", 1)[0].replace(
-                ":action", ":output"
-            )
-        else:
-            self.output_namespace = None
-
-        log.debug("Action output namespace is {}", self.output_namespace)
-
-        # State namespace is the same as action name, except with :var/ instead of :action/
-        self.state_namespace = self.name.replace(":action/", ":var/")
-
-        log.debug("Action state namespace is {}", self.state_namespace)
 
         after = definition.after or []
         depends = definition.depends_on or []
@@ -436,7 +422,7 @@ class BaseAction:
         log.trace("Setting output '{}' = '{}'", name, value)
 
         # Set output variable (if user chose to save outputs)
-        if self.output_namespace is not None:
+        if self.output_namespace:
             log.debug(
                 "Setting output '{}/{}' = '{}'", self.output_namespace, name, value
             )
@@ -458,9 +444,9 @@ class BaseAction:
         """
         log.trace("Getting output '{}'", name)
 
-        if self.output_namespace is None:
-            return None
-        return self.__get_context(self.output_namespace, name, default)
+        if self.output_namespace:
+            return self.__get_context(self.output_namespace, name, default)
+        return None
 
     def set_state(self, name: str, value: Any):
         """

@@ -47,12 +47,19 @@ def deploy_spec():
         "BucketName": "test-bucket-name",
     }
     action_spec = EmptyBucketActionSpec(
-        **{"name": "test-empty-bucket", "kind": "AWS::EmptyBucket", "params": params, "scope": "build"}
+        **{
+            "name": "test-empty-bucket",
+            "kind": "AWS::EmptyBucket",
+            "params": params,
+            "scope": "build",
+        }
     )
     return DeploySpec(**{"actions": [action_spec]})
 
 
-def test_empty_bucket_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_empty_bucket_action(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     """Test the empty bucket action execution with comprehensive state tracking."""
 
     try:
@@ -102,7 +109,9 @@ def test_empty_bucket_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
 
         # Print actual calls for debugging
         print(f"\nMock session resource calls: {mock_session.resource.call_args_list}")
-        print(f"Mock S3 resource Bucket calls: {mock_s3_resource.Bucket.call_args_list}")
+        print(
+            f"Mock S3 resource Bucket calls: {mock_s3_resource.Bucket.call_args_list}"
+        )
 
         # Check bucket was accessed
         mock_s3_resource.Bucket.assert_called_with("test-bucket-name")
@@ -167,14 +176,18 @@ def test_empty_bucket_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
             assert final_action_outputs.get("status") == "success"
             assert final_action_outputs.get("total_objects_deleted") == 7
             assert final_action_outputs.get("total_batches") == 1
-            assert "Bucket 'test-bucket-name' is now empty" in final_action_outputs.get("message", "")
+            assert "Bucket 'test-bucket-name' is now empty" in final_action_outputs.get(
+                "message", ""
+            )
 
     except Exception as e:
         traceback.print_exc()
         pytest.fail(f"Test failed with exception: {e}")
 
 
-def test_empty_bucket_action_bucket_not_exists(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_empty_bucket_action_bucket_not_exists(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     """Test the empty bucket action when bucket doesn't exist."""
 
     try:
@@ -189,8 +202,15 @@ def test_empty_bucket_action_bucket_not_exists(task_payload: TaskPayload, deploy
         # Mock ClientError for non-existent bucket
         from botocore.exceptions import ClientError
 
-        error_response = {"Error": {"Code": "NoSuchBucket", "Message": "The specified bucket does not exist"}}
-        mock_bucket.object_versions.limit.side_effect = ClientError(error_response, "ListObjectVersions")
+        error_response = {
+            "Error": {
+                "Code": "NoSuchBucket",
+                "Message": "The specified bucket does not exist",
+            }
+        }
+        mock_bucket.object_versions.limit.side_effect = ClientError(
+            error_response, "ListObjectVersions"
+        )
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -234,7 +254,9 @@ def test_empty_bucket_action_bucket_not_exists(task_payload: TaskPayload, deploy
         pytest.fail(f"Test failed with exception: {e}")
 
 
-def test_empty_bucket_action_multiple_batches(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_empty_bucket_action_multiple_batches(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     """Test the empty bucket action with multiple batches."""
 
     try:
@@ -253,9 +275,23 @@ def test_empty_bucket_action_multiple_batches(task_payload: TaskPayload, deploy_
         # Setup mock responses for multiple iterations
         delete_responses = [
             # First batch - 3 objects
-            [{"Deleted": [{"Key": f"file{i}.txt", "VersionId": f"v{i}"} for i in range(1, 4)]}],
+            [
+                {
+                    "Deleted": [
+                        {"Key": f"file{i}.txt", "VersionId": f"v{i}"}
+                        for i in range(1, 4)
+                    ]
+                }
+            ],
             # Second batch - 2 objects
-            [{"Deleted": [{"Key": f"file{i}.txt", "VersionId": f"v{i}"} for i in range(4, 6)]}],
+            [
+                {
+                    "Deleted": [
+                        {"Key": f"file{i}.txt", "VersionId": f"v{i}"}
+                        for i in range(4, 6)
+                    ]
+                }
+            ],
             # Third batch - empty (bucket is now empty)
             [],
         ]
@@ -272,7 +308,9 @@ def test_empty_bucket_action_multiple_batches(task_payload: TaskPayload, deploy_
             event = current_payload.model_dump()
             response = execute_handler(event, None)
 
-            assert response is not None, f"Response should not be None for batch {batch_num}"
+            assert (
+                response is not None
+            ), f"Response should not be None for batch {batch_num}"
             current_payload = TaskPayload(**response)
 
             # Check state after each batch
@@ -285,7 +323,11 @@ def test_empty_bucket_action_multiple_batches(task_payload: TaskPayload, deploy_
                 print(f"Batch {batch_num} Outputs: {action_outputs}")
 
                 if batch_num < 3:  # In progress batches
-                    expected_total = sum(len(resp[0]["Deleted"]) for resp in delete_responses[:batch_num] if resp)
+                    expected_total = sum(
+                        len(resp[0]["Deleted"])
+                        for resp in delete_responses[:batch_num]
+                        if resp
+                    )
                     assert action_state.get("total_objects_deleted") == expected_total
                     assert action_state.get("batch_count") == batch_num
                     assert action_outputs.get("status") == "in_progress"

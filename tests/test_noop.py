@@ -1,6 +1,5 @@
 import traceback
 import pytest
-import json
 
 from core_framework.models import TaskPayload, DeploySpec
 

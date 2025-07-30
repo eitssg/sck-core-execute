@@ -46,12 +46,19 @@ def deploy_spec():
         "StackName": "test-stack-name",
     }
     action_spec = GetStackReferencesActionSpec(
-        **{"name": "test-get-stack-references", "kind": "AWS::GetStackReferences", "params": params, "scope": "build"}
+        **{
+            "name": "test-get-stack-references",
+            "kind": "AWS::GetStackReferences",
+            "params": params,
+            "scope": "build",
+        }
     )
     return DeploySpec(**{"actions": [action_spec]})
 
 
-def test_get_stack_references_action_with_references(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_get_stack_references_action_with_references(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     """Test the get stack references action when export has references."""
 
     try:
@@ -62,7 +69,9 @@ def test_get_stack_references_action_with_references(task_payload: TaskPayload, 
         mock_session.client.return_value = mock_cfn_client
 
         # Mock the list_imports response with sample importing stacks
-        mock_list_imports_response = {"Imports": ["importing-stack-1", "importing-stack-2", "importing-stack-3"]}
+        mock_list_imports_response = {
+            "Imports": ["importing-stack-1", "importing-stack-2", "importing-stack-3"]
+        }
 
         mock_cfn_client.list_imports.return_value = mock_list_imports_response
 
@@ -98,7 +107,11 @@ def test_get_stack_references_action_with_references(task_payload: TaskPayload, 
             assert action_state.get("region") == "us-east-1"
             assert action_state.get("status") == "completed_with_references"
             assert action_state.get("num_references") == 3
-            assert action_state.get("references") == ["importing-stack-1", "importing-stack-2", "importing-stack-3"]
+            assert action_state.get("references") == [
+                "importing-stack-1",
+                "importing-stack-2",
+                "importing-stack-3",
+            ]
             assert action_state.get("start_time") is not None
             assert action_state.get("completion_time") is not None
 
@@ -116,7 +129,11 @@ def test_get_stack_references_action_with_references(task_payload: TaskPayload, 
             assert action_outputs.get("region") == "us-east-1"
             assert action_outputs.get("has_references") == True
             assert action_outputs.get("num_references") == 3
-            assert action_outputs.get("references") == ["importing-stack-1", "importing-stack-2", "importing-stack-3"]
+            assert action_outputs.get("references") == [
+                "importing-stack-1",
+                "importing-stack-2",
+                "importing-stack-3",
+            ]
             assert "is referenced by 3 stack(s)" in action_outputs.get("message", "")
 
     except Exception as e:
@@ -125,7 +142,9 @@ def test_get_stack_references_action_with_references(task_payload: TaskPayload, 
         pytest.fail(f"Test failed due to exception: {e}")
 
 
-def test_get_stack_references_action_export_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_get_stack_references_action_export_not_found(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     """Test the get stack references action when export doesn't exist."""
 
     try:
@@ -138,8 +157,15 @@ def test_get_stack_references_action_export_not_found(task_payload: TaskPayload,
         # Mock ClientError for non-existent export
         from botocore.exceptions import ClientError
 
-        error_response = {"Error": {"Code": "ValidationError", "Message": "Export test-stack-name:DefaultExport does not exist"}}
-        mock_cfn_client.list_imports.side_effect = ClientError(error_response, "ListImports")
+        error_response = {
+            "Error": {
+                "Code": "ValidationError",
+                "Message": "Export test-stack-name:DefaultExport does not exist",
+            }
+        }
+        mock_cfn_client.list_imports.side_effect = ClientError(
+            error_response, "ListImports"
+        )
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -184,7 +210,9 @@ def test_get_stack_references_action_export_not_found(task_payload: TaskPayload,
         pytest.fail(f"Test failed due to exception: {e}")
 
 
-def test_get_stack_references_action_no_references(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_get_stack_references_action_no_references(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     """Test the get stack references action when export exists but has no references."""
 
     try:
@@ -198,9 +226,14 @@ def test_get_stack_references_action_no_references(task_payload: TaskPayload, de
         from botocore.exceptions import ClientError
 
         error_response = {
-            "Error": {"Code": "ValidationError", "Message": "Export test-stack-name:DefaultExport is not imported by any stack"}
+            "Error": {
+                "Code": "ValidationError",
+                "Message": "Export test-stack-name:DefaultExport is not imported by any stack",
+            }
         }
-        mock_cfn_client.list_imports.side_effect = ClientError(error_response, "ListImports")
+        mock_cfn_client.list_imports.side_effect = ClientError(
+            error_response, "ListImports"
+        )
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -237,7 +270,9 @@ def test_get_stack_references_action_no_references(task_payload: TaskPayload, de
             assert action_outputs.get("has_references") == False
             assert action_outputs.get("num_references") == 0
             assert action_outputs.get("references") == []
-            assert "is not referenced by any stacks" in action_outputs.get("message", "")
+            assert "is not referenced by any stacks" in action_outputs.get(
+                "message", ""
+            )
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -245,14 +280,26 @@ def test_get_stack_references_action_no_references(task_payload: TaskPayload, de
         pytest.fail(f"Test failed due to exception: {e}")
 
 
-def test_get_stack_references_action_custom_output_name(task_payload: TaskPayload, mock_session):
+def test_get_stack_references_action_custom_output_name(
+    task_payload: TaskPayload, mock_session
+):
     """Test the get stack references action with custom output name."""
 
     try:
         # Create deploy spec with custom output name
-        params = {"Account": "123456789012", "Region": "us-east-1", "StackName": "test-stack-name", "OutputName": "CustomExport"}
+        params = {
+            "Account": "123456789012",
+            "Region": "us-east-1",
+            "StackName": "test-stack-name",
+            "OutputName": "CustomExport",
+        }
         action_spec = GetStackReferencesActionSpec(
-            **{"name": "test-get-stack-references-custom", "kind": "AWS::GetStackReferences", "params": params, "scope": "build"}
+            **{
+                "name": "test-get-stack-references-custom",
+                "kind": "AWS::GetStackReferences",
+                "params": params,
+                "scope": "build",
+            }
         )
         deploy_spec = DeploySpec(**{"actions": [action_spec]})
 
