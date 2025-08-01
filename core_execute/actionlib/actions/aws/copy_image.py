@@ -7,14 +7,14 @@ import core_logging as log
 
 import core_framework as util
 
-from core_framework.models import ActionSpec, DeploymentDetails
+from core_framework.models import ActionSpec, ActionParams, DeploymentDetails
 
 import core_helper.aws as aws
 
 from core_execute.actionlib.action import BaseAction
 
 
-class CopyImageActionParams(BaseModel):
+class CopyImageActionParams(ActionParams):
     """
     Parameters for the CopyImageAction.
 
@@ -32,13 +32,6 @@ class CopyImageActionParams(BaseModel):
     :type tags: dict[str, str] | None
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(
-        ...,
-        alias="Account",
-        description="The account to use for the action (required)",
-    )
     destination_image_name: str = Field(
         ...,
         alias="DestinationImageName",
@@ -53,11 +46,6 @@ class CopyImageActionParams(BaseModel):
         ...,
         alias="KmsKeyArn",
         description="The KMS key ARN to use for encryption (required)",
-    )
-    region: str = Field(
-        ...,
-        alias="Region",
-        description="The region to copy the image to (required)",
     )
     tags: dict[str, str] | None = Field(
         default_factory=dict,
@@ -210,18 +198,14 @@ class CopyImageAction(BaseAction):
         log.debug("Finding image with name '{}'", self.params.image_name)
 
         try:
-            response = ec2_client.describe_images(
-                Filters=[{"Name": "name", "Values": [self.params.image_name]}]
-            )
+            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.params.image_name]}])
         except Exception as e:
             log.error("Failed to describe images: {}", e)
             self.set_failed(f"Failed to describe images: {e}")
             return
 
         if len(response["Images"]) == 0:
-            self.set_failed(
-                f"Could not find image with name '{self.params.image_name}'"
-            )
+            self.set_failed(f"Could not find image with name '{self.params.image_name}'")
             log.error("Could not find image with name '{}'", self.params.image_name)
             return
 
@@ -244,9 +228,7 @@ class CopyImageAction(BaseAction):
         self.set_output("SourceImageId", source_image_id)
         self.set_output("SourceImageName", self.params.image_name)
 
-        log.debug(
-            "Found image '{}' with name '{}'", source_image_id, self.params.image_name
-        )
+        log.debug("Found image '{}' with name '{}'", source_image_id, self.params.image_name)
 
         # Encrypt AMI by copying source AMI with encryption option
         self.set_running("Copying and encrypting image")
@@ -309,9 +291,7 @@ class CopyImageAction(BaseAction):
         # Wait for image creation to complete / fail
         image_id = self.get_state("ImageId")
         if image_id is None:
-            log.error(
-                "Internal error - state variable ImageId should have been set during action execution"
-            )
+            log.error("Internal error - state variable ImageId should have been set during action execution")
             self.set_failed("No image previously created - cannot continue")
             return
 
@@ -334,9 +314,7 @@ class CopyImageAction(BaseAction):
 
         # Update state with current image information
         self.set_state("ImageState", state)
-        self.set_state(
-            "LastChecked", util.get_current_timestamp()
-        )  # Assuming this utility exists
+        self.set_state("LastChecked", util.get_current_timestamp())  # Assuming this utility exists
 
         if state == "available":
             self.set_running(f"Tagging image '{image_id}'")
@@ -366,9 +344,7 @@ class CopyImageAction(BaseAction):
             # Tag the snapshots
             image_snapshots = self.__get_image_snapshots(describe_images_response)
             if len(image_snapshots) > 0:
-                self.set_running(
-                    f"Tagging image snapshots: '{', '.join(image_snapshots)}'"
-                )
+                self.set_running(f"Tagging image snapshots: '{', '.join(image_snapshots)}'")
 
                 # Store snapshot information
                 self.set_state("SnapshotIds", image_snapshots)
@@ -432,21 +408,11 @@ class CopyImageAction(BaseAction):
         """
         log.trace("Resolving CopyImageAction")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.destination_image_name = self.renderer.render_string(
-            self.params.destination_image_name, self.context
-        )
-        self.params.image_name = self.renderer.render_string(
-            self.params.image_name, self.context
-        )
-        self.params.kms_key_arn = self.renderer.render_string(
-            self.params.kms_key_arn, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.destination_image_name = self.renderer.render_string(self.params.destination_image_name, self.context)
+        self.params.image_name = self.renderer.render_string(self.params.image_name, self.context)
+        self.params.kms_key_arn = self.renderer.render_string(self.params.kms_key_arn, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
 
         log.trace("CopyImageAction resolved")
 
@@ -506,10 +472,16 @@ class CopyImageAction(BaseAction):
                     )
 
         except (KeyError, IndexError, TypeError) as e:
-            log.warning(
-                "Error extracting snapshot IDs from describe_images response: {}", e
-            )
+            log.warning("Error extracting snapshot IDs from describe_images response: {}", e)
             log.trace("Response structure: {}", describe_images_response)
 
         log.debug("Found {} snapshots for image: {}", len(snapshots), snapshots)
         return snapshots
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> CopyImageActionSpec:
+        return CopyImageActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> CopyImageActionParams:
+        return CopyImageActionParams(**kwargs)

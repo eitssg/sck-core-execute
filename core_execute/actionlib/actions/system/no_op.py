@@ -6,15 +6,24 @@ from datetime import datetime, timezone
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionSpec
+from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
 
 from core_execute.actionlib.action import BaseAction
 
 
-class NoOpActionParams(BaseModel):
+class NoOpActionParams(ActionParams):
     """Parameters for the NoOpAction"""
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+    @model_validator(mode="before")
+    @classmethod
+    def validate_model_before(cls, values: Any) -> dict[str, Any]:
+        if isinstance(values, dict):
+            if not any(key in values for key in ["account", "Account"]):
+                values["Account"] = "not-required"
+            if not any(key in values for key in ["region", "Region"]):
+                values["Region"] = "not-required"
+
+        return values
 
 
 class NoOpActionSpec(ActionSpec):
@@ -137,3 +146,11 @@ class NoOpAction(BaseAction):
         log.debug("Cleaning up NoOp Action")
 
         pass
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> NoOpActionSpec:
+        return NoOpActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> NoOpActionParams:
+        return NoOpActionParams(**kwargs)

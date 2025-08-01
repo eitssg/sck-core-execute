@@ -6,14 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 import core_logging as log
 import core_framework as util
 
-from core_framework.models import ActionSpec, DeploymentDetails
+from core_framework.models import ActionSpec, DeploymentDetails, ActionParams
 
 from core_execute.actionlib.action import BaseAction
 
 from core_db.event.actions import EventActions
 
 
-class PutEventActionParams(BaseModel):
+class PutEventActionParams(ActionParams):
     """
     Parameters for the PutEventAction.
 
@@ -29,8 +29,6 @@ class PutEventActionParams(BaseModel):
     identity : str, optional
         The identity of the event. Defaults to None.
     """
-
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
     type: str = Field(
         "STATUS",
@@ -52,6 +50,20 @@ class PutEventActionParams(BaseModel):
         alias="Identity",
         description="The identity of the event (optional)",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def validatre_model_before(cls, values: Any) -> dict[str, Any]:
+        if isinstance(values, dict):
+
+            # These are requried keys in the superclass.  But, for this
+            # Action, we'll just put 'non-required' in there
+            if not any(key in values for key in ["account", "Account"]):
+                values["Account"] = "not-required"
+            if not any(key in values for key in ["region", "Region"]):
+                values["Region"] = "not-required"
+
+        return values
 
 
 class PutEventActionSpec(ActionSpec):
@@ -190,9 +202,7 @@ class PutEventAction(BaseAction):
 
         # Create a unique timestamp label for this event instance
         start_time = util.get_current_timestamp()
-        datetime_label = start_time.replace(":", "-").replace(
-            ".", "-"
-        )  # Make filesystem/key safe
+        datetime_label = start_time.replace(":", "-").replace(".", "-")  # Make filesystem/key safe
 
         # Track this event instance in general state
         self.set_state("last_event_time", start_time)
@@ -218,9 +228,7 @@ class PutEventAction(BaseAction):
                 log.error(self.params.message, identity=self.params.identity)
             else:
                 log.fatal("Invalid event type: {}", t)
-                raise ValueError(
-                    f"Invalid event type: {t}.  Must be one of: STATUS, DEBUG, INFO, WARN, ERROR"
-                )
+                raise ValueError(f"Invalid event type: {t}.  Must be one of: STATUS, DEBUG, INFO, WARN, ERROR")
 
             event = EventActions.create(
                 self.params.identity,
@@ -259,9 +267,7 @@ class PutEventAction(BaseAction):
             self.set_state("status", "error")
             self.set_state("error_time", error_time)
             self.set_state("error_message", error_message)
-            self.set_state(
-                "message", f"Failed to save event to database: {error_message}"
-            )
+            self.set_state("message", f"Failed to save event to database: {error_message}")
 
             log.error("Failed to save event to database: {}", e)
             self.set_failed("Failed to save event to database")
@@ -310,14 +316,16 @@ class PutEventAction(BaseAction):
         log.trace("PutEventAction._resolve()")
 
         self.params.type = self.renderer.render_string(self.params.type, self.context)
-        self.params.status = self.renderer.render_string(
-            self.params.status, self.context
-        )
-        self.params.message = self.renderer.render_string(
-            self.params.message, self.context
-        )
-        self.params.identity = self.renderer.render_string(
-            self.params.identity, self.context
-        )
+        self.params.status = self.renderer.render_string(self.params.status, self.context)
+        self.params.message = self.renderer.render_string(self.params.message, self.context)
+        self.params.identity = self.renderer.render_string(self.params.identity, self.context)
 
         log.trace("PutEventAction._resolve() complete")
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> PutEventActionSpec:
+        return PutEventActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> PutEventActionParams:
+        return PutEventActionParams(**kwargs)

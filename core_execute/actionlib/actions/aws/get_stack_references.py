@@ -8,12 +8,12 @@ import core_logging as log
 
 import core_framework as util
 import core_helper.aws as aws
-from core_framework.models import DeploymentDetails, ActionSpec
+from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
 
 from core_execute.actionlib.action import BaseAction
 
 
-class GetStackReferencesActionParams(BaseModel):
+class GetStackReferencesActionParams(ActionParams):
     """
     Parameters for the GetStackReferencesAction.
 
@@ -30,16 +30,6 @@ class GetStackReferencesActionParams(BaseModel):
         Defaults to 'DefaultExport' if not specified.
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(
-        ..., alias="Account", description="The account to use for the action (required)"
-    )
-    region: str = Field(
-        ...,
-        alias="Region",
-        description="The region where the stack is located (required)",
-    )
     stack_name: str = Field(
         ...,
         alias="StackName",
@@ -242,9 +232,7 @@ class GetStackReferencesAction(BaseAction):
             )
 
             # Complete the action
-            self.set_complete(
-                f"Export '{output_export_name}' is referenced by {num_references} stack(s)"
-            )
+            self.set_complete(f"Export '{output_export_name}' is referenced by {num_references} stack(s)")
 
         except ClientError as e:
             completion_time = util.get_current_timestamp()
@@ -274,9 +262,7 @@ class GetStackReferencesAction(BaseAction):
                     f"Export '{output_export_name}' does not exist, treating as no references",
                 )
 
-                self.set_complete(
-                    f"Export '{output_export_name}' does not exist, treating stack as unreferenced"
-                )
+                self.set_complete(f"Export '{output_export_name}' does not exist, treating stack as unreferenced")
 
             elif "not imported" in error_message:
                 # Export exists but isn't imported by any stacks
@@ -310,9 +296,7 @@ class GetStackReferencesAction(BaseAction):
                         "ExportName": output_export_name,
                     },
                 )
-                self.set_complete(
-                    f"Export '{output_export_name}' is not referenced by any stacks"
-                )
+                self.set_complete(f"Export '{output_export_name}' is not referenced by any stacks")
 
             else:
                 # Other error - set error state
@@ -384,17 +368,17 @@ class GetStackReferencesAction(BaseAction):
         """
         log.trace("GetStackReferencesAction._resolve()")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.stack_name = self.renderer.render_string(
-            self.params.stack_name, self.context
-        )
-        self.params.output_name = self.renderer.render_string(
-            self.params.output_name, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
+        self.params.output_name = self.renderer.render_string(self.params.output_name, self.context)
 
         log.trace("GetStackReferencesAction._resolve() complete")
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> GetStackReferencesActionSpec:
+        return GetStackReferencesActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> GetStackReferencesActionParams:
+        return GetStackReferencesActionParams(**kwargs)

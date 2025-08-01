@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 
 import core_logging as log
 
-from core_framework.models import ActionSpec, DeploymentDetails
+from core_framework.models import ActionSpec, ActionParams, DeploymentDetails
 
 import core_helper.aws as aws
 
@@ -15,7 +15,7 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class DeleteEcrRepositoryActionParams(BaseModel):
+class DeleteEcrRepositoryActionParams(ActionParams):
     """
     Parameters for the DeleteEcrRepositoryAction.
 
@@ -27,18 +27,6 @@ class DeleteEcrRepositoryActionParams(BaseModel):
     :type repository_name: str
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(
-        ...,
-        alias="Account",
-        description="The account to use for the action (required)",
-    )
-    region: str = Field(
-        ...,
-        alias="Region",
-        description="The region to create the stack in (required)",
-    )
     repository_name: str = Field(
         ...,
         alias="RepositoryName",
@@ -147,15 +135,9 @@ class DeleteEcrRepositoryAction(BaseAction):
         """
         log.trace("Resolving DeleteEcrRepositoryAction")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.repository_name = self.renderer.render_string(
-            self.params.repository_name, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.repository_name = self.renderer.render_string(self.params.repository_name, self.context)
 
         log.trace("DeleteEcrRepositoryAction resolved")
 
@@ -212,20 +194,12 @@ class DeleteEcrRepositoryAction(BaseAction):
                 repository_exists = True
 
                 # Store repository information before deletion
-                self.set_state(
-                    "RepositoryUri", repository_info.get("repositoryUri", "")
-                )
+                self.set_state("RepositoryUri", repository_info.get("repositoryUri", ""))
                 self.set_state("ImageCount", repository_info.get("imageCount", 0))
-                self.set_state(
-                    "RepositorySize", repository_info.get("repositorySizeInBytes", 0)
-                )
+                self.set_state("RepositorySize", repository_info.get("repositorySizeInBytes", 0))
                 self.set_state(
                     "CreatedAt",
-                    (
-                        repository_info.get("createdAt", "").isoformat()
-                        if repository_info.get("createdAt")
-                        else ""
-                    ),
+                    (repository_info.get("createdAt", "").isoformat() if repository_info.get("createdAt") else ""),
                 )
 
                 log.debug(
@@ -245,9 +219,7 @@ class DeleteEcrRepositoryAction(BaseAction):
                     self.params.repository_name,
                     e.response["Error"]["Message"],
                 )
-                self.set_failed(
-                    f"Failed to check repository '{self.params.repository_name}': {e.response['Error']['Message']}"
-                )
+                self.set_failed(f"Failed to check repository '{self.params.repository_name}': {e.response['Error']['Message']}")
                 return
         except Exception as e:
             log.error(
@@ -255,9 +227,7 @@ class DeleteEcrRepositoryAction(BaseAction):
                 self.params.repository_name,
                 e,
             )
-            self.set_failed(
-                f"Unexpected error checking repository '{self.params.repository_name}': {e}"
-            )
+            self.set_failed(f"Unexpected error checking repository '{self.params.repository_name}': {e}")
             return
 
         self.set_state("RepositoryExisted", repository_exists)
@@ -282,9 +252,7 @@ class DeleteEcrRepositoryAction(BaseAction):
                 self.set_output("DeletionCompleted", True)
                 self.set_output("DeletionResult", "SUCCESS")
 
-                self.set_complete(
-                    f"ECR repository '{self.params.repository_name}' has been deleted successfully"
-                )
+                self.set_complete(f"ECR repository '{self.params.repository_name}' has been deleted successfully")
                 log.debug(
                     "Successfully deleted ECR repository '{}'",
                     self.params.repository_name,
@@ -305,9 +273,7 @@ class DeleteEcrRepositoryAction(BaseAction):
                     self.set_state("DeletionResult", "ALREADY_DELETED")
                     self.set_output("DeletionCompleted", True)
                     self.set_output("DeletionResult", "ALREADY_DELETED")
-                    self.set_complete(
-                        f"ECR repository '{self.params.repository_name}' was already deleted"
-                    )
+                    self.set_complete(f"ECR repository '{self.params.repository_name}' was already deleted")
                 elif error_code == "RepositoryNotEmptyException":
                     # This shouldn't happen with force=True, but handle gracefully
                     log.error(
@@ -328,9 +294,7 @@ class DeleteEcrRepositoryAction(BaseAction):
                     )
                     self.set_state("DeletionResult", "FAILED")
                     self.set_state("FailureReason", f"{error_code}: {error_message}")
-                    self.set_failed(
-                        f"Failed to delete repository '{self.params.repository_name}': {error_message}"
-                    )
+                    self.set_failed(f"Failed to delete repository '{self.params.repository_name}': {error_message}")
 
             except Exception as e:
                 log.error(
@@ -340,9 +304,7 @@ class DeleteEcrRepositoryAction(BaseAction):
                 )
                 self.set_state("DeletionResult", "FAILED")
                 self.set_state("FailureReason", str(e))
-                self.set_failed(
-                    f"Unexpected error deleting repository '{self.params.repository_name}': {e}"
-                )
+                self.set_failed(f"Unexpected error deleting repository '{self.params.repository_name}': {e}")
         else:
             # Repository doesn't exist - treat as successful deletion
             log.info(
@@ -356,9 +318,7 @@ class DeleteEcrRepositoryAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "NOT_FOUND")
 
-            self.set_complete(
-                f"ECR repository '{self.params.repository_name}' does not exist, may have been previously deleted"
-            )
+            self.set_complete(f"ECR repository '{self.params.repository_name}' does not exist, may have been previously deleted")
 
         log.trace("DeleteEcrRepositoryAction execution completed")
 
@@ -372,9 +332,7 @@ class DeleteEcrRepositoryAction(BaseAction):
         log.trace("DeleteEcrRepositoryAction check")
 
         # ECR repository deletion is synchronous, so this shouldn't be called
-        self.set_failed(
-            "Internal error - _check() should not have been called for ECR repository deletion"
-        )
+        self.set_failed("Internal error - _check() should not have been called for ECR repository deletion")
 
         log.trace("DeleteEcrRepositoryAction check completed")
 
@@ -413,3 +371,11 @@ class DeleteEcrRepositoryAction(BaseAction):
         self.set_complete("ECR repository deletion cannot be cancelled")
 
         log.trace("DeleteEcrRepositoryAction cancellation completed")
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> DeleteEcrRepositoryActionSpec:
+        return DeleteEcrRepositoryActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> DeleteEcrRepositoryActionParams:
+        return DeleteEcrRepositoryActionParams(**kwargs)

@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionSpec
+from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
 
 import core_helper.aws as aws
 
@@ -15,7 +15,7 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class EmptyBucketActionParams(BaseModel):
+class EmptyBucketActionParams(ActionParams):
     """
     Parameters for the EmptyBucketAction.
 
@@ -29,14 +29,6 @@ class EmptyBucketActionParams(BaseModel):
         The name of the S3 bucket to empty.
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(
-        ..., alias="Account", description="The account to use for the action (required)"
-    )
-    region: str = Field(
-        ..., alias="Region", description="The region to create the stack in (required)"
-    )
     bucket_name: str = Field(
         ...,
         alias="BucketName",
@@ -149,9 +141,7 @@ class EmptyBucketAction(BaseAction):
         log.trace("EmptyBucketAction._execute()")
 
         if self.params.bucket_name:  # Fixed: Use snake_case attribute
-            self.set_running(
-                "Deleting all objects in bucket '{}'".format(self.params.bucket_name)
-            )
+            self.set_running("Deleting all objects in bucket '{}'".format(self.params.bucket_name))
             self.__empty_bucket()
         else:
             self.set_complete("No bucket specified")
@@ -198,15 +188,9 @@ class EmptyBucketAction(BaseAction):
         """
         log.trace("EmptyBucketAction._resolve()")
 
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.bucket_name = self.renderer.render_string(
-            self.params.bucket_name, self.context
-        )
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.bucket_name = self.renderer.render_string(self.params.bucket_name, self.context)
 
         log.trace("EmptyBucketAction._resolve() complete")
 
@@ -251,20 +235,14 @@ class EmptyBucketAction(BaseAction):
                 self.set_output("bucket_name", self.params.bucket_name)
                 self.set_output("region", self.params.region)
                 self.set_output("account", self.params.account)
-                self.set_output(
-                    "total_objects_deleted", self.get_state("total_objects_deleted")
-                )
+                self.set_output("total_objects_deleted", self.get_state("total_objects_deleted"))
                 self.set_output("total_batches", self.get_state("batch_count"))
                 self.set_output("start_time", self.get_state("start_time"))
                 self.set_output("completion_time", completion_time)
                 self.set_output("status", "success")
-                self.set_output(
-                    "message", f"Bucket '{self.params.bucket_name}' is now empty"
-                )
+                self.set_output("message", f"Bucket '{self.params.bucket_name}' is now empty")
 
-                self.set_complete(
-                    "No objects remain in bucket '{}'".format(self.params.bucket_name)
-                )
+                self.set_complete("No objects remain in bucket '{}'".format(self.params.bucket_name))
             else:
                 # Objects were deleted, update state and continue
                 batch_deleted = sum(len(item["Deleted"]) for item in delete_response)
@@ -296,9 +274,7 @@ class EmptyBucketAction(BaseAction):
                 self.set_output("bucket_name", self.params.bucket_name)
                 self.set_output("region", self.params.region)
                 self.set_output("account", self.params.account)
-                self.set_output(
-                    "total_objects_deleted", self.get_state("total_objects_deleted")
-                )
+                self.set_output("total_objects_deleted", self.get_state("total_objects_deleted"))
                 self.set_output("current_batch", self.get_state("batch_count"))
                 self.set_output("last_batch_deleted", batch_deleted)
                 self.set_output("start_time", self.get_state("start_time"))
@@ -331,11 +307,7 @@ class EmptyBucketAction(BaseAction):
                     f"Bucket '{self.params.bucket_name}' does not exist, treating as success",
                 )
 
-                self.set_complete(
-                    "Bucket '{}' does not exist, treating as success".format(
-                        self.params.bucket_name
-                    )
-                )
+                self.set_complete("Bucket '{}' does not exist, treating as success".format(self.params.bucket_name))
             else:
                 # Set error state and outputs
                 error_time = util.get_current_timestamp()
@@ -346,19 +318,23 @@ class EmptyBucketAction(BaseAction):
                 self.set_output("bucket_name", self.params.bucket_name)
                 self.set_output("region", self.params.region)
                 self.set_output("account", self.params.account)
-                self.set_output(
-                    "total_objects_deleted", self.get_state("total_objects_deleted", 0)
-                )
+                self.set_output("total_objects_deleted", self.get_state("total_objects_deleted", 0))
                 self.set_output("total_batches", self.get_state("batch_count", 0))
                 self.set_output("start_time", self.get_state("start_time"))
                 self.set_output("error_time", error_time)
                 self.set_output("status", "error")
                 self.set_output("error_message", str(e))
-                self.set_output(
-                    "message", f"Error emptying bucket '{self.params.bucket_name}': {e}"
-                )
+                self.set_output("message", f"Error emptying bucket '{self.params.bucket_name}': {e}")
 
                 log.error("Error emptying bucket '{}': {}", self.params.bucket_name, e)
                 raise
 
         log.trace("EmptyBucketAction.__empty_bucket() complete")
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> EmptyBucketActionSpec:
+        return EmptyBucketActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> EmptyBucketActionParams:
+        return EmptyBucketActionParams(**kwargs)

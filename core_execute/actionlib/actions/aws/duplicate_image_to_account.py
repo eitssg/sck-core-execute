@@ -6,7 +6,7 @@ from botocore.exceptions import ClientError
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionSpec
+from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
 
 import core_helper.aws as aws
 
@@ -14,7 +14,7 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class DuplicateImageToAccountActionParams(BaseModel):
+class DuplicateImageToAccountActionParams(ActionParams):
     """
     Parameters for the DuplicateImageToAccountAction.
 
@@ -32,18 +32,6 @@ class DuplicateImageToAccountActionParams(BaseModel):
     :type tags: dict[str, str] | None
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(
-        ...,
-        alias="Account",
-        description="The source account where the image is located (required)",
-    )
-    region: str = Field(
-        ...,
-        alias="Region",
-        description="The region where the image operations will occur (required)",
-    )
     image_name: str = Field(
         ...,
         alias="ImageName",
@@ -193,25 +181,15 @@ class DuplicateImageToAccountAction(BaseAction):
         """
         log.trace("Resolving DuplicateImageToAccountAction")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.image_name = self.renderer.render_string(
-            self.params.image_name, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.kms_key_arn = self.renderer.render_string(
-            self.params.kms_key_arn, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.image_name = self.renderer.render_string(self.params.image_name, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.kms_key_arn = self.renderer.render_string(self.params.kms_key_arn, self.context)
 
         # Resolve each account in the list
         if isinstance(self.params.accounts_to_share, list):
             for i, account in enumerate(self.params.accounts_to_share):
-                self.params.accounts_to_share[i] = self.renderer.render_string(
-                    account, self.context
-                )
+                self.params.accounts_to_share[i] = self.renderer.render_string(account, self.context)
 
         log.trace("DuplicateImageToAccountAction resolved")
 
@@ -232,9 +210,7 @@ class DuplicateImageToAccountAction(BaseAction):
         # Check if this is a restart/resume scenario
         duplication_started = self.get_state("DuplicationStarted", False)
         if duplication_started:
-            log.info(
-                "Resuming AMI duplication operation - checking for work in progress"
-            )
+            log.info("Resuming AMI duplication operation - checking for work in progress")
             return self._resume_execution()
 
         # Fresh execution - validate required parameters
@@ -327,9 +303,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
         log.trace("DuplicateImageToAccountAction resume completed")
 
-    def _process_target_accounts(
-        self, ec2_client, source_image_id: str, snapshot_ids: list[str]
-    ):
+    def _process_target_accounts(self, ec2_client, source_image_id: str, snapshot_ids: list[str]):
         """
         Process target accounts, handling both fresh starts and resumes.
 
@@ -354,14 +328,8 @@ class DuplicateImageToAccountAction(BaseAction):
         in_progress_accounts = self.get_state("InProgressAccounts", [])
 
         # Determine which accounts still need processing
-        processed_accounts = set(
-            successful_accounts + [fa["Account"] for fa in failed_accounts]
-        )
-        accounts_to_process = [
-            acc
-            for acc in self.params.accounts_to_share
-            if acc not in processed_accounts
-        ]
+        processed_accounts = set(successful_accounts + [fa["Account"] for fa in failed_accounts])
+        accounts_to_process = [acc for acc in self.params.accounts_to_share if acc not in processed_accounts]
 
         log.info(
             "Account status: {} successful, {} failed, {} in progress, {} remaining to process",
@@ -395,9 +363,7 @@ class DuplicateImageToAccountAction(BaseAction):
                     self.set_state("InProgressAccounts", in_progress_accounts)
 
                 # Duplicate AMI to this account
-                target_image_id = self._duplicate_to_account(
-                    ec2_client, source_image_id, snapshot_ids[0], target_account
-                )
+                target_image_id = self._duplicate_to_account(ec2_client, source_image_id, snapshot_ids[0], target_account)
 
                 # Mark as successful
                 successful_accounts.append(target_account)
@@ -419,9 +385,7 @@ class DuplicateImageToAccountAction(BaseAction):
                 )
 
             except Exception as e:
-                log.error(
-                    "Failed to duplicate AMI to account '{}': {}", target_account, e
-                )
+                log.error("Failed to duplicate AMI to account '{}': {}", target_account, e)
 
                 # Remove from in-progress and add to failed
                 if target_account in in_progress_accounts:
@@ -464,9 +428,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
         # Determine overall result
         if failed_accounts and not successful_accounts:
-            self.set_failed(
-                f"Failed to duplicate AMI to all {len(failed_accounts)} target accounts"
-            )
+            self.set_failed(f"Failed to duplicate AMI to all {len(failed_accounts)} target accounts")
         elif failed_accounts:
             # Partial success - continue with _check() to monitor remaining AMIs
             self.set_state("DuplicationResult", "PARTIAL_SUCCESS")
@@ -502,9 +464,7 @@ class DuplicateImageToAccountAction(BaseAction):
         :rtype: str
         :raises ClientError: If any step of the duplication fails
         """
-        log.info(
-            "Duplicating AMI '{}' to account '{}'", source_image_id, target_account
-        )
+        log.info("Duplicating AMI '{}' to account '{}'", source_image_id, target_account)
 
         # Check if we already have a snapshot being copied for this account
         copied_snapshot_id = self.get_state(f"CopiedSnapshotId_{target_account}", None)
@@ -522,9 +482,7 @@ class DuplicateImageToAccountAction(BaseAction):
         try:
             # Step 1: Share snapshot with target account (idempotent operation)
             self.set_running(f"Sharing snapshot with target account {target_account}")
-            log.debug(
-                "Sharing snapshot '{}' with account '{}'", snapshot_id, target_account
-            )
+            log.debug("Sharing snapshot '{}' with account '{}'", snapshot_id, target_account)
 
             source_ec2_client.modify_snapshot_attribute(
                 Attribute="createVolumePermission",
@@ -532,9 +490,7 @@ class DuplicateImageToAccountAction(BaseAction):
                 SnapshotId=snapshot_id,
                 UserIds=[target_account],
             )
-            log.debug(
-                "Successfully shared snapshot with target account {}", target_account
-            )
+            log.debug("Successfully shared snapshot with target account {}", target_account)
 
             # Step 2: Get client and resource for target account
             target_ec2_client = aws.ec2_client(
@@ -550,9 +506,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
             # Step 3: Copy snapshot in target account (check if already in progress)
             if not copied_snapshot_id:
-                self.set_running(
-                    f"Copying snapshot to target account {target_account}"
-                )  # Fixed typo
+                self.set_running(f"Copying snapshot to target account {target_account}")  # Fixed typo
 
                 # FIXED: Use resource for snapshot operations
                 shared_snapshot = target_ec2_resource.Snapshot(snapshot_id)
@@ -589,9 +543,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
             # Check snapshot status before waiting
             copied_snapshot.reload()
-            log.debug(
-                "Snapshot '{}' status: {}", copied_snapshot_id, copied_snapshot.state
-            )
+            log.debug("Snapshot '{}' status: {}", copied_snapshot_id, copied_snapshot.state)
 
             if copied_snapshot.state == "pending":
                 log.info(
@@ -601,9 +553,7 @@ class DuplicateImageToAccountAction(BaseAction):
                 )
                 copied_snapshot.wait_until_completed()
             elif copied_snapshot.state != "completed":
-                raise Exception(
-                    f"Snapshot {copied_snapshot_id} is in unexpected state: {copied_snapshot.state}"
-                )
+                raise Exception(f"Snapshot {copied_snapshot_id} is in unexpected state: {copied_snapshot.state}")
 
             log.debug(
                 "Snapshot '{}' completed in account '{}'",
@@ -615,9 +565,7 @@ class DuplicateImageToAccountAction(BaseAction):
             self.set_running(f"Creating AMI in target account {target_account}")
 
             # Get original AMI details for accurate copying using the source EC2 client
-            source_images_response = source_ec2_client.describe_images(
-                ImageIds=[source_image_id]
-            )
+            source_images_response = source_ec2_client.describe_images(ImageIds=[source_image_id])
             if not source_images_response["Images"]:
                 raise Exception(f"Source AMI '{source_image_id}' not found")
 
@@ -626,9 +574,7 @@ class DuplicateImageToAccountAction(BaseAction):
             # Get the original block device mapping to preserve settings
             source_block_devices = source_image_data.get("BlockDeviceMappings", [])
             if not source_block_devices:
-                raise Exception(
-                    f"Source AMI '{source_image_id}' has no block device mappings"
-                )
+                raise Exception(f"Source AMI '{source_image_id}' has no block device mappings")
 
             # Find the root device mapping
             root_device_name = source_image_data.get("RootDeviceName", "/dev/sda1")
@@ -639,9 +585,7 @@ class DuplicateImageToAccountAction(BaseAction):
                     break
 
             if not root_block_device or "Ebs" not in root_block_device:
-                raise Exception(
-                    f"Could not find root EBS device mapping for AMI '{source_image_id}'"
-                )
+                raise Exception(f"Could not find root EBS device mapping for AMI '{source_image_id}'")
 
             # Preserve original EBS settings from source AMI
             original_ebs = root_block_device["Ebs"]
@@ -654,21 +598,13 @@ class DuplicateImageToAccountAction(BaseAction):
                     {
                         "DeviceName": root_device_name,
                         "Ebs": {
-                            "DeleteOnTermination": original_ebs.get(
-                                "DeleteOnTermination", True
-                            ),
+                            "DeleteOnTermination": original_ebs.get("DeleteOnTermination", True),
                             "SnapshotId": copied_snapshot.snapshot_id,  # Use the copied snapshot
                             "VolumeSize": copied_snapshot.volume_size,  # Use copied snapshot size
-                            "VolumeType": original_ebs.get(
-                                "VolumeType", "gp3"
-                            ),  # Preserve original volume type
+                            "VolumeType": original_ebs.get("VolumeType", "gp3"),  # Preserve original volume type
                             "Encrypted": True,  # Force encryption in target account (as per KMS requirement)
-                            "Iops": original_ebs.get(
-                                "Iops"
-                            ),  # Preserve IOPS if specified
-                            "Throughput": original_ebs.get(
-                                "Throughput"
-                            ),  # Preserve throughput if specified
+                            "Iops": original_ebs.get("Iops"),  # Preserve IOPS if specified
+                            "Throughput": original_ebs.get("Throughput"),  # Preserve throughput if specified
                         },
                     },
                 ],
@@ -682,9 +618,7 @@ class DuplicateImageToAccountAction(BaseAction):
             # FIXED: Access dict key instead of object attribute
             target_image_id = register_response["ImageId"]
             self.set_state(f"ImageId_{target_account}", target_image_id)
-            self.set_state(
-                f"ImageCreationTime_{target_account}", util.get_current_timestamp()
-            )
+            self.set_state(f"ImageCreationTime_{target_account}", util.get_current_timestamp())
 
             log.info(
                 "Successfully created AMI '{}' in target account '{}'",
@@ -696,9 +630,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
         except Exception as e:
             # Clean up state on failure
-            self.set_state(
-                f"FailureTime_{target_account}", util.get_current_timestamp()
-            )
+            self.set_state(f"FailureTime_{target_account}", util.get_current_timestamp())
             log.error("Failed to duplicate AMI to account '{}': {}", target_account, e)
             raise
 
@@ -721,14 +653,10 @@ class DuplicateImageToAccountAction(BaseAction):
         completed_accounts = self.get_state("CompletedAccounts", [])
 
         # Only check accounts that haven't completed yet
-        accounts_to_check = [
-            acc for acc in successful_accounts if acc not in completed_accounts
-        ]
+        accounts_to_check = [acc for acc in successful_accounts if acc not in completed_accounts]
 
         if not accounts_to_check:
-            self.set_complete(
-                f"AMI duplication already completed for all {len(successful_accounts)} accounts"
-            )
+            self.set_complete(f"AMI duplication already completed for all {len(successful_accounts)} accounts")
             return
 
         log.info(
@@ -745,9 +673,7 @@ class DuplicateImageToAccountAction(BaseAction):
         for target_account in accounts_to_check:
             image_id = self.get_state(f"ImageId_{target_account}", None)
             if not image_id:
-                log.warning(
-                    "No image ID found for account '{}', skipping check", target_account
-                )
+                log.warning("No image ID found for account '{}', skipping check", target_account)
                 continue
 
             try:
@@ -761,9 +687,7 @@ class DuplicateImageToAccountAction(BaseAction):
                 response = ec2_client.describe_images(ImageIds=[image_id])
 
                 if not response["Images"]:
-                    log.error(
-                        "Image '{}' not found in account '{}'", image_id, target_account
-                    )
+                    log.error("Image '{}' not found in account '{}'", image_id, target_account)
                     continue
 
                 state = response["Images"][0]["State"]
@@ -778,9 +702,7 @@ class DuplicateImageToAccountAction(BaseAction):
                     # Apply tags to image and snapshots
                     self._apply_tags_to_image(ec2_client, image_id, response)
                     newly_completed.append(target_account)
-                    self.set_state(
-                        f"CompletedTime_{target_account}", util.get_current_timestamp()
-                    )
+                    self.set_state(f"CompletedTime_{target_account}", util.get_current_timestamp())
                     log.info(
                         "AMI '{}' in account '{}' is now available and tagged",
                         image_id,
@@ -806,17 +728,13 @@ class DuplicateImageToAccountAction(BaseAction):
                     all_complete = False
 
             except ClientError as e:
-                log.error(
-                    "Error checking image status in account '{}': {}", target_account, e
-                )
+                log.error("Error checking image status in account '{}': {}", target_account, e)
                 still_pending.append(target_account)  # Keep checking this account
                 all_complete = False
 
         # Update cumulative state
         all_completed_accounts = completed_accounts + newly_completed
-        all_pending_accounts = [
-            acc for acc in still_pending if acc not in all_completed_accounts
-        ]
+        all_pending_accounts = [acc for acc in still_pending if acc not in all_completed_accounts]
 
         self.set_state("CompletedAccounts", all_completed_accounts)
         self.set_state("PendingAccounts", all_pending_accounts)
@@ -839,9 +757,7 @@ class DuplicateImageToAccountAction(BaseAction):
             self.set_state("AllCompletionTimes", completion_times)
             self.set_output("AllCompletionTimes", completion_times)
 
-            self.set_complete(
-                f"AMI duplication completed successfully for all {len(successful_accounts)} accounts"
-            )
+            self.set_complete(f"AMI duplication completed successfully for all {len(successful_accounts)} accounts")
         else:
             # Continue checking - Step Functions will call _check() again
             log.debug(
@@ -880,9 +796,7 @@ class DuplicateImageToAccountAction(BaseAction):
         self.set_state("RollbackAttempted", True)
         self.set_state("RollbackResult", "MANUAL_CLEANUP_REQUIRED")
 
-        self.set_complete(
-            "AMI duplication cannot be automatically rolled back - manual cleanup required"
-        )
+        self.set_complete("AMI duplication cannot be automatically rolled back - manual cleanup required")
 
         log.trace("DuplicateImageToAccountAction unexecution completed")
 
@@ -897,9 +811,7 @@ class DuplicateImageToAccountAction(BaseAction):
         log.trace("Cancelling DuplicateImageToAccountAction")
 
         # AMI duplication operations cannot be cancelled once snapshot copying has started
-        self.set_complete(
-            "AMI duplication operations cannot be cancelled once snapshot copying has started"
-        )
+        self.set_complete("AMI duplication operations cannot be cancelled once snapshot copying has started")
 
         log.trace("DuplicateImageToAccountAction cancellation completed")
 
@@ -923,9 +835,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
         # FIXED: Use aws helper to get session instead of creating new boto3.Session
         # This respects the cached session architecture
-        target_session = aws.get_session(
-            region=self.params.region, credentials=credentials
-        )
+        target_session = aws.get_session(region=self.params.region, credentials=credentials)
 
         log.trace("Successfully got session for target account '{}'", target_account)
         return target_session
@@ -942,18 +852,14 @@ class DuplicateImageToAccountAction(BaseAction):
         :type describe_response: dict
         """
         if not self.params.tags or len(self.params.tags) == 0:
-            log.debug(
-                "No tags specified, skipping tag application for image '{}'", image_id
-            )
+            log.debug("No tags specified, skipping tag application for image '{}'", image_id)
             return
 
         log.info("Applying tags to image '{}'", image_id)
 
         try:
             # Tag the AMI
-            ec2_client.create_tags(
-                Resources=[image_id], Tags=aws.transform_tag_hash(self.params.tags)
-            )
+            ec2_client.create_tags(Resources=[image_id], Tags=aws.transform_tag_hash(self.params.tags))
 
             # Tag associated snapshots
             snapshot_ids = self._get_image_snapshots(describe_response)
@@ -1002,14 +908,10 @@ class DuplicateImageToAccountAction(BaseAction):
         log.debug("Finding AMI with name '{}'", self.params.image_name)
 
         try:
-            response = ec2_client.describe_images(
-                Filters=[{"Name": "name", "Values": [self.params.image_name]}]
-            )
+            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.params.image_name]}])
 
             if not response["Images"]:
-                self.set_failed(
-                    f"Could not find AMI with name '{self.params.image_name}' in source account"
-                )
+                self.set_failed(f"Could not find AMI with name '{self.params.image_name}' in source account")
                 log.error("Could not find AMI with name '{}'", self.params.image_name)
                 return None, []
 
@@ -1019,10 +921,7 @@ class DuplicateImageToAccountAction(BaseAction):
             # Extract snapshot IDs from block device mappings
             snapshot_ids = []
             for block_device_mapping in image["BlockDeviceMappings"]:
-                if (
-                    "Ebs" in block_device_mapping
-                    and "SnapshotId" in block_device_mapping["Ebs"]
-                ):
+                if "Ebs" in block_device_mapping and "SnapshotId" in block_device_mapping["Ebs"]:
                     snapshot_ids.append(block_device_mapping["Ebs"]["SnapshotId"])
 
             if not snapshot_ids:
@@ -1042,3 +941,11 @@ class DuplicateImageToAccountAction(BaseAction):
             self.set_failed(f"Error finding source AMI: {e}")
             log.error("Error finding source AMI: {}", e)
             return None, []
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> DuplicateImageToAccountActionSpec:
+        return DuplicateImageToAccountActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> DuplicateImageToAccountActionParams:
+        return DuplicateImageToAccountActionParams(**kwargs)

@@ -11,12 +11,12 @@ import core_helper.aws as aws
 
 import core_framework as util
 from core_helper.magic import MagicS3Client
-from core_framework.models import ActionSpec, DeploymentDetails
+from core_framework.models import ActionSpec, DeploymentDetails, ActionParams
 
 from core_execute.actionlib.action import BaseAction
 
 
-class UploadContextActionParams(BaseModel):
+class UploadContextActionParams(ActionParams):
     """Parameters for the UploadContextAction.
 
     Contains all configuration needed to upload deployment context data
@@ -45,130 +45,16 @@ class UploadContextActionParams(BaseModel):
         )
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(..., alias="Account", description="The AWS account ID where the S3 bucket is located")
     bucket_name: str = Field(
         ...,
         alias="BucketName",
         description="The name of the S3 bucket to upload context files to",
     )
-    region: str = Field(..., alias="Region", description="The AWS region where the S3 bucket is located")
     prefix: str = Field(
         ...,
         alias="Prefix",
         description="The S3 key prefix for organizing uploaded context files",
     )
-
-    @field_validator("account")
-    @classmethod
-    def validate_account(cls, v: str) -> str:
-        """Validate that account is a valid AWS account ID.
-
-        Parameters
-        ----------
-        v : str
-            The account ID to validate
-
-        Returns
-        -------
-        str
-            The validated account ID
-
-        Raises
-        ------
-        ValueError
-            If account ID format is invalid
-        """
-        if not v:
-            raise ValueError("Account cannot be empty")
-        if not v.isdigit():
-            raise ValueError("Account must be a numeric AWS account ID")
-        if len(v) != 12:
-            raise ValueError("Account ID must be exactly 12 digits")
-        return v
-
-    @field_validator("bucket_name")
-    @classmethod
-    def validate_bucket_name(cls, v: str) -> str:
-        """Validate that bucket_name follows S3 naming conventions.
-
-        Parameters
-        ----------
-        v : str
-            The bucket name to validate
-
-        Returns
-        -------
-        str
-            The validated bucket name
-
-        Raises
-        ------
-        ValueError
-            If bucket name format is invalid
-        """
-        if not v:
-            raise ValueError("BucketName cannot be empty")
-        if len(v) < 3 or len(v) > 63:
-            raise ValueError("Bucket name must be between 3 and 63 characters")
-        if not re.match(r"^[a-z0-9.-]+$", v):
-            raise ValueError("Bucket name can only contain lowercase letters, numbers, hyphens, and periods")
-        return v
-
-    @field_validator("region")
-    @classmethod
-    def validate_region(cls, v: str) -> str:
-        """Validate that region is a valid AWS region format.
-
-        Parameters
-        ----------
-        v : str
-            The region to validate
-
-        Returns
-        -------
-        str
-            The validated region
-
-        Raises
-        ------
-        ValueError
-            If region format is invalid
-        """
-        if not v:
-            raise ValueError("Region cannot be empty")
-        if not re.match(r"^[a-z0-9-]+$", v):
-            raise ValueError("Region must contain only lowercase letters, numbers, and hyphens")
-        return v
-
-    @field_validator("prefix")
-    @classmethod
-    def validate_prefix(cls, v: str) -> str:
-        """Validate that prefix follows S3 key naming conventions.
-
-        Parameters
-        ----------
-        v : str
-            The prefix to validate
-
-        Returns
-        -------
-        str
-            The validated prefix
-
-        Raises
-        ------
-        ValueError
-            If prefix format is invalid
-        """
-        if not v:
-            raise ValueError("Prefix cannot be empty")
-        # Remove leading/trailing slashes for consistency
-        v = v.strip("/")
-        if not v:
-            raise ValueError("Prefix cannot be just slashes")
-        return v
 
 
 class UploadContextActionSpec(ActionSpec):
@@ -630,3 +516,11 @@ class UploadContextAction(BaseAction):
             self.set_failed(error_message)
 
         log.trace("UploadContextAction._resolve() complete")
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> UploadContextActionSpec:
+        return UploadContextActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> UploadContextActionParams:
+        return UploadContextActionParams(**kwargs)

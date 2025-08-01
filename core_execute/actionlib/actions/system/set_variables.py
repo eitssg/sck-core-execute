@@ -5,19 +5,26 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionSpec
+from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
 
 from core_execute.actionlib.action import BaseAction
 
 
-class SetVariablesActionParams(BaseModel):
+class SetVariablesActionParams(ActionParams):
     """Parameters for the SetVariablesAction"""
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
+    variables: dict[str, Any] = Field(..., alias="Variables", description="The variables to set (required)")
 
-    variables: dict[str, Any] = Field(
-        ..., alias="Variables", description="The variables to set (required)"
-    )
+    @model_validator(mode="before")
+    @classmethod
+    def validate_model_before(cls, values: Any) -> dict[str, Any]:
+        if isinstance(values, dict):
+            if not any(key in values for key in ["account", "Account"]):
+                values["Account"] = "not-required"
+            if not any(key in values for key in ["region", "Region"]):
+                values["Region"] = "not-required"
+
+        return values
 
 
 class SetVariablesActionSpec(ActionSpec):
@@ -122,3 +129,11 @@ class SetVariablesAction(BaseAction):
                 self.params.variables[key] = result
 
         log.trace("SetVariablesAction._resolve()")
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> SetVariablesActionSpec:
+        return SetVariablesActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> SetVariablesActionParams:
+        return SetVariablesActionParams(**kwargs)

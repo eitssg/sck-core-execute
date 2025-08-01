@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator, field_valida
 
 import core_logging as log
 
-from core_framework.models import ActionSpec, DeploymentDetails
+from core_framework.models import ActionSpec, DeploymentDetails, ActionParams
 
 import core_helper.aws as aws
 
@@ -13,7 +13,7 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class UnprotectELBActionParams(BaseModel):
+class UnprotectELBActionParams(ActionParams):
     """Parameters for the UnprotectELBAction.
 
     Contains all configuration needed to remove deletion protection from an
@@ -40,101 +40,11 @@ class UnprotectELBActionParams(BaseModel):
         )
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(..., alias="Account", description="The AWS account ID where the load balancer is located")
-    region: str = Field(..., alias="Region", description="The AWS region where the load balancer is located")
     load_balancer: str = Field(
         ...,
         alias="LoadBalancer",
         description="The ARN of the load balancer to unprotect (or 'none' to skip)",
     )
-
-    @field_validator("account")
-    @classmethod
-    def validate_account(cls, v: str) -> str:
-        """Validate that account is a valid AWS account ID.
-
-        Parameters
-        ----------
-        v : str
-            The account ID to validate
-
-        Returns
-        -------
-        str
-            The validated account ID
-
-        Raises
-        ------
-        ValueError
-            If account ID format is invalid
-        """
-        if v and not v.isdigit():
-            raise ValueError("Account must be a numeric AWS account ID")
-        if v and len(v) != 12:
-            raise ValueError("Account ID must be exactly 12 digits")
-        return v
-
-    @field_validator("region")
-    @classmethod
-    def validate_region(cls, v: str) -> str:
-        """Validate that region is a valid AWS region format.
-
-        Parameters
-        ----------
-        v : str
-            The region to validate
-
-        Returns
-        -------
-        str
-            The validated region
-
-        Raises
-        ------
-        ValueError
-            If region format is invalid
-        """
-        if not v:
-            raise ValueError("Region cannot be empty")
-        # Basic AWS region format validation
-        if not v.replace("-", "").replace("_", "").isalnum():
-            raise ValueError("Region must contain only alphanumeric characters, hyphens, and underscores")
-        return v
-
-    @field_validator("load_balancer")
-    @classmethod
-    def validate_load_balancer(cls, v: str) -> str:
-        """Validate load balancer ARN or special values.
-
-        Parameters
-        ----------
-        v : str
-            The load balancer ARN or special value to validate
-
-        Returns
-        -------
-        str
-            The validated load balancer ARN or special value
-
-        Raises
-        ------
-        ValueError
-            If load balancer ARN format is invalid
-        """
-        if not v:
-            raise ValueError("LoadBalancer cannot be empty")
-
-        # Allow special value "none" to skip operation
-        if v.lower() == "none":
-            return v.lower()
-
-        # Validate ARN format for load balancers
-        if not v.startswith("arn:aws:elasticloadbalancing:"):
-            raise ValueError("LoadBalancer must be a valid ELB ARN or 'none'")
-
-        return v
 
 
 class UnprotectELBActionSpec(ActionSpec):
@@ -514,3 +424,11 @@ class UnprotectELBAction(BaseAction):
             self.set_failed(error_message)
 
         log.trace("UnprotectELBAction._resolve() complete")
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> UnprotectELBActionSpec:
+        return UnprotectELBActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> UnprotectELBActionParams:
+        return UnprotectELBActionParams(**kwargs)

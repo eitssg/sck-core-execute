@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator, field_valida
 
 import core_logging as log
 
-from core_framework.models import ActionSpec, DeploymentDetails
+from core_framework.models import ActionSpec, DeploymentDetails, ActionParams
 
 import core_helper.aws as aws
 
@@ -13,7 +13,7 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class ShareImageActionParams(BaseModel):
+class ShareImageActionParams(ActionParams):
     """Parameters for the ShareImageAction.
 
     Contains all configuration needed to share an AMI image with other AWS accounts
@@ -48,10 +48,6 @@ class ShareImageActionParams(BaseModel):
         )
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(..., alias="Account", description="The account where the source AMI image is located")
-    region: str = Field(..., alias="Region", description="The region where the source AMI image is located")
     image_name: str = Field(..., alias="ImageName", description="The name of the AMI image to share")
     accounts_to_share: list[str] = Field(
         ...,
@@ -536,3 +532,11 @@ class ShareImageAction(BaseAction):
             self.set_failed(error_message)
 
         log.trace("ShareImageAction._resolve() complete")
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> ShareImageActionSpec:
+        return ShareImageActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> ShareImageActionParams:
+        return ShareImageActionParams(**kwargs)

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator, field_valida
 
 import core_logging as log
 
-from core_framework.models import ActionSpec, DeploymentDetails
+from core_framework.models import ActionSpec, DeploymentDetails, ActionParams
 
 import core_helper.aws as aws
 
@@ -162,7 +162,7 @@ class MetricData(BaseModel):
         raise ValueError(f"Timestamp must be a string or datetime object, got {type(v)}")
 
 
-class PutMetricDataActionParams(BaseModel):
+class PutMetricDataActionParams(ActionParams):
     """Parameters for the PutMetricDataAction.
 
     Contains all configuration needed to record metric data in CloudWatch,
@@ -182,10 +182,6 @@ class PutMetricDataActionParams(BaseModel):
         Maximum 20 metrics per API call
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(..., alias="Account", description="The AWS account ID where metrics will be recorded")
-    region: str = Field(..., alias="Region", description="The AWS region where metrics will be recorded")
     namespace: str = Field(..., alias="Namespace", description="The CloudWatch namespace for the metric data")
     metrics: list[MetricData] = Field(..., alias="Metrics", description="List of metric data points to record")
 
@@ -650,3 +646,11 @@ class PutMetricDataAction(BaseAction):
             return
 
         log.trace("PutMetricDataAction._resolve() complete")
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> PutMetricDataActionSpec:
+        return PutMetricDataActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> PutMetricDataActionParams:
+        return PutMetricDataActionParams(**kwargs)

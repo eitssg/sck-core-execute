@@ -1,30 +1,23 @@
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from core_framework.models import ActionSpec, DeploymentDetails
+from core_framework.models import ActionSpec, DeploymentDetails, ActionParams
 
 from core_execute.actionlib.action import BaseAction
 
 from core_renderer import Jinja2Renderer
 
 
-class TemplateActionParams(BaseModel):
+class ActionNameGoesHereActionParams(ActionParams):
     """Parameters for the ActionNameGoesHereAction
 
     This class defines the parameters that can be used in the action.
     You can add more attributes as needed.
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(
-        ..., alias="Account", description="The account where the action is located"
-    )
-    region: str = Field(
-        ..., alias="Region", description="The region where the action is located"
-    )
+    pass
 
 
-class TemplateActionSpec(ActionSpec):
+class ActionNameGoesHereActionSpec(ActionSpec):
     """Generate the action definition"""
 
     @model_validator(mode="before")
@@ -75,7 +68,7 @@ class ActionNameGoesHereAction(BaseAction):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.params = TemplateActionParams(**definition.params)
+        self.params = ActionNameGoesHereActionParams(**definition.params)
 
     def _execute(self):
         # TODO: implement action execution
@@ -96,3 +89,11 @@ class ActionNameGoesHereAction(BaseAction):
     def _resolve(self):
         # TODO: implement runtime resolution of action variables
         pass
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> ActionNameGoesHereActionSpec:
+        return ActionNameGoesHereActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> ActionNameGoesHereActionParams:
+        return ActionNameGoesHereActionParams(**kwargs)

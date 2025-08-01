@@ -6,7 +6,7 @@ import core_logging as log
 
 import core_helper.aws as aws
 
-from core_framework.models import DeploymentDetails, ActionSpec
+from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
 
 import core_framework as util
 from core_execute.actionlib.action import BaseAction
@@ -47,7 +47,7 @@ class CreateGrantsActionSpec(ActionSpec):
         return values
 
 
-class CreateGrantsActionParams(BaseModel):
+class CreateGrantsActionParams(ActionParams):
     """
     Parameters for the CreateGrantsAction.
 
@@ -70,14 +70,6 @@ class CreateGrantsActionParams(BaseModel):
     :type ignore_failed_grants: str
     """
 
-    model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
-
-    account: str = Field(
-        ..., alias="Account", description="The account to use for the action (required)"
-    )
-    region: str = Field(
-        ..., alias="Region", description="The region to create the stack in (required)"
-    )
     kms_key_id: str | None = Field(
         None,
         alias="KmsKeyId",
@@ -167,9 +159,7 @@ class CreateGrantsActionParams(BaseModel):
 
         invalid_ops = set(v) - valid_operations
         if invalid_ops:
-            raise ValueError(
-                f"Invalid operations: {invalid_ops}. Valid operations: {valid_operations}"
-            )
+            raise ValueError(f"Invalid operations: {invalid_ops}. Valid operations: {valid_operations}")
 
         return v
 
@@ -249,16 +239,10 @@ class CreateGrantsAction(BaseAction):
             ignore_failures = self._string_to_bool(self.ignore_failed_grants)
 
             # Obtain a KMS client
-            kms_client = aws.kms_client(
-                region=self.region, role=util.get_provisioning_role_arn(self.account)
-            )
+            kms_client = aws.kms_client(region=self.region, role=util.get_provisioning_role_arn(self.account))
 
             # Create the grants
-            self.set_running(
-                "Creating grants for KMS key '{}' in account '{}'".format(
-                    self.kms_key_id, self.account
-                )
-            )
+            self.set_running("Creating grants for KMS key '{}' in account '{}'".format(self.kms_key_id, self.account))
 
             successful_grants = 0
             failed_grants = 0
@@ -329,15 +313,11 @@ class CreateGrantsAction(BaseAction):
                             successful_grants,
                             failed_grants,
                         )
-                        self.set_failed(
-                            f"Failed to create grant for principal '{principal}', principal may not exist"
-                        )
+                        self.set_failed(f"Failed to create grant for principal '{principal}', principal may not exist")
                         return
 
             # Store all grant information in state
-            self._store_grant_state(
-                created_grants, failed_principals, successful_grants, failed_grants
-            )
+            self._store_grant_state(created_grants, failed_principals, successful_grants, failed_grants)
 
             log.info(
                 "Grant creation completed: {} successful, {} failed (ignore_failed_grants={})",
@@ -391,17 +371,13 @@ class CreateGrantsAction(BaseAction):
             self.set_output("GrantTokens", grant_tokens)
 
             # Store principal mappings
-            principal_to_grant = {
-                grant["Principal"]: grant["GrantId"] for grant in created_grants
-            }
+            principal_to_grant = {grant["Principal"]: grant["GrantId"] for grant in created_grants}
             self.set_output("PrincipalToGrantMapping", principal_to_grant)
 
         # Store failure information if any
         if failed_principals:
             self.set_output("FailedPrincipals", failed_principals)
-            failed_principal_names = [
-                failure["Principal"] for failure in failed_principals
-            ]
+            failed_principal_names = [failure["Principal"] for failure in failed_principals]
             self.set_output("FailedPrincipalNames", failed_principal_names)
 
         # Store the operations granted
@@ -427,9 +403,7 @@ class CreateGrantsAction(BaseAction):
                 return
 
             # Obtain a KMS client
-            kms_client = aws.kms_client(
-                region=self.region, role=util.get_provisioning_role_arn(self.account)
-            )
+            kms_client = aws.kms_client(region=self.region, role=util.get_provisioning_role_arn(self.account))
 
             self.set_running(f"Checking status of {len(created_grants)} grants")
 
@@ -488,9 +462,7 @@ class CreateGrantsAction(BaseAction):
                 return
 
             # Obtain a KMS client
-            kms_client = aws.kms_client(
-                region=self.region, role=util.get_provisioning_role_arn(self.account)
-            )
+            kms_client = aws.kms_client(region=self.region, role=util.get_provisioning_role_arn(self.account))
 
             self.set_running(f"Retiring {len(created_grants)} grants")
 
@@ -500,9 +472,7 @@ class CreateGrantsAction(BaseAction):
             for grant in created_grants:
                 try:
                     # Retire the grant
-                    kms_client.retire_grant(
-                        KeyId=self.kms_key_id, GrantId=grant["GrantId"]
-                    )
+                    kms_client.retire_grant(KeyId=self.kms_key_id, GrantId=grant["GrantId"])
 
                     retired_grants.append(grant)
                     log.debug("Successfully retired grant {}", grant["GrantId"])
@@ -567,18 +537,12 @@ class CreateGrantsAction(BaseAction):
             self.account = self.renderer.render_string(self.account, self.context)
             self.region = self.renderer.render_string(self.region, self.context)
             self.kms_key_id = self.renderer.render_string(self.kms_key_id, self.context)
-            self.grantee_principals = self.renderer.render_object(
-                self.grantee_principals, self.context
-            )
+            self.grantee_principals = self.renderer.render_object(self.grantee_principals, self.context)
             self.operations = self.renderer.render_object(self.operations, self.context)
             # Render the ignore_failed_grants template
-            self.ignore_failed_grants = self.renderer.render_string(
-                self.ignore_failed_grants, self.context
-            )
+            self.ignore_failed_grants = self.renderer.render_string(self.ignore_failed_grants, self.context)
 
-            log.debug(
-                "Resolved ignore_failed_grants to: '{}'", self.ignore_failed_grants
-            )
+            log.debug("Resolved ignore_failed_grants to: '{}'", self.ignore_failed_grants)
 
         except Exception as e:
             log.error("Error resolving template variables: {}", e)
@@ -594,3 +558,11 @@ class CreateGrantsAction(BaseAction):
         """
         log.debug("Cancel requested for action '{}' - no action taken", self.name)
         self.set_complete()
+
+    @classmethod
+    def generate_action_spec(cls, **kwargs) -> CreateGrantsActionSpec:
+        return CreateGrantsActionSpec(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> CreateGrantsActionParams:
+        return CreateGrantsActionParams(**kwargs)
