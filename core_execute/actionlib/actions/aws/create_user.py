@@ -14,9 +14,9 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class PutUserActionParams(ActionParams):
+class CreateUserActionParams(ActionParams):
     """
-    Parameters for the PutUserAction.
+    Parameters for the CreateUserAction.
 
     :param account: The AWS account ID where users will be created/updated (required)
     :type account: str
@@ -39,12 +39,35 @@ class PutUserActionParams(ActionParams):
         description="The list of roles to assign to the users or a jinja2 pattern to create a list of roles (optional)",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """
+        Validate the parameters for the CreateUserActionParams.
 
-class PutUserActionSpec(ActionSpec):
+        :param values: Input values for validation
+        :type values: dict[str, Any]
+        :return: Validated and potentially modified values
+        :rtype: dict[str, Any]
+        """
+        if isinstance(values, dict):
+            usernames = values.pop("user_names", None) or values.pop("UserNames", None) or []
+            if isinstance(usernames, str):
+                # If user_names is a string, convert it to a list
+                usernames = [usernames]
+            username = values.pop("user_name", None) or values.pop("UserName", None)
+            if username:
+                usernames.append(username)
+            values["user_names"] = usernames
+
+        return values
+
+
+class CreateUserActionSpec(ActionSpec):
     """
-    Generate the action definition for PutUserAction.
+    Generate the action definition for CreateUserAction.
 
-    This class provides default values and validation for PutUserAction parameters.
+    This class provides default values and validation for CreateUserAction parameters.
 
     :param values: Dictionary of action specification values
     :type values: dict[str, Any]
@@ -56,7 +79,7 @@ class PutUserActionSpec(ActionSpec):
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
         """
-        Validate the parameters for the PutUserActionSpec.
+        Validate the parameters for the CreateUserActionSpec.
 
         :param values: Input values for validation
         :type values: dict[str, Any]
@@ -66,7 +89,7 @@ class PutUserActionSpec(ActionSpec):
         if not (values.get("name") or values.get("Name")):
             values["name"] = "action-aws-putuser-name"  # FIXED
         if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::PutUser"
+            values["kind"] = "AWS::CreateUser"
         if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
@@ -81,7 +104,7 @@ class PutUserActionSpec(ActionSpec):
         return values
 
 
-class PutUserAction(BaseAction):
+class CreateUserAction(BaseAction):
     """
     Create or update IAM users in an AWS account.
 
@@ -99,7 +122,7 @@ class PutUserAction(BaseAction):
     .. rubric:: Parameters
 
     :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::PutUser``
+    :Kind: Use the value ``AWS::CreateUser``
     :Params.Account: The account where the users are located (required)
     :Params.Region: The region for the IAM operations (required)
     :Params.UserNames: The list of user names to create/update (required)
@@ -109,7 +132,7 @@ class PutUserAction(BaseAction):
     .. code-block:: yaml
 
         - Name: action-aws-putuser-name  # FIXED
-          Kind: "AWS::PutUser"
+          Kind: "AWS::CreateUser"
           Params:
             Account: "154798051514"
             Region: "us-east-1"
@@ -134,7 +157,7 @@ class PutUserAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the parameters
-        self.params = PutUserActionParams(**definition.params)
+        self.params = CreateUserActionParams(**definition.params)
 
     def _resolve(self):
         """
@@ -142,7 +165,7 @@ class PutUserAction(BaseAction):
 
         This method renders Jinja2 templates in the action parameters using the current context.
         """
-        log.trace("Resolving PutUserAction")
+        log.trace("Resolving CreateUserAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
         self.params.region = self.renderer.render_string(self.params.region, self.context)
@@ -185,7 +208,7 @@ class PutUserAction(BaseAction):
                 role_list.append(role)
             self.params.roles = role_list
 
-        log.trace("PutUserAction resolved")
+        log.trace("CreateUserAction resolved")
 
     def _execute(self):
         """
@@ -197,7 +220,7 @@ class PutUserAction(BaseAction):
 
         :raises: Sets action to failed if user creation/update fails
         """
-        log.trace("Executing PutUserAction")
+        log.trace("Executing CreateUserAction")
 
         # Validate required parameters
         if not self.params.user_names:
@@ -370,7 +393,7 @@ class PutUserAction(BaseAction):
                     f"Successfully processed {len(self.params.user_names)} users: {len(created_users)} created, {len(skipped_users)} skipped"
                 )
 
-        log.trace("PutUserAction execution completed")
+        log.trace("CreateUserAction execution completed")
 
     def _check(self):
         """
@@ -378,12 +401,12 @@ class PutUserAction(BaseAction):
 
         IAM user operations are typically immediate, so this method confirms completion.
         """
-        log.trace("Checking PutUserAction")
+        log.trace("Checking CreateUserAction")
 
         # IAM user put is immediate, so if we get here, it's already complete
         self.set_complete("User put operations are immediate")
 
-        log.trace("PutUserAction check completed")
+        log.trace("CreateUserAction check completed")
 
     def _unexecute(self):
         """
@@ -393,13 +416,13 @@ class PutUserAction(BaseAction):
             User creation cannot be automatically rolled back. Created users and their
             policies remain in place. Manual cleanup may be required.
         """
-        log.trace("Unexecuting PutUserAction")
+        log.trace("Unexecuting CreateUserAction")
 
         # User put cannot be undone
 
         self.set_complete("User put cannot be rolled back")
 
-        log.trace("PutUserAction unexecution completed")
+        log.trace("CreateUserAction unexecution completed")
 
     def _cancel(self):
         """
@@ -408,12 +431,12 @@ class PutUserAction(BaseAction):
         .. note::
             User creation/update operations are immediate and cannot be cancelled once started.
         """
-        log.trace("Cancelling PutUserAction")
+        log.trace("Cancelling CreateUserAction")
 
         # User put is immediate and cannot be cancelled
         self.set_complete("User put operations are immediate and cannot be cancelled")
 
-        log.trace("PutUserAction cancellation completed")
+        log.trace("CreateUserAction cancellation completed")
 
     def _check_user_exists(self, iam_client, user_name: str) -> bool:
         """
@@ -643,9 +666,9 @@ class PutUserAction(BaseAction):
         return self._create_policy_with_role_arns(role_arns)
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> PutUserActionSpec:
-        return PutUserActionSpec(**kwargs)
+    def generate_action_spec(cls, **kwargs) -> CreateUserActionSpec:
+        return CreateUserActionSpec(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> PutUserActionParams:
-        return PutUserActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> CreateUserActionParams:
+        return CreateUserActionParams(**kwargs)

@@ -1,7 +1,7 @@
 """Copy an AMI from one region to another with encryption"""
 
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
 import core_logging as log
 
@@ -81,7 +81,7 @@ class CopyImageActionSpec(ActionSpec):
             values["name"] = "action-aws-copyimage-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::CopyImage"
-        if not (values.get("depends_on") or values.get("DependsOn")):
+        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"

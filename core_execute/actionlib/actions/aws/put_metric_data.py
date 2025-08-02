@@ -269,7 +269,7 @@ class PutMetricDataActionSpec(ActionSpec):
             values["name"] = "put-metric-data"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::PutMetricData"
-        if not (values.get("depends_on") or values.get("DependsOn")):
+        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"

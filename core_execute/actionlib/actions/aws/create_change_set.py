@@ -1,5 +1,5 @@
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 from botocore.exceptions import ClientError
 
 import core_logging as log
@@ -21,22 +21,37 @@ class CreateChangeSetActionParams(ActionParams):
         alias="StackName",
         description="The name of the stack to apply the change set",
     )
+
     template_url: str = Field(
         ...,
         alias="TemplateUrl",
         description="The template URL to use for the change set",
     )
+
     change_set_name: str = Field(..., alias="ChangeSetName", description="The name of the change set to create")
+
     stack_parameters: dict = Field(
         default_factory=dict,
         alias="StackParameters",
         description="Parameters for the CloudFormation template",
     )
+
     tags: dict = Field(
         default_factory=dict,
         alias="Tags",
         description="Tags to apply to the change set",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_model_before(cls, values: Any) -> dict[str, Any]:
+        if isinstance(values, dict):
+            if not any(key in values for key in ["TemplateUrl", "template_url"]):
+                template = values.pop("template") or values.pop("Template")
+                if template is not None:
+                    values["TemplateUrl"] = template
+
+        return values
 
 
 class CreateChangeSetActionSpec(ActionSpec):
@@ -49,7 +64,7 @@ class CreateChangeSetActionSpec(ActionSpec):
             values["name"] = "action-aws-createchangeset-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::CreateChangeSet"
-        if not (values.get("depends_on") or values.get("DependsOn")):
+        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"

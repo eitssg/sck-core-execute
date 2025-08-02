@@ -1,7 +1,7 @@
 """Record an event in the database action for Core Execute automation platform."""
 
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
 import core_logging as log
 import core_framework as util
@@ -87,7 +87,7 @@ class PutEventActionSpec(ActionSpec):
             values["name"] = "action-aws-putevent-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::PutEvent"
-        if not (values.get("depends_on") or values.get("DependsOn")):
+        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"

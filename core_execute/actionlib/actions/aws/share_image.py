@@ -1,7 +1,7 @@
 """Share an AMI image with other AWS accounts by granting launch permissions"""
 
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
+from pydantic import Field, model_validator, field_validator
 
 import core_logging as log
 
@@ -181,7 +181,7 @@ class ShareImageActionSpec(ActionSpec):
             values["name"] = "share-image"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::ShareImage"
-        if not (values.get("depends_on") or values.get("DependsOn")):
+        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"

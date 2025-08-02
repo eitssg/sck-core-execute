@@ -1,7 +1,7 @@
 """Grant access to KMS keys to principals"""
 
 from typing import Any
-from pydantic import BaseModel, ConfigDict, model_validator, Field, field_validator
+from pydantic import model_validator, Field, field_validator
 import core_logging as log
 
 import core_helper.aws as aws
@@ -31,7 +31,7 @@ class CreateGrantsActionSpec(ActionSpec):
             values["name"] = "action-aws-kms-creategrants-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::KMS::CreateGrants"
-        if not (values.get("depends_on") or values.get("DependsOn")):
+        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"

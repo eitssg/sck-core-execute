@@ -1,7 +1,7 @@
 """Create CloudFront invalidation action to clear the cache"""
 
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 from core_framework.models import ActionSpec, ActionParams, DeploymentDetails
 
 import core_helper.aws as aws
@@ -65,7 +65,7 @@ class CreateCloudFrontInvalidationActionSpec(ActionSpec):
             values["name"] = "action-aws-createcloudfrontinvalidation-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::CreateCloudFrontInvalidation"
-        if not (values.get("depends_on") or values.get("DependsOn")):
+        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"

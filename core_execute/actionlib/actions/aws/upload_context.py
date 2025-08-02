@@ -1,13 +1,9 @@
 """Upload the Jinja2 Render context to the appropriate S3 bucket"""
 
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
-import re
-import json
+from pydantic import Field, model_validator
 
 import core_logging as log
-
-import core_helper.aws as aws
 
 import core_framework as util
 from core_helper.magic import MagicS3Client
@@ -94,7 +90,7 @@ class UploadContextActionSpec(ActionSpec):
             values["name"] = "upload-context"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::UploadContext"
-        if not (values.get("depends_on") or values.get("DependsOn")):
+        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
