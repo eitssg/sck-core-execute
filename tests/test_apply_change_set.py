@@ -10,7 +10,6 @@ from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.apply_change_set import (
     ApplyChangeSetActionParams,
-    ApplyChangeSetActionParams,
     ApplyChangeSetActionSpec,
 )
 from core_execute.handler import handler as execute_handler
@@ -32,8 +31,8 @@ def task_payload():
             "Client": "client",
             "Portfolio": "portfolio",
             "Environment": "production",
-            "Scope": "portfolio",  # Test this execution with a scope of portfolio
-            "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
+            "Scope": "portfolio",
+            "DataCenter": "zone-1",
         },
     }
     return TaskPayload(**data)
@@ -46,25 +45,21 @@ def deploy_spec():
     This can be used to mock the deployspec in tests.
     Parameters are fore: ApplyChangeSetActionParams
     """
-    spec: dict[str, Any] = {
-        "Params": {
-            "Account": "154798051514",
-            "Region": "ap-southeast-1",
-            "StackName": "my-stack",
-            "ChangeSetName": "my-changeset",
-        }
+    params = {
+        "Account": "154798051514",
+        "Region": "ap-southeast-1",
+        "StackName": "my-stack",
+        "ChangeSetName": "my-changeset",
     }
 
-    action_spec = ApplyChangeSetActionSpec(**spec)
+    validate_params = ApplyChangeSetActionParams(**params)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_spec]}
+    action_spec = ApplyChangeSetActionSpec(**{"params": validate_params.model_dump()})
 
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_spec])
 
 
-def test_apply_change_set_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
@@ -165,9 +160,7 @@ def test_apply_change_set_action(
 
         # Mock for error scenarios - change set not found case
         def describe_change_set_side_effect(*args, **kwargs):
-            if "ChangeSetName" in kwargs and "non-existent" in str(
-                kwargs["ChangeSetName"]
-            ):
+            if "ChangeSetName" in kwargs and "non-existent" in str(kwargs["ChangeSetName"]):
                 error_response = {
                     "Error": {
                         "Code": "ChangeSetNotFoundException",
@@ -214,9 +207,7 @@ def test_apply_change_set_action(
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert (
-            task_payload.flow_control == "success"
-        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 

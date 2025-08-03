@@ -1,6 +1,8 @@
 import time
 from typing import Any
 
+from pydantic import ValidationError
+
 import core_logging as log
 import core_framework as util
 import core_helper.aws as aws
@@ -61,21 +63,10 @@ def handler(event: dict, context: Any | None = None) -> dict:
         task_payload = TaskPayload(**event)
 
         log.setup(task_payload.identity)
+
         log.info("Entering handler for task: {}", task_payload.task)
         log.debug("Event: ", details=task_payload.model_dump())
 
-    except Exception as e:
-        log.error("Error parsing event into TaskPayload: {}", e)
-        log.debug("Original event that failed parsing: ", details=event)
-
-        # Return a failure response that Step Functions can handle
-        return {
-            "flow_control": "failure",
-            "error": f"Failed to parse event: {str(e)}",
-            "original_event": event,
-        }
-
-    try:
         # Load actions from the S3 bucket "{task}.actions"
         log.debug("Loading actions for task: {}", task_payload.task)
         definitions = load_actions(task_payload)
@@ -97,11 +88,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
         max_iterations = 10  # Prevent runaway loops
         iteration = 0
         flow_control = FlowControl.from_value(task_payload.flow_control)
-        while (
-            flow_control == FlowControl.EXECUTE
-            and not timeout_imminent(context)
-            and iteration < max_iterations
-        ):
+        while flow_control == FlowControl.EXECUTE and not timeout_imminent(context) and iteration < max_iterations:
 
             iteration += 1
             log.debug("State machine iteration {} (max {})", iteration, max_iterations)
@@ -122,9 +109,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
                 )
 
             if timeout_imminent(context):
-                log.warning(
-                    "Execution stopped due to timeout, Step Functions will retry"
-                )
+                log.warning("Execution stopped due to timeout, Step Functions will retry")
 
         # Update the task payload with the final flow control state
         task_payload.flow_control = flow_control.value
@@ -133,9 +118,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
         log.debug("Saving state for task: {}", task_payload.task)
         save_state(task_payload, context_state)
 
-        log.debug(
-            "Exiting handler with flow_control state: {}", task_payload.flow_control
-        )
+        log.debug("Exiting handler with flow_control state: {}", task_payload.flow_control)
         log.debug("Execution completed after {} loops", iteration)
 
         result = task_payload.model_dump()
@@ -144,23 +127,40 @@ def handler(event: dict, context: Any | None = None) -> dict:
         return result
 
     except Exception as e:
-        log.error("Error in handler execution: {}", e)
-        log.debug(
-            "Task payload at time of error: ",
-            details=task_payload.model_dump() if task_payload else {},
-        )
 
-        # Ensure we have a valid task_payload for the response
-        if task_payload:
-            task_payload.flow_control = FlowControl.FAILURE.value
-            return task_payload.model_dump()
+        validation_errors = []
+        errortype = type(e).__name__
+
+        if isinstance(e, ValidationError):
+            message = f"Validation error parsing event into TaskPayload ({errortype}): {e.title}"
+            # Handle validation errors specifically
+            log.error("Validation error parsing event into TaskPayload: {}", e)
+            for error in e.errors():
+                # detail the pydantic validation error
+                validation_errors.append(
+                    {
+                        "loc": error.get("loc", []),
+                        "msg": error.get("msg", ""),
+                        "type": error.get("type", ""),
+                        "input": error.get("input", None),
+                    }
+                )
         else:
-            # Fallback if task_payload is somehow None
-            return {
-                "flow_control": FlowControl.FAILURE.value,
-                "error": f"Handler execution failed: {str(e)}",
-                "original_event": event,
-            }
+            message = f"Error parsing event into TaskPayload ({errortype}): {str(e)}"
+
+        error_details = {"Message": message}
+        if validation_errors:
+            error_details["ValidationErrors"] = validation_errors
+
+        log.error("Error in handler execution", details=error_details)
+        log.error("Original event: ", details=event)
+
+        return {
+            "flow_control": FlowControl.FAILURE.value,
+            "message": message,
+            "error_details": error_details,
+            "original_event": event,
+        }
 
 
 def invoke_execute_handler(task_payload: TaskPayload) -> None:

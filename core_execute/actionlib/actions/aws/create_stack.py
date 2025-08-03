@@ -53,29 +53,25 @@ class CreateStackActionParams(ActionParams):
         description="The URL of the CloudFormation template (required)",
     )
     stack_parameters: dict[str, Any] = Field(
-        default_factory=dict,
         alias="StackParameters",
         description="The parameters to pass to the stack (optional)",
+        default={},
     )
     on_failure: str = Field(
-        default="DELETE",
         alias="OnFailure",
         description="The action to take on failure (optional)",
+        default="DELETE",
     )
     timeout_in_minutes: int = Field(
-        default=15,
         alias="TimeoutInMinutes",
         description="The time to wait for the stack to complete (optional)",
+        default=15,
     )
-    tags: dict[str, str] | None = Field(
-        default_factory=dict,
-        alias="Tags",
-        description="The tags to apply to the stack (optional)",
-    )
+    tags: dict[str, str] | None = Field(alias="Tags", description="The tags to apply to the stack (optional)", default=None)
     stack_policy: dict | None = Field(
-        ...,
         alias="StackPolicy",
         description="A policy statement to use within the stack deployment as needed (optional) (converted to JSON)",
+        default=None,
     )
 
     @property
