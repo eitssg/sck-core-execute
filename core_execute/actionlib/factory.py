@@ -198,6 +198,7 @@ class ActionFactory:
         """
         actions_path: list[str] = ["core_execute", "actionlib", "actions"]
         actions_root = os.path.join(os.path.dirname(__file__), "actions")
+        action_type = action_type.replace("-", "_")  # Normalize dashes to underscores.  create-stack -> create_stack
 
         # if the action_type is already lowercase snake_case, then search the actions_path and all subdirectories for the filename to build the module_path
         if re.match(r"^[a-z]+(?:_[a-z]+)*$", action_type):
