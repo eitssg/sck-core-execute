@@ -1,14 +1,41 @@
-- name: core-automation-step-function
+{# 
+
+aws cloudformation deploy \
+  --template-file core_execute_cf.yaml \
+  --stack-name core-execute-stack \
+  --parameter-overrides \
+    Client=myclient \
+    Environment=prod \
+    AlertEmail=ops@company.com \
+    PipelineProvisioningRoleArn=arn:aws:iam::123456789012:role/pipeline-role \
+    LambdaCodeBucket=my-lambda-bucket \
+    LambdaCodeKey=core-execute-1.0.0.zip \
+  --capabilities CAPABILITY_NAMED_IAM 
+  
+  #}
+
+- apiVersion: v1
   kind: create-stack
-  depends_on: []
+  metadata:
+    name: core-automation-step-function
+    namespace: core
+    description: Create the core automation step function
   params:
-    stack_name: {{scope}}{{ client }}-core-automation-step-function
-    template: core_execute_cf.yaml
-    accounts:
-      - {{ automation_account_id }}
-    parameters:
-      Scope: "{{ scope }}"
-      Client: "{{ client }}"
-      AutomationAccountId: "{{ automation_account_id }}"
-      IsAutomationAccount: "{{ is_automation_account }}"
-    
+    stack_name: {{ Scope }}{{ Client }}-core-automation-step-function
+    template_url: core_execute_cf.yaml
+    account: {{ AutomationAccountId }}
+    region: {{ Region }}
+    stack_parameters:
+      Client: {{ Client }}
+      Environment: {{ Environment }}
+      AlertEmail: {{ AlertEmail }}
+      PipelineProvisioningRoleArn: {{ PipelineProvisioningRoleArn }}
+      AutomationAccountId: {{ AutomationAccountId }}
+      IsAutomationAccount: {{ IsAutomationAccount }}
+      LambdaCodeBucket: {{ LambdaCodeBucket }}
+      LambdaCodeKey: core-execute-{{ Build }}.zip
+    tags:
+      Client: {{ Client }}
+      Environment: {{ Environment }}
+      Build: {{ Build }}
+  depends_on: []

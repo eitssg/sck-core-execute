@@ -155,12 +155,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
         log.error("Error in handler execution", details=error_details)
         log.error("Original event: ", details=event)
 
-        return {
-            "flow_control": FlowControl.FAILURE.value,
-            "message": message,
-            "error_details": error_details,
-            "original_event": event,
-        }
+        return {"FlowControl": FlowControl.FAILURE.value}
 
 
 def invoke_execute_handler(task_payload: TaskPayload) -> None:

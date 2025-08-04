@@ -6,26 +6,53 @@ Parameters:
     Type: String
     Default: ''
     Description: 'Optional scope prefix for resource naming'
+    AllowedPattern: '^[a-zA-Z0-9-]*$'
+    ConstraintDescription: 'Scope must contain only alphanumeric characters and hyphens'
   
   Client:
     Type: String
     Default: 'client'
     Description: 'Client name for resource naming'
+    AllowedPattern: '^[a-zA-Z0-9-]+$'
+    ConstraintDescription: 'Client must contain only alphanumeric characters and hyphens'
+    MinLength: 1
+    MaxLength: 50
   
   PipelineProvisioningRoleArn:
     Type: String
     Description: 'ARN of the existing PipelineProvisioningRole'
+    AllowedPattern: '^arn:aws:iam::[0-9]{12}:role/.+$'
+    ConstraintDescription: 'Must be a valid IAM role ARN'
   
   LambdaCodeBucket:
     Type: String
     Description: 'S3 bucket containing the Lambda deployment package'
+    AllowedPattern: '^[a-z0-9.-]+$'
+    ConstraintDescription: 'Must be a valid S3 bucket name'
   
   LambdaCodeKey:
     Type: String
     Description: 'S3 key for the Lambda deployment package (e.g., core-execute-1.0.0.zip)'
+    AllowedPattern: '^.+\.zip$'
+    ConstraintDescription: 'Must be a zip file'
 
-Conditions:
-  HasScope: !Not [!Equals [!Ref Scope, '']]
+  Environment:
+    Type: String
+    Default: 'dev'
+    Description: 'Environment (dev, staging, prod)'
+    AllowedValues: ['dev', 'staging', 'prod']
+
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: 'Email address for monitoring alerts (optional)'
+    AllowedPattern: '^([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})?$'
+    ConstraintDescription: 'Must be a valid email address or empty'
+
+ Conditions:
+   HasScope: !Not [!Equals [!Ref Scope, '']]
+   IsProduction: !Equals [!Ref Environment, 'prod']
+   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
 
 Resources:
   # IAM Role for Step Functions
@@ -43,6 +70,9 @@ Resources:
             Principal:
               Service: states.amazonaws.com
             Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref 'AWS::AccountId'
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaRole
       Policies:
@@ -59,7 +89,12 @@ Resources:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/stepfunctions/${Client}-*'
+              - Effect: Allow
+                Action:
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/stepfunctions/${Client}-*'
 
   # IAM Role for Lambda Function
   CoreExecuteLambdaRole:
@@ -83,17 +118,18 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # STS permissions to assume roles (REQUIRED for cross-account/role assumption)
+              # STS permissions - RESTRICTED
               - Effect: Allow
                 Action:
                   - sts:AssumeRole
                   - sts:GetCallerIdentity
                 Resource: 
-                  - !Ref PipelineProvisioningRoleArn  # Allow assuming the pipeline role
-                  - !Sub 'arn:aws:iam::*:role/*-pipeline-provisioning-role'  # Pattern for cross-account roles
-                  - !Sub 'arn:aws:iam::*:role/*pipeline*'  # Broader pattern if needed
+                  - !Ref PipelineProvisioningRoleArn
+                Condition:
+                  StringEquals:
+                    'aws:RequestedRegion': !Ref 'AWS::Region'
               
-              # DynamoDB access for Core DB (minimal, read-only for tracking)
+              # DynamoDB access - CLIENT-SPECIFIC
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
@@ -101,47 +137,103 @@ Resources:
                   - dynamodb:UpdateItem
                   - dynamodb:Query
                   - dynamodb:Scan
-                Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*core-automation*'
+                Resource: 
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Client}-core-automation-*'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Client}-core-automation-*/index/*'
               
-              # SSM access for parameters (to get role ARNs and config)
+              # SSM access - CLIENT-SPECIFIC
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
                   - ssm:GetParameters
                   - ssm:GetParametersByPath
-                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/core-automation/*'
+                Resource: 
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/core-automation/${Client}/*'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/core-automation/shared/*'
               
-              # Step Functions access (for updating execution status)
+              # Step Functions access - SPECIFIC TO THIS STEP FUNCTION
               - Effect: Allow
                 Action:
                   - states:DescribeExecution
                   - states:SendTaskSuccess
                   - states:SendTaskFailure
+                Resource: 
+                  - !GetAtt CoreExecuteStepFunction.Arn
+                  - !Sub '${CoreExecuteStepFunction}:*'
+
+              # S3 access for automation artifacts
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: 
+                  - !Sub 'arn:aws:s3:::${Client}-core-automation-*/*'
+                  - !Sub 'arn:aws:s3:::${LambdaCodeBucket}/*'
+              
+              # CloudWatch Metrics (for custom metrics)
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'cloudwatch:namespace': !Sub '${Client}/CoreExecute'
+              
+              # X-Ray Tracing
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
                 Resource: '*'
 
-  # Lambda Function
-  CoreExecuteLambda:
-    Type: AWS::Lambda::Function
+   # Lambda Function
+   CoreExecuteLambda:
+     Type: AWS::Lambda::Function
+     Properties:
+       FunctionName: !If
+         - HasScope
+         - !Sub '${Scope}${Client}-core-execute-lambda'
+         - !Sub '${Client}-core-execute-lambda'
+       Runtime: python3.12
+       Handler: core_execute.handler.handler
+       Role: !GetAtt CoreExecuteLambdaRole.Arn
+       Code:
+         S3Bucket: !Ref LambdaCodeBucket
+         S3Key: !Ref LambdaCodeKey
+       Timeout: 900  # 15 minutes max
+       MemorySize: !If [IsProduction, 1024, 512]
+       ReservedConcurrencyLimit: !If [IsProduction, 10, 2]
+       Environment:
+         Variables:
+           SCOPE: !Ref Scope
+           CLIENT: !Ref Client
+           REGION: !Ref AWS::Region
+           ENVIRONMENT: !Ref Environment
+           LOG_LEVEL: !If [IsProduction, 'INFO', 'DEBUG']
+       Description: 'Core Execute Lambda for processing automation actions'
+       DeadLetterConfig:
+         TargetArn: !GetAtt CoreExecuteDeadLetterQueue.Arn
+       TracingConfig:
+         Mode: Active
+       Tags:
+         - Key: Client
+           Value: !Ref Client
+         - Key: Environment  
+           Value: !Ref Environment
+         - Key: Component
+           Value: 'core-execute'
+
+  # Dead Letter Queue for Lambda
+  CoreExecuteDeadLetterQueue:
+    Type: AWS::SQS::Queue
     Properties:
-      FunctionName: !If
+      QueueName: !If
         - HasScope
-        - !Sub '${Scope}${Client}-core-execute-lambda'
-        - !Sub '${Client}-core-execute-lambda'
-      Runtime: python3.12
-      Handler: core_execute.handler.handler
-      Role: !GetAtt CoreExecuteLambdaRole.Arn
-      Code:
-        S3Bucket: !Ref LambdaCodeBucket
-        S3Key: !Ref LambdaCodeKey
-      Timeout: 900  # 15 minutes max
-      MemorySize: 512
-      Environment:
-        Variables:
-          SCOPE: !Ref Scope
-          CLIENT: !Ref Client
-          REGION: !Ref AWS::Region
-          LOG_LEVEL: INFO
-      Description: 'Core Execute Lambda for processing automation actions'
+        - !Sub '${Scope}${Client}-core-execute-dlq'
+        - !Sub '${Client}-core-execute-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days
+      KmsMasterKeyId: alias/aws/sqs
 
   # Lambda Permission for Step Functions
   CoreExecuteLambdaPermission:
@@ -152,14 +244,6 @@ Resources:
       Principal: states.amazonaws.com
       SourceArn: !GetAtt CoreExecuteStepFunction.Arn
 
-  # Lambda Permission for PipelineProvisioningRole
-  CoreExecuteLambdaPermissionForRole:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref CoreExecuteLambda
-      Action: lambda:InvokeFunction
-      Principal: !Ref PipelineProvisioningRoleArn
-
   # Step Function State Machine
   CoreExecuteStepFunction:
     Type: AWS::StepFunctions::StateMachine
@@ -168,7 +252,14 @@ Resources:
         - HasScope
         - !Sub '${Scope}${Client}-core-execute-stepfunction'
         - !Sub '${Client}-core-execute-stepfunction'
+      StateMachineType: STANDARD
       RoleArn: !GetAtt CoreExecuteStepFunctionRole.Arn
+      LoggingConfiguration:
+        Level: !If [IsProduction, 'ERROR', 'ALL']
+        IncludeExecutionData: !If [IsProduction, false, true]
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt CoreExecuteStepFunctionLogGroup.Arn
       Definition:
         Comment: 'Core Execute Step Function for processing automation actions'
         TimeoutSeconds: 3600  # 1 hour max for entire workflow
@@ -184,6 +275,7 @@ Resources:
                   - States.Timeout
                   - Lambda.ServiceException
                   - Lambda.AWSLambdaException
+                  - Lambda.TooManyRequestsException
                 IntervalSeconds: 2
                 MaxAttempts: 3
                 BackoffRate: 2.0
@@ -197,16 +289,16 @@ Resources:
           CheckExecutionStatus:
             Type: Choice
             Choices:
-              - Variable: '$.status'
-                StringEquals: 'complete'
+              - Variable: '$.FlowControl'
+                StringEquals: 'success'
                 Next: ExecutionComplete
-              - Variable: '$.status'
-                StringEquals: 'continue'
+              - Variable: '$.FlowControl'
+                StringEquals: 'execute'
                 Next: ProcessActions
-              - Variable: '$.status'
-                StringEquals: 'error'
+              - Variable: '$.FlowControl'
+                StringEquals: 'failure'
                 Next: HandleFailure
-            Default: ExecutionComplete
+            Default: HandleFailure
           
           HandleFailure:
             Type: Fail
@@ -215,6 +307,11 @@ Resources:
           
           ExecutionComplete:
             Type: Succeed
+      Tags:
+        - Key: Client
+          Value: !Ref Client
+        - Key: Environment
+          Value: !Ref Environment
 
   # CloudWatch Log Group for Step Functions
   CoreExecuteStepFunctionLogGroup:
@@ -224,8 +321,328 @@ Resources:
         - HasScope
         - !Sub '/aws/stepfunctions/${Scope}${Client}-core-execute-stepfunction'
         - !Sub '/aws/stepfunctions/${Client}-core-execute-stepfunction'
-      RetentionInDays: 30
+      RetentionInDays: !If [IsProduction, 90, 30]
+      KmsKeyId: !If [IsProduction, !GetAtt LogGroupKMSKey.Arn, !Ref 'AWS::NoValue']
 
+  # KMS Key for Log Encryption (Production only)
+  # Enhanced Lambda Log Group
+  CoreExecuteLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${CoreExecuteLambda}'
+      RetentionInDays: !If [IsProduction, 90, 30]
+      KmsKeyId: !If [IsProduction, !GetAtt LogGroupKMSKey.Arn, !Ref 'AWS::NoValue']
+  
+  LogGroupKMSKey:
+    Type: AWS::KMS::Key
+    Condition: IsProduction
+    Properties:
+      Description: 'KMS Key for Core Execute Log Group encryption'
+      KeyPolicy:
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow CloudWatch Logs
+            Effect: Allow
+            Principal:
+              Service: !Sub 'logs.${AWS::Region}.amazonaws.com'
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+
+  LogGroupKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Condition: IsProduction
+    Properties:
+      AliasName: !Sub 'alias/${Client}-core-execute-logs'
+      TargetKeyId: !Ref LogGroupKMSKey
+
+  # SNS Topic for Alerts
+  StepFunctionSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-alerts'
+        - !Sub '${Client}-core-execute-alerts'
+      DisplayName: 'Core Execute Step Function Alerts'
+      KmsMasterKeyId: !If [IsProduction, alias/aws/sns, !Ref 'AWS::NoValue']
+  
+  # Email Subscription (if email provided)
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      Protocol: email
+      TopicArn: !Ref StepFunctionSNSTopic
+      Endpoint: !Ref AlertEmail
+  
+  # CloudWatch Alarms for Step Functions
+  StepFunctionExecutionFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-stepfunction-failures'
+        - !Sub '${Client}-core-execute-stepfunction-failures'
+      AlarmDescription: 'Alert when Step Function executions fail'
+      MetricName: ExecutionsFailed
+      Namespace: AWS/States
+      Statistic: Sum
+      Period: 300  # 5 minutes
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref CoreExecuteStepFunction
+      AlarmActions:
+        - !Ref StepFunctionSNSTopic
+      TreatMissingData: notBreaching
+  
+  StepFunctionExecutionTimeoutAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-stepfunction-timeouts'
+        - !Sub '${Client}-core-execute-stepfunction-timeouts'
+      AlarmDescription: 'Alert when Step Function executions timeout'
+      MetricName: ExecutionsTimedOut
+      Namespace: AWS/States
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref CoreExecuteStepFunction
+      AlarmActions:
+        - !Ref StepFunctionSNSTopic
+  
+  StepFunctionExecutionDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-stepfunction-long-duration'
+        - !Sub '${Client}-core-execute-stepfunction-long-duration'
+      AlarmDescription: 'Alert when Step Function executions take too long'
+      MetricName: ExecutionTime
+      Namespace: AWS/States
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1800000  # 30 minutes in milliseconds
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref CoreExecuteStepFunction
+      AlarmActions:
+        - !Ref StepFunctionSNSTopic
+  
+  # Lambda Function Alarms
+  LambdaErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-lambda-error-rate'
+        - !Sub '${Client}-core-execute-lambda-error-rate'
+      AlarmDescription: 'Alert when Lambda error rate is high'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref CoreExecuteLambda
+      AlarmActions:
+        - !Ref StepFunctionSNSTopic
+  
+  LambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-lambda-duration'
+        - !Sub '${Client}-core-execute-lambda-duration'
+      AlarmDescription: 'Alert when Lambda duration is consistently high'
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 600000  # 10 minutes in milliseconds
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref CoreExecuteLambda
+      AlarmActions:
+        - !Ref StepFunctionSNSTopic
+  
+  LambdaThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-lambda-throttles'
+        - !Sub '${Client}-core-execute-lambda-throttles'
+      AlarmDescription: 'Alert when Lambda function is being throttled'
+      MetricName: Throttles
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref CoreExecuteLambda
+      AlarmActions:
+        - !Ref StepFunctionSNSTopic
+  
+  # Custom Metric Filter for Application Errors
+  ApplicationErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CoreExecuteStepFunctionLogGroup
+      FilterPattern: '[timestamp, requestId, level="ERROR", ...]'
+      MetricTransformations:
+        - MetricNamespace: !Sub '${Client}/CoreExecute'
+          MetricName: ApplicationErrors
+          MetricValue: '1'
+          DefaultValue: 0
+  
+  # Custom Metric Filter for Flow Control Failures
+  FlowControlFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CoreExecuteStepFunctionLogGroup
+      FilterPattern: '[..., flowcontrol="failure", ...]'
+      MetricTransformations:
+        - MetricNamespace: !Sub '${Client}/CoreExecute'
+          MetricName: FlowControlFailures
+          MetricValue: '1'
+          DefaultValue: 0
+  
+  # Application Error Alarm
+  ApplicationErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-application-errors'
+        - !Sub '${Client}-core-execute-application-errors'
+      AlarmDescription: 'Alert on application-level errors in Step Function logs'
+      MetricName: ApplicationErrors
+      Namespace: !Sub '${Client}/CoreExecute'
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref StepFunctionSNSTopic
+      TreatMissingData: notBreaching
+  
+  # CloudWatch Dashboard
+  CoreExecuteMonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-monitoring'
+        - !Sub '${Client}-core-execute-monitoring'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/States", "ExecutionsStarted", "StateMachineArn", "${CoreExecuteStepFunction}" ],
+                  [ ".", "ExecutionsSucceeded", ".", "." ],
+                  [ ".", "ExecutionsFailed", ".", "." ],
+                  [ ".", "ExecutionsTimedOut", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Step Function Executions",
+                "period": 300
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/States", "ExecutionTime", "StateMachineArn", "${CoreExecuteStepFunction}" ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Step Function Execution Duration",
+                "period": 300,
+                "stat": "Average"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "${CoreExecuteLambda}" ],
+                  [ ".", "Errors", ".", "." ],
+                  [ ".", "Duration", ".", "." ],
+                  [ ".", "Throttles", ".", "." ]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "title": "Lambda Function Metrics",
+                "period": 300
+              }
+            },
+            {
+              "type": "log",
+              "x": 12,
+              "y": 6,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '${CoreExecuteStepFunctionLogGroup}'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 50",
+                "region": "${AWS::Region}",
+                "title": "Recent Step Function Errors",
+                "view": "table"
+              }
+            }
+          ]
+        }
+  
 Outputs:
   CoreExecuteLambdaArn:
     Description: 'ARN of the Core Execute Lambda function'
@@ -244,3 +661,25 @@ Outputs:
     Value: !Ref CoreExecuteStepFunction
     Export:
       Name: !Sub '${AWS::StackName}-CoreExecuteStepFunctionName'
+
+  CoreExecuteLambdaRoleArn:
+    Description: 'ARN of the Core Execute Lambda Role'
+    Value: !GetAtt CoreExecuteLambdaRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-CoreExecuteLambdaRoleArn'
+  
+  MonitoringDashboardURL:
+    Description: 'URL to the CloudWatch Dashboard'
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${CoreExecuteMonitoringDashboard}'
+    Export:
+      Name: !Sub '${AWS::StackName}-DashboardURL'
+  
+  SNSTopicArn:
+    Description: 'ARN of the SNS Topic for alerts'
+    Value: !Ref StepFunctionSNSTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-AlertsTopic'
+  
+  AlertEmailSubscribed:
+    Description: 'Whether alert email was subscribed'
+    Value: !If [HasAlertEmail, 'Yes', 'No (provide AlertEmail parameter to enable)']
