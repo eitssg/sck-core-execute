@@ -90,7 +90,9 @@ class UploadContextActionSpec(ActionSpec):
             values["name"] = "upload-context"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::UploadContext"
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
+        if not values.get(
+            "depends_on", values.get("DependsOn")
+        ):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
@@ -250,7 +252,9 @@ class UploadContextAction(BaseAction):
                 # Example PRN is prn:demo:ecs:testing:2:web2:action/deploy/main/upload-context
                 if prn.count(":") == 6:
                     # Component PRN
-                    _, portfolio, app, branch, build, component, resource_type = prn.split(":")
+                    _, portfolio, app, branch, build, component, resource_type = (
+                        prn.split(":")
+                    )
                     var_name = "{}/{}".format(component, name)
                 elif prn.count(":") == 5:
                     # App PRN
@@ -322,7 +326,9 @@ class UploadContextAction(BaseAction):
 
             # Upload context as YAML
             yaml_key = "{}/context.yaml".format(self.params.prefix)
-            log.debug(f"Uploading YAML context file '{yaml_key}' to '{self.params.bucket_name}'")
+            log.debug(
+                f"Uploading YAML context file '{yaml_key}' to '{self.params.bucket_name}'"
+            )
 
             yaml_result = client.put_object(
                 Bucket=self.params.bucket_name,
@@ -334,7 +340,9 @@ class UploadContextAction(BaseAction):
 
             # Upload context as JSON
             json_key = "{}/context.json".format(self.params.prefix)
-            log.debug(f"Uploading JSON context file '{json_key}' to '{self.params.bucket_name}'")
+            log.debug(
+                f"Uploading JSON context file '{json_key}' to '{self.params.bucket_name}'"
+            )
 
             json_result = client.put_object(
                 Bucket=self.params.bucket_name,
@@ -398,15 +406,21 @@ class UploadContextAction(BaseAction):
             # Verify each uploaded file exists
             for file_key in uploaded_files:
                 try:
-                    response = client.head_object(Bucket=self.params.bucket_name, Key=file_key)
-                    log.debug(f"Verified file exists: s3://{self.params.bucket_name}/{file_key}")
+                    response = client.head_object(
+                        Bucket=self.params.bucket_name, Key=file_key
+                    )
+                    log.debug(
+                        f"Verified file exists: s3://{self.params.bucket_name}/{file_key}"
+                    )
                 except Exception as e:
                     error_message = f"Failed to verify file s3://{self.params.bucket_name}/{file_key}: {str(e)}"
                     log.error(error_message)
                     self.set_failed(error_message)
                     return
 
-            success_message = f"Verified all {len(uploaded_files)} context files exist in S3"
+            success_message = (
+                f"Verified all {len(uploaded_files)} context files exist in S3"
+            )
             log.info(success_message)
             self.set_complete(success_message)
 
@@ -443,11 +457,15 @@ class UploadContextAction(BaseAction):
             for file_key in uploaded_files:
                 try:
                     client.delete_object(Bucket=self.params.bucket_name, Key=file_key)
-                    log.debug(f"Deleted file: s3://{self.params.bucket_name}/{file_key}")
+                    log.debug(
+                        f"Deleted file: s3://{self.params.bucket_name}/{file_key}"
+                    )
                 except Exception as e:
                     log.warning(f"Failed to delete file {file_key}: {str(e)}")
 
-            log.info(f"Successfully removed {len(uploaded_files)} context files from S3")
+            log.info(
+                f"Successfully removed {len(uploaded_files)} context files from S3"
+            )
 
         except Exception as e:
             log.warning(f"Failed to remove context files during unexecute: {str(e)}")
@@ -496,15 +514,25 @@ class UploadContextAction(BaseAction):
 
         try:
             # Render template variables
-            self.params.account = self.renderer.render_string(self.params.account, self.context)
-            self.params.bucket_name = self.renderer.render_string(self.params.bucket_name, self.context)
-            self.params.region = self.renderer.render_string(self.params.region, self.context)
-            self.params.prefix = self.renderer.render_string(self.params.prefix, self.context)
+            self.params.account = self.renderer.render_string(
+                self.params.account, self.context
+            )
+            self.params.bucket_name = self.renderer.render_string(
+                self.params.bucket_name, self.context
+            )
+            self.params.region = self.renderer.render_string(
+                self.params.region, self.context
+            )
+            self.params.prefix = self.renderer.render_string(
+                self.params.prefix, self.context
+            )
 
             # Clean up prefix (remove leading/trailing slashes)
             self.params.prefix = self.params.prefix.strip("/")
 
-            log.debug(f"Resolved context upload to s3://{self.params.bucket_name}/{self.params.prefix}/")
+            log.debug(
+                f"Resolved context upload to s3://{self.params.bucket_name}/{self.params.prefix}/"
+            )
 
         except Exception as e:
             error_message = f"Failed to resolve template variables: {str(e)}"

@@ -22,7 +22,9 @@ class ApplyChangeSetActionParams(ActionParams):
         description="The name of the stack to apply the change set",
     )
 
-    change_set_name: str = Field(..., alias="ChangeSetName", description="The name of the change set to apply")
+    change_set_name: str = Field(
+        ..., alias="ChangeSetName", description="The name of the change set to apply"
+    )
 
 
 class ApplyChangeSetActionSpec(ActionSpec):
@@ -35,7 +37,9 @@ class ApplyChangeSetActionSpec(ActionSpec):
             values["name"] = "action-aws-applychangeset-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::ApplyChangeSet"
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
+        if not values.get(
+            "depends_on", values.get("DependsOn")
+        ):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
@@ -109,10 +113,18 @@ class ApplyChangeSetAction(BaseAction):
         """
         log.trace("Resolving ApplyChangeSetAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
-        self.params.change_set_name = self.renderer.render_string(self.params.change_set_name, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.stack_name = self.renderer.render_string(
+            self.params.stack_name, self.context
+        )
+        self.params.change_set_name = self.renderer.render_string(
+            self.params.change_set_name, self.context
+        )
 
         log.trace("ApplyChangeSetAction resolved")
 
@@ -144,7 +156,9 @@ class ApplyChangeSetAction(BaseAction):
                 "Change set application already in progress for {}",
                 self.params.change_set_name,
             )
-            self.set_running(f"Change set application already in progress for {self.params.change_set_name}")
+            self.set_running(
+                f"Change set application already in progress for {self.params.change_set_name}"
+            )
             return
 
         # Set initial state information
@@ -209,7 +223,9 @@ class ApplyChangeSetAction(BaseAction):
                     self.params.change_set_name,
                     self.params.stack_name,
                 )
-                self.set_failed(f"Change set '{self.params.change_set_name}' not found for stack '{self.params.stack_name}'")
+                self.set_failed(
+                    f"Change set '{self.params.change_set_name}' not found for stack '{self.params.stack_name}'"
+                )
             else:
                 log.error(
                     "Error describing change set '{}': {} - {}",
@@ -217,7 +233,9 @@ class ApplyChangeSetAction(BaseAction):
                     error_code,
                     error_message,
                 )
-                self.set_failed(f"Failed to describe change set '{self.params.change_set_name}': {error_message}")
+                self.set_failed(
+                    f"Failed to describe change set '{self.params.change_set_name}': {error_message}"
+                )
             return
 
         except Exception as e:
@@ -226,11 +244,15 @@ class ApplyChangeSetAction(BaseAction):
                 self.params.change_set_name,
                 e,
             )
-            self.set_failed(f"Unexpected error describing change set '{self.params.change_set_name}': {e}")
+            self.set_failed(
+                f"Unexpected error describing change set '{self.params.change_set_name}': {e}"
+            )
             return
 
         # Apply the change set
-        self.set_running(f"Executing change set '{self.params.change_set_name}' on stack '{self.params.stack_name}'")
+        self.set_running(
+            f"Executing change set '{self.params.change_set_name}' on stack '{self.params.stack_name}'"
+        )
 
         try:
             log.info(
@@ -249,7 +271,9 @@ class ApplyChangeSetAction(BaseAction):
             self.set_state("ExecutionTime", util.get_current_timestamp())
             self.set_state("StackStatus", "UPDATE_IN_PROGRESS")
 
-            log.info("Change set execution initiated for stack {}", self.params.stack_name)
+            log.info(
+                "Change set execution initiated for stack {}", self.params.stack_name
+            )
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -263,7 +287,9 @@ class ApplyChangeSetAction(BaseAction):
             )
             self.set_state("ApplicationResult", "FAILED")
             self.set_state("FailureReason", f"{error_code}: {error_message}")
-            self.set_failed(f"Failed to execute change set '{self.params.change_set_name}': {error_message}")
+            self.set_failed(
+                f"Failed to execute change set '{self.params.change_set_name}': {error_message}"
+            )
 
         except Exception as e:
             log.error(
@@ -273,7 +299,9 @@ class ApplyChangeSetAction(BaseAction):
             )
             self.set_state("ApplicationResult", "FAILED")
             self.set_state("FailureReason", str(e))
-            self.set_failed(f"Unexpected error executing change set '{self.params.change_set_name}': {e}")
+            self.set_failed(
+                f"Unexpected error executing change set '{self.params.change_set_name}': {e}"
+            )
 
         log.trace("ApplyChangeSetAction execution completed")
 
@@ -329,7 +357,9 @@ class ApplyChangeSetAction(BaseAction):
                 stack_outputs = stack_info.get("Outputs", [])
 
                 # Get detailed resource information
-                resources_created, resources_updated, resources_deleted = self._get_stack_resources(cfn_client, stack_id)
+                resources_created, resources_updated, resources_deleted = (
+                    self._get_stack_resources(cfn_client, stack_id)
+                )
 
                 # Set comprehensive state outputs
                 self.set_state("ApplicationCompleted", True)
@@ -348,7 +378,11 @@ class ApplyChangeSetAction(BaseAction):
                 self.set_output("ResourcesUpdated", resources_updated)
                 self.set_output("ResourcesDeleted", resources_deleted)
 
-                total_resources = len(resources_created) + len(resources_updated) + len(resources_deleted)
+                total_resources = (
+                    len(resources_created)
+                    + len(resources_updated)
+                    + len(resources_deleted)
+                )
                 self.set_complete(
                     f"Change set {self.params.change_set_name} applied successfully. {total_resources} resources affected."
                 )
@@ -364,7 +398,9 @@ class ApplyChangeSetAction(BaseAction):
                 "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS",
             ]:
                 # Still applying
-                self.set_running(f"Change set {self.params.change_set_name} application in progress")
+                self.set_running(
+                    f"Change set {self.params.change_set_name} application in progress"
+                )
 
             elif stack_status in [
                 "UPDATE_FAILED",
@@ -385,7 +421,9 @@ class ApplyChangeSetAction(BaseAction):
             else:
                 # Unknown status
                 log.warning("Unknown stack status: {}", stack_status)
-                self.set_running(f"Stack {self.params.stack_name} in status: {stack_status}")
+                self.set_running(
+                    f"Stack {self.params.stack_name} in status: {stack_status}"
+                )
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -395,7 +433,9 @@ class ApplyChangeSetAction(BaseAction):
                 log.error("Stack {} not found", self.params.stack_name)
                 self.set_failed(f"Stack {self.params.stack_name} not found")
             else:
-                log.error("Error checking stack status: {} - {}", error_code, error_message)
+                log.error(
+                    "Error checking stack status: {} - {}", error_code, error_message
+                )
                 self.set_failed(f"Error checking stack status: {error_message}")
 
         except Exception as e:
@@ -449,7 +489,9 @@ class ApplyChangeSetAction(BaseAction):
 
             if stack_status in ["UPDATE_IN_PROGRESS", "CREATE_IN_PROGRESS"]:
                 # Cancel the in-progress update
-                log.info("Canceling in-progress stack update: {}", self.params.stack_name)
+                log.info(
+                    "Canceling in-progress stack update: {}", self.params.stack_name
+                )
 
                 cfn_client.cancel_update_stack(StackName=stack_id)
 
@@ -457,8 +499,12 @@ class ApplyChangeSetAction(BaseAction):
                 self.set_state("RollbackTime", util.get_current_timestamp())
                 self.set_state("RollbackResult", "CANCEL_INITIATED")
 
-                self.set_complete(f"Stack update cancellation initiated for {self.params.stack_name}")
-                log.info("Stack update cancellation initiated for {}", self.params.stack_name)
+                self.set_complete(
+                    f"Stack update cancellation initiated for {self.params.stack_name}"
+                )
+                log.info(
+                    "Stack update cancellation initiated for {}", self.params.stack_name
+                )
 
             elif stack_status in ["UPDATE_COMPLETE", "CREATE_COMPLETE"]:
                 # Stack update completed, attempt rollback
@@ -466,10 +512,14 @@ class ApplyChangeSetAction(BaseAction):
 
                 # Note: CloudFormation doesn't have a direct rollback API for completed updates
                 # This would typically require creating and applying a reverse change set
-                log.warning("Stack rollback for completed updates requires manual intervention or reverse change set")
+                log.warning(
+                    "Stack rollback for completed updates requires manual intervention or reverse change set"
+                )
 
                 self.set_state("RollbackResult", "MANUAL_INTERVENTION_REQUIRED")
-                self.set_complete(f"Stack {self.params.stack_name} rollback requires manual intervention")
+                self.set_complete(
+                    f"Stack {self.params.stack_name} rollback requires manual intervention"
+                )
 
             elif stack_status in ["UPDATE_ROLLBACK_COMPLETE", "ROLLBACK_COMPLETE"]:
                 # Already rolled back
@@ -478,7 +528,9 @@ class ApplyChangeSetAction(BaseAction):
                     self.params.stack_name,
                 )
                 self.set_state("RollbackResult", "ALREADY_ROLLED_BACK")
-                self.set_complete(f"Stack {self.params.stack_name} is already rolled back")
+                self.set_complete(
+                    f"Stack {self.params.stack_name} is already rolled back"
+                )
 
             else:
                 log.warning(
@@ -487,7 +539,9 @@ class ApplyChangeSetAction(BaseAction):
                     stack_status,
                 )
                 self.set_state("RollbackResult", f"NOT_APPLICABLE_{stack_status}")
-                self.set_complete(f"Stack {self.params.stack_name} rollback not applicable for status: {stack_status}")
+                self.set_complete(
+                    f"Stack {self.params.stack_name} rollback not applicable for status: {stack_status}"
+                )
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -496,9 +550,13 @@ class ApplyChangeSetAction(BaseAction):
             if error_code == "StackNotFoundException":
                 log.info("Stack {} not found during rollback", self.params.stack_name)
                 self.set_state("RollbackResult", "STACK_NOT_FOUND")
-                self.set_complete(f"Stack {self.params.stack_name} not found during rollback")
+                self.set_complete(
+                    f"Stack {self.params.stack_name} not found during rollback"
+                )
             else:
-                log.error("Error during stack rollback: {} - {}", error_code, error_message)
+                log.error(
+                    "Error during stack rollback: {} - {}", error_code, error_message
+                )
                 self.set_state("RollbackResult", "FAILED")
                 self.set_state("FailureReason", f"{error_code}: {error_message}")
                 self.set_failed(f"Error during stack rollback: {error_message}")
@@ -526,8 +584,12 @@ class ApplyChangeSetAction(BaseAction):
             log.info("Cancelling in-progress change set application")
             self._unexecute()
         else:
-            log.info("Change set application not in cancellable state: {}", stack_status)
-            self.set_complete(f"Change set application not in cancellable state: {stack_status}")
+            log.info(
+                "Change set application not in cancellable state: {}", stack_status
+            )
+            self.set_complete(
+                f"Change set application not in cancellable state: {stack_status}"
+            )
 
         log.trace("ApplyChangeSetAction cancellation completed")
 
@@ -558,7 +620,11 @@ class ApplyChangeSetAction(BaseAction):
                         "PhysicalResourceId": resource.get("PhysicalResourceId"),
                         "ResourceType": resource.get("ResourceType"),
                         "ResourceStatus": resource.get("ResourceStatus"),
-                        "Timestamp": (resource.get("Timestamp").isoformat() if resource.get("Timestamp") else None),
+                        "Timestamp": (
+                            resource.get("Timestamp").isoformat()
+                            if resource.get("Timestamp")
+                            else None
+                        ),
                     }
 
                     # Categorize based on resource status

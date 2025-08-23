@@ -63,7 +63,9 @@ class GetStackReferencesActionSpec(ActionSpec):
             values["name"] = "action-aws-getstackreferences-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::GetStackReferences"
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
+        if not values.get(
+            "depends_on", values.get("DependsOn")
+        ):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
@@ -232,7 +234,9 @@ class GetStackReferencesAction(BaseAction):
             )
 
             # Complete the action
-            self.set_complete(f"Export '{output_export_name}' is referenced by {num_references} stack(s)")
+            self.set_complete(
+                f"Export '{output_export_name}' is referenced by {num_references} stack(s)"
+            )
 
         except ClientError as e:
             completion_time = util.get_current_timestamp()
@@ -262,7 +266,9 @@ class GetStackReferencesAction(BaseAction):
                     f"Export '{output_export_name}' does not exist, treating as no references",
                 )
 
-                self.set_complete(f"Export '{output_export_name}' does not exist, treating stack as unreferenced")
+                self.set_complete(
+                    f"Export '{output_export_name}' does not exist, treating stack as unreferenced"
+                )
 
             elif "not imported" in error_message:
                 # Export exists but isn't imported by any stacks
@@ -296,7 +302,9 @@ class GetStackReferencesAction(BaseAction):
                         "ExportName": output_export_name,
                     },
                 )
-                self.set_complete(f"Export '{output_export_name}' is not referenced by any stacks")
+                self.set_complete(
+                    f"Export '{output_export_name}' is not referenced by any stacks"
+                )
 
             else:
                 # Other error - set error state
@@ -368,10 +376,18 @@ class GetStackReferencesAction(BaseAction):
         """
         log.trace("GetStackReferencesAction._resolve()")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
-        self.params.output_name = self.renderer.render_string(self.params.output_name, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.stack_name = self.renderer.render_string(
+            self.params.stack_name, self.context
+        )
+        self.params.output_name = self.renderer.render_string(
+            self.params.output_name, self.context
+        )
 
         log.trace("GetStackReferencesAction._resolve() complete")
 

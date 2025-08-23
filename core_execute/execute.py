@@ -143,7 +143,11 @@ def __get_next_status(action_helper: Helper) -> FlowControl:
         # Execute executing actions
         return FlowControl.EXECUTE
 
-    elif len(runnable_actions) == 0 and len(running_actions) == 0 and len(pending_actions) > 0:
+    elif (
+        len(runnable_actions) == 0
+        and len(running_actions) == 0
+        and len(pending_actions) > 0
+    ):
         # No runnable or running actions, but still have actions pending - pending actions will never be runnable
         log.error(
             "Found {}",
@@ -321,7 +325,11 @@ def load_actions(task_payload: TaskPayload) -> list[ActionSpec]:
     # Load actions and create an action helper object
     log.trace("Loading actions")
 
-    if task_payload.package and task_payload.package.deployspec and task_payload.package.deployspec.actions:
+    if (
+        task_payload.package
+        and task_payload.package.deployspec
+        and task_payload.package.deployspec.actions
+    ):
         log.debug(
             "Using {} actions from package",
             len(task_payload.package.deployspec.actions),
@@ -341,7 +349,9 @@ def load_actions(task_payload: TaskPayload) -> list[ActionSpec]:
         s3_client = MagicS3Client.get_client(Region=bucket_region)
 
         actions_fileobj = io.BytesIO()
-        download_details: dict = s3_client.download_fileobj(Bucket=bucket_name, Key=actions_details.key, Fileobj=actions_fileobj)
+        download_details: dict = s3_client.download_fileobj(
+            Bucket=bucket_name, Key=actions_details.key, Fileobj=actions_fileobj
+        )
 
         content_type = download_details.get("ContentType", "application/x-yaml")
         version_id = download_details.get("VersionId", None)
@@ -389,7 +399,9 @@ def load_actions(task_payload: TaskPayload) -> list[ActionSpec]:
         return actions
 
     except Exception as e:
-        log.error("Failed to parse actions data with content type {}: {}", content_type, e)
+        log.error(
+            "Failed to parse actions data with content type {}: {}", content_type, e
+        )
         raise Exception(f"Failed to parse actions data: {str(e)}") from e
 
 
@@ -440,7 +452,9 @@ def save_actions(task_payload: TaskPayload, actions: list[ActionSpec]) -> None:
         raise Exception(f"Failed to serialize actions data: {str(e)}") from e
 
     try:
-        s3_client = MagicS3Client.get_client(Region=actions_details.bucket_region, DataPath=actions_details.data_path)
+        s3_client = MagicS3Client.get_client(
+            Region=actions_details.bucket_region, DataPath=actions_details.data_path
+        )
 
         response = s3_client.put_object(
             Bucket=actions_details.bucket_name,
@@ -562,7 +576,9 @@ def load_state(task_payload: TaskPayload) -> dict:
         return state
 
     except Exception as e:
-        log.error("Failed to parse state data with content type {}: {}", content_type, e)
+        log.error(
+            "Failed to parse state data with content type {}: {}", content_type, e
+        )
         raise Exception(f"Failed to parse state data: {str(e)}") from e
 
 
@@ -603,9 +619,13 @@ def save_state(task_payload: TaskPayload, state: dict) -> None:
         elif util.is_json_mimetype(content_type):
             result_data = util.to_json(state)
         else:
-            raise ValueError(f"Unsupported content type for state serialization: {content_type}")
+            raise ValueError(
+                f"Unsupported content type for state serialization: {content_type}"
+            )
     except Exception as e:
-        log.error("Failed to serialize state data with content type {}: {}", content_type, e)
+        log.error(
+            "Failed to serialize state data with content type {}: {}", content_type, e
+        )
         raise Exception(f"Failed to serialize state data: {str(e)}") from e
 
     log.info("Save state to {}", state_details.key)

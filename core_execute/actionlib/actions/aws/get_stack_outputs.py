@@ -55,7 +55,9 @@ class GetStackOutputsActionSpec(ActionSpec):
             values["name"] = "action-aws-getstackoutputs-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::GetStackOutputs"
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
+        if not values.get(
+            "depends_on", values.get("DependsOn")
+        ):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
@@ -159,7 +161,9 @@ class GetStackOutputsAction(BaseAction):
         self.set_state("account", self.params.account)
         self.set_state("region", self.params.region)
 
-        self.set_running(f"Retrieving outputs from CloudFormation stack '{self.params.stack_name}'")
+        self.set_running(
+            f"Retrieving outputs from CloudFormation stack '{self.params.stack_name}'"
+        )
 
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
@@ -168,13 +172,19 @@ class GetStackOutputsAction(BaseAction):
         )
 
         try:
-            describe_stack_response = cfn_client.describe_stacks(StackName=self.params.stack_name)
+            describe_stack_response = cfn_client.describe_stacks(
+                StackName=self.params.stack_name
+            )
             stack = describe_stack_response["Stacks"][0]
 
             # Extract stack information
             stack_id = stack["StackId"]
             stack_status = stack["StackStatus"]
-            creation_time = stack.get("CreationTime", "").isoformat() if stack.get("CreationTime") else ""
+            creation_time = (
+                stack.get("CreationTime", "").isoformat()
+                if stack.get("CreationTime")
+                else ""
+            )
 
             # Save comprehensive state
             completion_time = util.get_current_timestamp()
@@ -203,7 +213,9 @@ class GetStackOutputsAction(BaseAction):
                 f"Successfully retrieved {outputs_count} outputs from stack '{self.params.stack_name}'",
             )
 
-            self.set_complete(f"Retrieved {outputs_count} outputs from stack '{self.params.stack_name}'")
+            self.set_complete(
+                f"Retrieved {outputs_count} outputs from stack '{self.params.stack_name}'"
+            )
 
         except ClientError as e:
             completion_time = util.get_current_timestamp()
@@ -297,9 +309,15 @@ class GetStackOutputsAction(BaseAction):
         """
         log.trace("GetStackOutputsAction._resolve()")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.stack_name = self.renderer.render_string(
+            self.params.stack_name, self.context
+        )
 
         log.trace("GetStackOutputsAction._resolve() complete")
 

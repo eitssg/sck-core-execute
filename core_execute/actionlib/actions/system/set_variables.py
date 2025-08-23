@@ -13,7 +13,9 @@ from core_execute.actionlib.action import BaseAction
 class SetVariablesActionParams(ActionParams):
     """Parameters for the SetVariablesAction"""
 
-    variables: dict[str, Any] = Field(..., alias="Variables", description="The variables to set (required)")
+    variables: dict[str, Any] = Field(
+        ..., alias="Variables", description="The variables to set (required)"
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -36,7 +38,9 @@ class SetVariablesActionSpec(ActionSpec):
             values["name"] = "action-system-set-variables-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "SYSTEM::SetVariables"
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
+        if not values.get(
+            "depends_on", values.get("DependsOn")
+        ):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"

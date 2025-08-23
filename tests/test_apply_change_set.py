@@ -59,7 +59,9 @@ def deploy_spec():
     return DeploySpec(actions=[action_spec])
 
 
-def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_apply_change_set_action(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
 
     try:
 
@@ -160,7 +162,9 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
 
         # Mock for error scenarios - change set not found case
         def describe_change_set_side_effect(*args, **kwargs):
-            if "ChangeSetName" in kwargs and "non-existent" in str(kwargs["ChangeSetName"]):
+            if "ChangeSetName" in kwargs and "non-existent" in str(
+                kwargs["ChangeSetName"]
+            ):
                 error_response = {
                     "Error": {
                         "Code": "ChangeSetNotFoundException",
@@ -207,7 +211,9 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert (
+            task_payload.flow_control == "success"
+        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 

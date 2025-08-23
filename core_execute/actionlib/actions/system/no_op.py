@@ -38,7 +38,9 @@ class NoOpActionSpec(ActionSpec):
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "SYSTEM::NoOp"
 
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
+        if not values.get(
+            "depends_on", values.get("DependsOn")
+        ):  # arrays are falsy if empty
             values["depends_on"] = []
 
         if not (values.get("scope") or values.get("Scope")):

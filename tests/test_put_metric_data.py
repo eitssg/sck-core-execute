@@ -85,7 +85,9 @@ def deploy_spec():
     return DeploySpec(Actions=[action_spec])
 
 
-def test_put_metric_data_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session: MagicMock):
+def test_put_metric_data_action(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session: MagicMock
+):
     """Test the put metric data action successful execution."""
 
     try:
@@ -93,7 +95,12 @@ def test_put_metric_data_action(task_payload: TaskPayload, deploy_spec: DeploySp
         mock_client = MagicMock()
 
         # Configure the CloudWatch put_metric_data method
-        mock_client.put_metric_data.return_value = {"ResponseMetadata": {"RequestId": "test-request-id-123", "HTTPStatusCode": 200}}
+        mock_client.put_metric_data.return_value = {
+            "ResponseMetadata": {
+                "RequestId": "test-request-id-123",
+                "HTTPStatusCode": 200,
+            }
+        }
 
         mock_session.client.return_value = mock_client
 
@@ -135,8 +142,13 @@ def test_put_metric_data_action(task_payload: TaskPayload, deploy_spec: DeploySp
 
         # Verify dimensions
         dimensions = first_metric["Dimensions"]
-        assert any(d["Name"] == "Environment" and d["Value"] == "production" for d in dimensions)
-        assert any(d["Name"] == "DataCenter" and d["Value"] == "zone-1" for d in dimensions)
+        assert any(
+            d["Name"] == "Environment" and d["Value"] == "production"
+            for d in dimensions
+        )
+        assert any(
+            d["Name"] == "DataCenter" and d["Value"] == "zone-1" for d in dimensions
+        )
 
         # Verify second metric
         second_metric = metrics_data[1]
@@ -148,12 +160,21 @@ def test_put_metric_data_action(task_payload: TaskPayload, deploy_spec: DeploySp
         assert state is not None, "State should not be None"
 
         # Check that the action completed successfully
-        assert state.get("event-namespace:var/test-put-metric/status") == "success", "Action should have completed successfully"
-        assert state.get("event-namespace:var/test-put-metric/total_metrics_sent") == 2, "Should have sent 2 metrics"
+        assert (
+            state.get("event-namespace:var/test-put-metric/status") == "success"
+        ), "Action should have completed successfully"
+        assert (
+            state.get("event-namespace:var/test-put-metric/total_metrics_sent") == 2
+        ), "Should have sent 2 metrics"
 
         # Verify completion and error states are properly set
-        assert state.get("event-namespace:var/test-put-metric/metrics_count") == 2, "Should track metrics count"
-        assert state.get("event-namespace:var/test-put-metric/namespace") == "event-namespace", "Should track namespace"
+        assert (
+            state.get("event-namespace:var/test-put-metric/metrics_count") == 2
+        ), "Should track metrics count"
+        assert (
+            state.get("event-namespace:var/test-put-metric/namespace")
+            == "event-namespace"
+        ), "Should track namespace"
 
     except Exception as e:
         traceback.print_exc()

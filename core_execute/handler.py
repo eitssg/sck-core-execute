@@ -88,7 +88,11 @@ def handler(event: dict, context: Any | None = None) -> dict:
         max_iterations = 10  # Prevent runaway loops
         iteration = 0
         flow_control = FlowControl.from_value(task_payload.flow_control)
-        while flow_control == FlowControl.EXECUTE and not timeout_imminent(context) and iteration < max_iterations:
+        while (
+            flow_control == FlowControl.EXECUTE
+            and not timeout_imminent(context)
+            and iteration < max_iterations
+        ):
 
             iteration += 1
             log.debug("State machine iteration {} (max {})", iteration, max_iterations)
@@ -109,7 +113,9 @@ def handler(event: dict, context: Any | None = None) -> dict:
                 )
 
             if timeout_imminent(context):
-                log.warning("Execution stopped due to timeout, Step Functions will retry")
+                log.warning(
+                    "Execution stopped due to timeout, Step Functions will retry"
+                )
 
         # Update the task payload with the final flow control state
         task_payload.flow_control = flow_control.value
@@ -118,7 +124,9 @@ def handler(event: dict, context: Any | None = None) -> dict:
         log.debug("Saving state for task: {}", task_payload.task)
         save_state(task_payload, context_state)
 
-        log.debug("Exiting handler with flow_control state: {}", task_payload.flow_control)
+        log.debug(
+            "Exiting handler with flow_control state: {}", task_payload.flow_control
+        )
         log.debug("Execution completed after {} loops", iteration)
 
         result = task_payload.model_dump()
