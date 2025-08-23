@@ -64,7 +64,9 @@ def deploy_spec():
     return DeploySpec(**deploy_spec)
 
 
-def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_copy_image_action(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
 
     try:
 
@@ -156,7 +158,9 @@ def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, m
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
+        assert (
+            task_payload.flow_control == "success"
+        ), "Expected flow_control to be 'success'"
 
         # Validate that create_tags was called for both image and snapshots
         expected_calls = [

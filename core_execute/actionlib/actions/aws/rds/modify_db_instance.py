@@ -75,7 +75,9 @@ class ModifyDbInstanceActionSpec(ActionSpec):
             values["name"] = "action-aws-rds-modifydbinstance-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::RDS::ModifyDbInstance"
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
+        if not values.get(
+            "depends_on", values.get("DependsOn")
+        ):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
@@ -146,7 +148,11 @@ class ModifyDbInstanceAction(BaseAction):
                 self.set_complete("All modifications complete")
             else:
                 self.set_output("PendingModifiedValues", pending_modified_values)
-                self.set_running("Waiting for modifications to complete: {}".format(pending_modified_values))
+                self.set_running(
+                    "Waiting for modifications to complete: {}".format(
+                        pending_modified_values
+                    )
+                )
         except ClientError as e:
             error_message = e.response.get("Error", {}).get("Message", "")
             if "No modifications" in error_message:
@@ -169,14 +175,20 @@ class ModifyDbInstanceAction(BaseAction):
             role=util.get_provisioning_role_arn(self.params.account),
         )
 
-        response = rds_client.describe_db_instances(DBInstanceIdentifier=self.params.api_params["DBInstanceIdentifier"])
+        response = rds_client.describe_db_instances(
+            DBInstanceIdentifier=self.params.api_params["DBInstanceIdentifier"]
+        )
         db_instance = response["DBInstances"][0]
         pending_modified_values = db_instance.get("PendingModifiedValues", {})
 
         if not pending_modified_values:
             self.set_complete("All modifications complete")
         else:
-            self.set_running("Waiting for modifications to complete: {}".format(pending_modified_values))
+            self.set_running(
+                "Waiting for modifications to complete: {}".format(
+                    pending_modified_values
+                )
+            )
 
     def _unexecute(self):
         """
@@ -205,9 +217,15 @@ class ModifyDbInstanceAction(BaseAction):
         This method uses the Jinja2 renderer to resolve any template strings or objects in the
         account, region, and api_params fields.
         """
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.api_params = self.renderer.render_object(self.params.api_params, self.context)
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.api_params = self.renderer.render_object(
+            self.params.api_params, self.context
+        )
 
     @classmethod
     def generate_action_spec(cls, **kwargs) -> ModifyDbInstanceActionSpec:

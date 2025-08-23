@@ -65,7 +65,9 @@ class CreateCloudFrontInvalidationActionSpec(ActionSpec):
             values["name"] = "action-aws-createcloudfrontinvalidation-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::CreateCloudFrontInvalidation"
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
+        if not values.get(
+            "depends_on", values.get("DependsOn")
+        ):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
@@ -147,9 +149,15 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         """
         log.trace("Resolving CreateCloudFrontInvalidationAction")
 
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.distribution_id = self.renderer.render_string(self.params.distribution_id, self.context)
+        self.params.region = self.renderer.render_string(
+            self.params.region, self.context
+        )
+        self.params.account = self.renderer.render_string(
+            self.params.account, self.context
+        )
+        self.params.distribution_id = self.renderer.render_string(
+            self.params.distribution_id, self.context
+        )
 
         # Render each path in the paths list
         rendered_paths = []
@@ -222,7 +230,11 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         invalidation = response["Invalidation"]
         invalidation_id = invalidation["Id"]
         invalidation_status = invalidation["Status"]
-        creation_time = invalidation["CreateTime"].isoformat() if invalidation.get("CreateTime") else None
+        creation_time = (
+            invalidation["CreateTime"].isoformat()
+            if invalidation.get("CreateTime")
+            else None
+        )
 
         # Set comprehensive state outputs
         self.set_state("InvalidationId", invalidation_id)
@@ -266,7 +278,9 @@ class CreateCloudFrontInvalidationAction(BaseAction):
             return
 
         try:
-            response = cloudfront_client.get_invalidation(DistributionId=self.params.distribution_id, Id=invalidation_id)
+            response = cloudfront_client.get_invalidation(
+                DistributionId=self.params.distribution_id, Id=invalidation_id
+            )
         except Exception as e:
             log.error("Failed to get invalidation status: {}", e)
             self.set_failed(f"Failed to get invalidation status: {e}")
@@ -316,5 +330,7 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         return CreateCloudFrontInvalidationActionSpec(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> CreateCloudFrontInvalidationActionParams:
+    def generate_action_parameters(
+        cls, **kwargs
+    ) -> CreateCloudFrontInvalidationActionParams:
         return CreateCloudFrontInvalidationActionParams(**kwargs)

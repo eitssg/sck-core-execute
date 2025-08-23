@@ -87,7 +87,9 @@ class PutEventActionSpec(ActionSpec):
             values["name"] = "action-aws-putevent-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::PutEvent"
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
+        if not values.get(
+            "depends_on", values.get("DependsOn")
+        ):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
@@ -202,7 +204,9 @@ class PutEventAction(BaseAction):
 
         # Create a unique timestamp label for this event instance
         start_time = util.get_current_timestamp()
-        datetime_label = start_time.replace(":", "-").replace(".", "-")  # Make filesystem/key safe
+        datetime_label = start_time.replace(":", "-").replace(
+            ".", "-"
+        )  # Make filesystem/key safe
 
         # Track this event instance in general state
         self.set_state("last_event_time", start_time)
@@ -228,7 +232,9 @@ class PutEventAction(BaseAction):
                 log.error(self.params.message, identity=self.params.identity)
             else:
                 log.fatal("Invalid event type: {}", t)
-                raise ValueError(f"Invalid event type: {t}.  Must be one of: STATUS, DEBUG, INFO, WARN, ERROR")
+                raise ValueError(
+                    f"Invalid event type: {t}.  Must be one of: STATUS, DEBUG, INFO, WARN, ERROR"
+                )
 
             event = EventActions.create(
                 self.params.identity,
@@ -267,7 +273,9 @@ class PutEventAction(BaseAction):
             self.set_state("status", "error")
             self.set_state("error_time", error_time)
             self.set_state("error_message", error_message)
-            self.set_state("message", f"Failed to save event to database: {error_message}")
+            self.set_state(
+                "message", f"Failed to save event to database: {error_message}"
+            )
 
             log.error("Failed to save event to database: {}", e)
             self.set_failed("Failed to save event to database")
@@ -316,9 +324,15 @@ class PutEventAction(BaseAction):
         log.trace("PutEventAction._resolve()")
 
         self.params.type = self.renderer.render_string(self.params.type, self.context)
-        self.params.status = self.renderer.render_string(self.params.status, self.context)
-        self.params.message = self.renderer.render_string(self.params.message, self.context)
-        self.params.identity = self.renderer.render_string(self.params.identity, self.context)
+        self.params.status = self.renderer.render_string(
+            self.params.status, self.context
+        )
+        self.params.message = self.renderer.render_string(
+            self.params.message, self.context
+        )
+        self.params.identity = self.renderer.render_string(
+            self.params.identity, self.context
+        )
 
         log.trace("PutEventAction._resolve() complete")
 

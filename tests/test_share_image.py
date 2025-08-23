@@ -7,7 +7,10 @@ import core_framework as util
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.share_image import ShareImageActionSpec, ShareImageActionParams
+from core_execute.actionlib.actions.aws.share_image import (
+    ShareImageActionSpec,
+    ShareImageActionParams,
+)
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
@@ -75,7 +78,10 @@ def test_share_image(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_se
 
         # Mock modify_image_attribute to simulate successful permission modification
         mock_client.modify_image_attribute.return_value = {
-            "ResponseMetadata": {"RequestId": "test-request-id-123", "HTTPStatusCode": 200}
+            "ResponseMetadata": {
+                "RequestId": "test-request-id-123",
+                "HTTPStatusCode": 200,
+            }
         }
 
         mock_session.client.return_value = mock_client
@@ -93,7 +99,9 @@ def test_share_image(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_se
 
         # Parse the response back into TaskPayload
         updated_payload = TaskPayload(**response)
-        assert updated_payload.flow_control == "success", "Flow control should be success"
+        assert (
+            updated_payload.flow_control == "success"
+        ), "Flow control should be success"
 
         # Load the saved state to verify completion
         state = load_state(updated_payload)
@@ -101,7 +109,9 @@ def test_share_image(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_se
         namespace = "share-image"
 
         # Verify EC2 describe_images was called correctly
-        mock_client.describe_images.assert_called_once_with(Filters=[{"Name": "name", "Values": ["ami-1234567890abcdef0"]}])
+        mock_client.describe_images.assert_called_once_with(
+            Filters=[{"Name": "name", "Values": ["ami-1234567890abcdef0"]}]
+        )
 
         # Verify modify_image_attribute was called correctly
         mock_client.modify_image_attribute.assert_called_once()
@@ -123,8 +133,12 @@ def test_share_image(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_se
 
         # Verify state tracking
         assert state is not None, "State should not be None"
-        assert state.get(f"{namespace}/status") == "success", "Action should have completed successfully"
-        assert state.get(f"{namespace}/image_id") == "ami-1234567890abcdef0", "Should track the shared image ID"
+        assert (
+            state.get(f"{namespace}/status") == "success"
+        ), "Action should have completed successfully"
+        assert (
+            state.get(f"{namespace}/image_id") == "ami-1234567890abcdef0"
+        ), "Should track the shared image ID"
 
         # Verify shared accounts are tracked
         shared_accounts = state.get(f"{namespace}/shared_accounts")
@@ -138,7 +152,9 @@ def test_share_image(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_se
         pytest.fail(f"Test failed with exception: {e}")
 
 
-def test_share_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
+def test_share_image_not_found(
+    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
+):
     """Test the share image action when AMI is not found."""
     try:
         # Create mock EC2 client
@@ -158,16 +174,22 @@ def test_share_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySpe
 
         # Parse the response
         updated_payload = TaskPayload(**response)
-        assert updated_payload.flow_control == "success", "Should complete successfully even when image not found"
+        assert (
+            updated_payload.flow_control == "success"
+        ), "Should complete successfully even when image not found"
 
         # Load state
         state = load_state(updated_payload)
         namespace = "share-image"
 
         # Verify behavior when image not found
-        assert state.get(f"{namespace}/status") == "skipped", "Should skip when image not found"
+        assert (
+            state.get(f"{namespace}/status") == "skipped"
+        ), "Should skip when image not found"
         assert f"{namespace}/error_message" in state, "Should have error message"
-        assert "does not exist" in state.get(f"{namespace}/error_message", ""), "Error message should mention image doesn't exist"
+        assert "does not exist" in state.get(
+            f"{namespace}/error_message", ""
+        ), "Error message should mention image doesn't exist"
 
         # Verify modify_image_attribute was NOT called
         mock_client.modify_image_attribute.assert_not_called()
