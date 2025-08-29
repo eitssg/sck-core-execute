@@ -63,7 +63,7 @@ class EmptyBucketActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -89,11 +89,11 @@ class EmptyBucketAction(BaseAction):
     ----------
     Kind : str
         Use the value: ``AWS::EmptyBucket``
-    Params.Account : str
+    Spec.Account : str
         The AWS account where the bucket is located
-    Params.Region : str
+    Spec.Region : str
         The AWS region where the bucket is located
-    Params.BucketName : str
+    Spec.BucketName : str
         The name of the bucket to empty (required)
 
     Examples
@@ -104,7 +104,7 @@ class EmptyBucketAction(BaseAction):
 
         - Name: action-aws-emptybucket-name
           Kind: "AWS::EmptyBucket"
-          Params:
+          Spec:
             Account: "154798051514"
             Region: "ap-southeast-1"
             BucketName: "my-bucket-name"

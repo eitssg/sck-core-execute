@@ -44,7 +44,7 @@ class SetVariablesActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {"variables": {}}
         return values
 
@@ -56,7 +56,7 @@ class SetVariablesAction(BaseAction):
 
     Attributes:
         Kind: Use the value: ``SYSTEM::SetVariables``
-        Params.Variables: The variables to set (required)
+        Spec.Variables: The variables to set (required)
 
     .. rubric: ActionSpec:
 
@@ -66,7 +66,7 @@ class SetVariablesAction(BaseAction):
 
             - Name: action-system-setvariables-name
                 Kind: "SYSTEM::SetVariables"
-                Params:
+                Spec:
                     Variables:
                         Name: "John Smith"
                         Age: "25"

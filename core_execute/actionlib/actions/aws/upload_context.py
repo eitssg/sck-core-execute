@@ -96,7 +96,7 @@ class UploadContextActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "Account": "{{ deployment.account }}",
                 "BucketName": "{{ artifacts.bucket_name }}",

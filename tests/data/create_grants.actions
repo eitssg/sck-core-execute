@@ -2,7 +2,7 @@
   Type: "AWS::KMS::CreateGrants"
   DependsOn:
   - put-a-label-here
-  Params:
+  Spec:
     Account: "154798051514"
     Region: "ap-southeast-1"
     KmsKeyArn: "The ARN of the KMS key to create grants for (optionally required)"

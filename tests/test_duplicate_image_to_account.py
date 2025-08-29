@@ -44,7 +44,7 @@ def deploy_spec():
     Parameters are fore: DeleteImageActionParams
     """
     spec: dict[str, Any] = {
-        "Params": {
+        "Spec": {
             "Account": "154798051514",
             "Region": "ap-southeast-1",
             "ImageName": "my-application-ami-v1.0",

@@ -46,7 +46,7 @@ class NoOpActionSpec(ActionSpec):
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
 
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {}
 
         return values
@@ -68,7 +68,7 @@ class NoOpAction(BaseAction):
 
             - Name: action-system-noop-name
               Kind: "SYSTEM::NoOp"
-              Params: {}
+              Spec: {}
               Scope: "build"
 
     """

@@ -25,7 +25,7 @@ aws cloudformation deploy \
     template_url: core_execute_cf.yaml
     account: {{ AutomationAccountId }}
     region: {{ Region }}
-    stack_parameters:
+    parameters:
       Client: {{ Client }}
       Environment: {{ Environment }}
       AlertEmail: {{ AlertEmail }}

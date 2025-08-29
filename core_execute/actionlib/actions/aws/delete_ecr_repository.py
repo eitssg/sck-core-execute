@@ -68,7 +68,7 @@ class DeleteEcrRepositoryActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -95,9 +95,9 @@ class DeleteEcrRepositoryAction(BaseAction):
 
     :Name: Enter a name to define this action instance
     :Kind: Use the value ``AWS::DeleteEcrRepository``
-    :Params.Account: The account where the ECR repository is located (required)
-    :Params.Region: The region where the ECR repository is located (required)
-    :Params.RepositoryName: The name of the ECR repository to delete (required)
+    :Spec.Account: The account where the ECR repository is located (required)
+    :Spec.Region: The region where the ECR repository is located (required)
+    :Spec.RepositoryName: The name of the ECR repository to delete (required)
 
     .. rubric:: ActionSpec Example
 
@@ -105,7 +105,7 @@ class DeleteEcrRepositoryAction(BaseAction):
 
         - Name: action-aws-deleteecrrepository-name
           Kind: "AWS::DeleteEcrRepository"
-          Params:
+          Spec:
             Account: "154798051514"
             Region: "ap-southeast-1"
             RepositoryName: "my-ecr-repository"

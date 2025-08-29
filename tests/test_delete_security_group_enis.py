@@ -46,7 +46,7 @@ def deploy_spec():
     Parameters are fore: DeleteSecurityGroupEnisActionParams
     """
     spec: dict[str, Any] = {
-        "Params": {
+        "Spec": {
             "Account": "154798051514",
             "Region": "ap-southeast-1",
             "SecurityGroupId": "sg-1234567890abcdef0",

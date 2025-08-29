@@ -2,7 +2,7 @@
   Type: "AWS::DeleteUser"
   DependsOn:
   - put-a-label-here
-  Params:
+  Spec:
     Account: "154798051514"
     UserName: "The name of the user to delete (required)"
     Region: "ap-southeast-1"

@@ -51,7 +51,7 @@ def deploy_spec():
     )
 
     action_spec = UploadContextActionSpec(
-        Name="upload-context", Params=validated_params.model_dump()
+        Name="upload-context", Spec=validated_params.model_dump()
     )
 
     return DeploySpec(actions=[action_spec])

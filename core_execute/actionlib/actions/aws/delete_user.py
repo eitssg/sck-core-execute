@@ -106,7 +106,7 @@ class DeleteUserActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -134,9 +134,9 @@ class DeleteUserAction(BaseAction):
 
     :Name: Enter a name to define this action instance
     :Kind: Use the value ``AWS::DeleteUser``
-    :Params.Account: The account where the users are located (required)
-    :Params.Region: The region for the IAM operations (required)
-    :Params.UserNames: The list of user names to delete (required)
+    :Spec.Account: The account where the users are located (required)
+    :Spec.Region: The region for the IAM operations (required)
+    :Spec.UserNames: The list of user names to delete (required)
 
     .. rubric:: ActionSpec Example
 
@@ -144,7 +144,7 @@ class DeleteUserAction(BaseAction):
 
         - Name: action-aws-deleteuser-name
           Kind: "AWS::DeleteUser"
-          Params:
+          Spec:
             Account: "154798051514"
             Region: "us-east-1"
             UserNames: ["john.smith", "jane.doe"]

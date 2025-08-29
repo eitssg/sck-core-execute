@@ -2,7 +2,7 @@
   Type: "AWS::CreateStack"
   DependsOn:
   - put-a-label-here
-  Params:
+  Spec:
     Account: "154798051514"
     StackName: "The name of the stack to create (required)"
     Region: "ap-southeast-1"

@@ -70,7 +70,7 @@ class DeleteSecurityGroupEnisActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -98,9 +98,9 @@ class DeleteSecurityGroupEnisAction(BaseAction):
 
     :Name: Enter a name to define this action instance
     :Kind: Use the value ``AWS::DeleteSecurityGroupEnis``
-    :Params.Account: The account where the security group is located (required)
-    :Params.Region: The region where the security group is located (required)
-    :Params.SecurityGroupId: The ID of the security group to delete ENIs from (required)
+    :Spec.Account: The account where the security group is located (required)
+    :Spec.Region: The region where the security group is located (required)
+    :Spec.SecurityGroupId: The ID of the security group to delete ENIs from (required)
 
     .. rubric:: ActionSpec Example
 
@@ -108,7 +108,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
 
         - Name: action-aws-deletesecuritygroupenis-name
           Kind: "AWS::DeleteSecurityGroupEnis"
-          Params:
+          Spec:
             Account: "154798051514"
             Region: "ap-southeast-1"
             SecurityGroupId: "sg-1234567890abcdef0"

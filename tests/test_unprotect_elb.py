@@ -50,7 +50,7 @@ def deploy_spec():
     )
 
     action_spec = UnprotectELBActionSpec(
-        Name="unprotect-elb", Params=validated_params.model_dump()
+        Name="unprotect-elb", Spec=validated_params.model_dump()
     )
 
     return DeploySpec(actions=[action_spec])
@@ -169,7 +169,7 @@ def test_unprotect_elb_skip_none(task_payload: TaskPayload, mock_session):
         )
 
         action_spec = UnprotectELBActionSpec(
-            Name="unprotect-elb-skip", Params=validated_params.model_dump()
+            Name="unprotect-elb-skip", Spec=validated_params.model_dump()
         )
 
         deploy_spec = DeploySpec(actions=[action_spec])

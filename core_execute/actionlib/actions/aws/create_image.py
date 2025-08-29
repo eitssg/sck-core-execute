@@ -78,7 +78,7 @@ class CreateImageActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "image_name": "",
@@ -108,11 +108,11 @@ class CreateImageAction(BaseAction):
 
     :Name: Enter a name to define this action instance
     :Kind: Use the value ``AWS::CreateImage`` (not AWS::KMS::CreateImage)
-    :Params.Account: The account where the EC2 instance is located
-    :Params.Region: The region where the EC2 instance is located
-    :Params.InstanceId: The instance ID to create an image from (required)
-    :Params.ImageName: The name of the image to create (required)
-    :Params.Tags: Optional tags to apply to the created image
+    :Spec.Account: The account where the EC2 instance is located
+    :Spec.Region: The region where the EC2 instance is located
+    :Spec.InstanceId: The instance ID to create an image from (required)
+    :Spec.ImageName: The name of the image to create (required)
+    :Spec.Tags: Optional tags to apply to the created image
 
     .. rubric:: ActionSpec Example
 
@@ -120,7 +120,7 @@ class CreateImageAction(BaseAction):
 
         - Name: action-aws-createimage-name
           Kind: "AWS::CreateImage"
-          Params:
+          Spec:
             Account: "123456789012"
             Region: "ap-southeast-1"
             InstanceId: "i-1234567890abcdef0"

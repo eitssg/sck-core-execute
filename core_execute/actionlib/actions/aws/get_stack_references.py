@@ -69,7 +69,7 @@ class GetStackReferencesActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -99,13 +99,13 @@ class GetStackReferencesAction(BaseAction):
     ----------
     Kind : str
         Use the value: ``AWS::GetStackReferences``
-    Params.Account : str
+    Spec.Account : str
         The AWS account where the stack is located
-    Params.Region : str
+    Spec.Region : str
         The AWS region where the stack is located
-    Params.StackName : str
+    Spec.StackName : str
         The name of the stack to check for references (required)
-    Params.OutputName : str
+    Spec.OutputName : str
         The name of the output to check for references (optional, defaults to 'DefaultExport')
 
     Examples
@@ -116,7 +116,7 @@ class GetStackReferencesAction(BaseAction):
 
         - Name: action-aws-getstackreferences-name
           Kind: "AWS::GetStackReferences"
-          Params:
+          Spec:
             Account: "154798051514"
             StackName: "my-stack-name"
             Region: "ap-southeast-1"

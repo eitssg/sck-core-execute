@@ -44,7 +44,7 @@ def deploy_spec():
     Parameters are fore: CopyImageActionParams
     """
     spec: dict[str, Any] = {
-        "Params": {
+        "Spec": {
             "Account": "234567890123",
             "ImageName": "test-image",
             "DestinationImageName": "test-image-copy",

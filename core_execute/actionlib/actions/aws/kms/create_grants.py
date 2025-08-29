@@ -37,7 +37,7 @@ class CreateGrantsActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -189,7 +189,7 @@ class CreateGrantsAction(BaseAction):
 
             - Name: action-aws-kms-creategrants-name
               Kind: "AWS::KMS::CreateGrants"
-              Params:
+              Spec:
                 Account: "123456789012"
                 Region: "ap-southeast-1"
                 KmsKeyArn: "arn:aws:kms:ap-southeast-1:123456789012:key/your-kms-key-id"

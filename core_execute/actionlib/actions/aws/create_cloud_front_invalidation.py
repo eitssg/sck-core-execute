@@ -71,7 +71,7 @@ class CreateCloudFrontInvalidationActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -100,10 +100,10 @@ class CreateCloudFrontInvalidationAction(BaseAction):
 
     :Name: Enter a name to define this action instance
     :Kind: Use the value ``AWS::CreateCloudFrontInvalidation``
-    :Params.Account: The account where CloudFront is located (required)
-    :Params.Region: The region where CloudFront is located (required)
-    :Params.DistributionId: The ID of the CloudFront distribution to invalidate (required)
-    :Params.Paths: List of paths to invalidate (optional, defaults to ['*'])
+    :Spec.Account: The account where CloudFront is located (required)
+    :Spec.Region: The region where CloudFront is located (required)
+    :Spec.DistributionId: The ID of the CloudFront distribution to invalidate (required)
+    :Spec.Paths: List of paths to invalidate (optional, defaults to ['*'])
 
     .. rubric:: ActionSpec Example
 
@@ -111,7 +111,7 @@ class CreateCloudFrontInvalidationAction(BaseAction):
 
         - Name: action-aws-createcloudfrontinvalidation-name
           Kind: "AWS::CreateCloudFrontInvalidation"
-          Params:
+          Spec:
             Account: "123456789012"
             Region: "us-east-1"
             DistributionId: "E1234567890"

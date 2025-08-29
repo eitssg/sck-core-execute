@@ -47,7 +47,7 @@ def deploy_spec():
     # create params for CreateCloudFrontInvalidationActionParams
     spec: dict[str, Any] = {
         "Name": "action-aws-createcloudfrontinvalidation-name",
-        "Params": {
+        "Spec": {
             "Account": "123456789012",  # Example AWS account ID
             "Region": "us-east-1",  # Example AWS region
             "DistributionId": "E1234567890ABC",  # Example CloudFront distribution ID

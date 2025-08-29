@@ -53,7 +53,7 @@ def deploy_spec():
     action_spec = PutEventActionSpec(
         Name="event-namespace:action/test-put-event",
         Kind="AWS::PutEvent",
-        Params=validated_params.model_dump(),
+        Spec=validated_params.model_dump(),
         Scope="build",
     )
 

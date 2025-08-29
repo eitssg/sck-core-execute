@@ -21,23 +21,26 @@ class CreateChangeSetActionParams(ActionParams):
         alias="StackName",
         description="The name of the stack to apply the change set",
     )
-
     template_url: str = Field(
         ...,
         alias="TemplateUrl",
         description="The template URL to use for the change set",
     )
-
     change_set_name: str = Field(
-        ..., alias="ChangeSetName", description="The name of the change set to create"
+        ...,
+        alias="ChangeSetName",
+        description="The name of the change set to create",
     )
-
-    stack_parameters: dict = Field(
+    capabilities: list[str] = Field(
+        None,
+        alias="Capabilities",
+        description="The capabilities to enable for the stack (optional)",
+    )
+    parameters: dict = Field(
         default_factory=dict,
         alias="StackParameters",
         description="Parameters for the CloudFormation template",
     )
-
     tags: dict = Field(
         default_factory=dict,
         alias="Tags",
@@ -72,7 +75,7 @@ class CreateChangeSetActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -100,7 +103,7 @@ class CreateChangeSetAction(BaseAction):
 
             - Name: action-aws-createchangeset-name
               Kind: "AWS::CreateChangeSet"
-              Params:
+              Spec:
                 Account: "154798051514"
                 Region: "ap-southeast-1"
                 StackName: "my-stack"
@@ -165,16 +168,16 @@ class CreateChangeSetAction(BaseAction):
         )
 
         # Render stack parameters
-        if self.params.stack_parameters:
+        if self.params.parameters:
             rendered_params = {}
-            for key, value in self.params.stack_parameters.items():
+            for key, value in self.params.parameters.items():
                 if isinstance(value, str):
                     rendered_params[key] = self.renderer.render_string(
                         value, self.context
                     )
                 else:
                     rendered_params[key] = value
-            self.params.stack_parameters = rendered_params
+            self.params.parameters = rendered_params
 
         # Render tags
         if self.params.tags:
@@ -327,10 +330,10 @@ class CreateChangeSetAction(BaseAction):
             }
 
             # Add stack parameters if provided
-            if self.params.stack_parameters:
+            if self.params.parameters:
                 change_set_params["Parameters"] = [
                     {"ParameterKey": key, "ParameterValue": str(value)}
-                    for key, value in self.params.stack_parameters.items()
+                    for key, value in self.params.parameters.items()
                 ]
 
             # Add tags if provided

@@ -46,7 +46,7 @@ def deploy_spec():
     Parameters are fore: CreateChangeSetActionParams
     """
     spec: dict[str, Any] = {
-        "Params": {
+        "Spec": {
             "Account": "154798051514",
             "Region": "ap-southeast-1",
             "StackName": "my-stack",

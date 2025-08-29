@@ -93,7 +93,7 @@ class PutEventActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "Type": "INFO",
                 "Status": "",
@@ -124,14 +124,14 @@ class PutEventAction(BaseAction):
     ----------
     Kind : str
         Use the value: ``AWS::PutEvent``
-    Params.Type : str
+    Spec.Type : str
         The type of event to put. Valid values: STATUS, DEBUG, INFO, WARN, ERROR.
         Defaults to 'STATUS'.
-    Params.Status : str
+    Spec.Status : str
         The status of the event (required).
-    Params.Message : str
+    Spec.Message : str
         The message to associate with the event. Defaults to empty string.
-    Params.Identity : str, optional
+    Spec.Identity : str, optional
         The identity of the event. Defaults to None.
 
     Examples
@@ -142,7 +142,7 @@ class PutEventAction(BaseAction):
 
         - Name: action-aws-putevent-name
           Kind: "AWS::PutEvent"
-          Params:
+          Spec:
             Type: "STATUS"
             Status: "DEPLOY_SUCCESS"
             Message: "The deployment was successful"

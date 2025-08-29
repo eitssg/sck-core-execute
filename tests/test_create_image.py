@@ -44,7 +44,7 @@ def deploy_spec():
     Parameters are fore: CreateImageActionParams
     """
     spec: dict[str, Any] = {
-        "Params": {
+        "Spec": {
             "Account": "123456789012",
             "Region": "ap-southeast-1",
             "InstanceId": "i-1234567890abcdef0",

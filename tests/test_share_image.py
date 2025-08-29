@@ -53,7 +53,7 @@ def deploy_spec():
         }
     )
 
-    action_spec = ShareImageActionSpec(Params=validated_params.model_dump())
+    action_spec = ShareImageActionSpec(Spec=validated_params.model_dump())
 
     return DeploySpec(actions=[action_spec])
 

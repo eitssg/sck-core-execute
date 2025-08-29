@@ -1,13 +1,18 @@
-"""Defines the BasActions abstrction for all actions."""
+"""Defines the BaseActions abstraction for all actions."""
 
-from typing import Any, Self
+from typing import Any, Self, Optional
 import traceback
 import sys
 import os
 import enum
 import core_logging as log
 
-from core_framework.models import ActionSpec, ActionParams, DeploymentDetails
+from core_framework.models import (
+    ActionSpec,
+    ActionMetadata,
+    ActionParams,
+    DeploymentDetails,
+)
 
 from core_renderer import Jinja2Renderer
 
@@ -39,7 +44,13 @@ NO_DEFAULT_PROVIDED = "_!NO!DEFAULT!PROVIDED!_"
 
 
 class StatusCode(enum.Enum):
-    """Enum for action status codes."""
+    """Action execution status codes.
+
+    PENDING: Action has not started execution
+    RUNNING: Action is currently executing
+    COMPLETE: Action finished successfully
+    FAILED: Action encountered an error
+    """
 
     PENDING = "pending"
     RUNNING = "running"
@@ -48,172 +59,131 @@ class StatusCode(enum.Enum):
 
 
 class BaseAction(object):
-    """
-    Base class for all actions in the Simple Cloud Kit execution framework.
+    """Base class for all Simple Cloud Kit actions.
 
-    This abstract base class provides the foundation for implementing custom actions
-    that can be executed as part of deployment workflows. All action subclasses must
-    inherit from this class and implement the required abstract methods.
-
-    The BaseAction class handles:
-
-    - Action lifecycle management (pending, running, complete, failed states)
+    Provides the foundation for implementing custom deployment actions with:
+    - Action lifecycle management (pending → running → complete/failed)
     - Jinja2 template rendering for dynamic configuration
-    - Output and state variable management
-    - Condition evaluation for conditional execution
+    - Output and state variable management with namespace isolation
+    - Conditional execution based on Jinja2 expressions
     - Lifecycle hooks for status updates and notifications
-    - Error handling and logging
+    - Comprehensive error handling and logging
 
-    :param definition: The action specification containing configuration details
-    :type definition: ActionSpec
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
+    All action subclasses must inherit from BaseAction and implement:
+    - _resolve(): Prepare action for execution (resolve dependencies, validate config)
+    - _execute(): Main action logic (deploy resources, update configuration)
+    - _check(): Validate prerequisites before execution
+    - _cancel(): Cancel a running action gracefully
+    - _unexecute(): Rollback/undo action changes
 
-    :ivar name: The unique identifier of the action (e.g., "client:action/deploy-stack")
-    :vartype name: str
-    :ivar context: The Jinja2 rendering context containing all variables
-    :vartype context: dict[str, Any]
-    :ivar action_name: The short name of the action (e.g., "deploy-stack")
-    :vartype action_name: str
-    :ivar output_namespace: Namespace for saved outputs (e.g., "client:output")
-    :vartype output_namespace: str | None
-    :ivar state_namespace: Namespace for state variables (e.g., "client:var")
-    :vartype state_namespace: str
-    :ivar kind: The type/kind of action (e.g., "CloudFormation", "Lambda")
-    :vartype kind: str
-    :ivar condition: Jinja2 condition that determines if action should execute
-    :vartype condition: str
-    :ivar after: List of actions that must complete before this action
-    :vartype after: list[str]
-    :ivar lifecycle_hooks: Hooks for status notifications
-    :vartype lifecycle_hooks: list[dict[str, Any]]
-    :ivar deployment_details: Client/portfolio/app/branch/build info
-    :vartype deployment_details: DeploymentDetails
-    :ivar renderer: Template renderer using the action's context
-    :vartype renderer: Jinja2Renderer
-
-    .. note::
-        All underscore-prefixed methods (_execute, _check, _resolve, _cancel, _unexecute)
-        must be implemented in subclasses.
+    Args:
+        definition (ActionSpec): ActionSpec specification from deployspec.yaml
+        context (dict): Jinja2 rendering context with all deployment variables
+        deployment_details (DeploymentDetails): Client/portfolio/app/branch/build information
 
     Example:
-        Creating a custom action subclass:
+        class MyAction(BaseAction):
+            def _resolve(self):
+                self.set_state("config_validated", True)
 
-        .. code-block:: python
-
-            class MyCustomAction(BaseAction):
-                def _resolve(self):
-                    # Resolve any dependencies or prepare for execution
-                    self.set_state("resolved", True)
-
-                def _execute(self):
-                    # Main action logic
-                    self.set_running("Executing custom logic")
-
-                    try:
-                        # Your custom implementation here
-                        result = self.do_something()
-                        self.set_output("result", result)
-                        self.set_complete("Custom action completed successfully")
-                    except Exception as e:
-                        self.set_failed(f"Custom action failed: {e}")
-
-                def _check(self):
-                    # Check if action can run (e.g., validate prerequisites)
-                    if not self.validate_prerequisites():
-                        self.set_failed("Prerequisites not met")
-
-                def _cancel(self):
-                    # Cancel a running action
-                    self.cleanup_resources()
-                    self.set_failed("Action was cancelled")
-
-                def _unexecute(self):
-                    # Rollback/undo the action
-                    self.rollback_changes()
-                    self.set_complete("Action rolled back")
-
-    .. rubric:: Implementation Guidelines
-
-    - Use self.set_running(), self.set_complete(), self.set_failed() to manage state
-    - Use self.set_output() to save results that other actions can reference
-    - Use self.set_state() for internal state management
-    - Use self.renderer.render_string() to process Jinja2 templates
-    - Access deployment context via self.context dictionary
-    - The execute() and check() methods are final and handle error handling/logging
-
-    .. rubric:: State Management
-
-    Actions progress through states: PENDING -> RUNNING -> COMPLETE/FAILED
-
-    - **PENDING**: Initial state, action not yet started
-    - **RUNNING**: Action is currently executing
-    - **COMPLETE**: Action finished successfully
-    - **FAILED**: Action encountered an error
-
-    .. rubric:: Context Variables
-
-    The context dictionary contains all variables available for Jinja2 rendering:
-
-    - Deployment details (client, portfolio, app, branch, build)
-    - Outputs from previous actions
-    - State variables from all actions
-    - Environment variables and configuration
-
-    .. seealso::
-        :class:`ActionSpec`: Defines the action configuration
-        :class:`DeploymentDetails`: Contains deployment metadata
-        :class:`Jinja2Renderer`: Handles template rendering
+            def _execute(self):
+                self.set_running("Deploying resources")
+                result = self.deploy_something()
+                self.set_output("endpoint_url", result.url)
+                self.set_complete("Deployment successful")
     """
 
     name: str
-    """str: The name of the action is the unique identifier of the action."""
+    """Full action identifier (e.g., 'namespace/action-name')"""
 
     context: dict[str, Any]
-    """dict[str, Any]: The context of the action is the Jinja2 Rendering Context."""
+    """Jinja2 rendering context containing all deployment variables and outputs"""
 
     action_name: str
-    """str: The action name is the name of the action."""
+    """Short action name without namespace (e.g., 'action-name')"""
 
     output_namespace: str | None
-    """str | None: The output namespace is the namespace where the output of the action is stored."""
+    """Namespace for saved outputs that other actions can reference (e.g., 'namespace:output')"""
 
     state_namespace: str
-    """str: The state namespace is the namespace where the state of the action is stored."""
+    """Namespace for internal state variables (e.g., 'namespace:var')"""
 
     kind: str
-    """str: The kind of the action."""
+    """Action type/kind (e.g., 'create-stack', 'invoke-lambda')"""
 
     condition: str
-    """str: The condition of the action."""
+    """Jinja2 condition expression that determines if action should execute"""
 
     after: list[str]
-    """list[str]: The actions that should be perfomed after this action."""
+    """List of action names that must complete before this action can run"""
 
     lifecycle_hooks: list[dict[str, Any]]
-    """list[dict[str, Any]]: The lifecycle hooks of the action."""
+    """Status notification hooks for action state changes"""
 
     deployment_details: DeploymentDetails
-    """DeploymentDetails: The deployment details of the action. client/portfolio/app/branch/build information."""
+    """Deployment metadata (client, portfolio, app, branch, build)"""
 
     renderer: Jinja2Renderer
-    """Jinja2Renderer: The Jinja2 Renderer for the action.  Uses the context to render templates."""
+    """Template renderer using the action's context for variable substitution"""
 
     def _execute(self):
+        """Execute the main action logic.
+
+        Must be implemented in subclasses. Called after _resolve() when the action
+        condition evaluates to true. Should use self.set_running(), self.set_complete(),
+        or self.set_failed() to manage execution state.
+
+        Raises:
+            NotImplementedError: Must be implemented in action subclasses
+        """
         raise NotImplementedError("Must implement in subclass")
 
     def _check(self):
+        """Validate action prerequisites and readiness.
+
+        Must be implemented in subclasses. Called during check() to validate
+        that the action can be executed successfully. Should verify dependencies,
+        permissions, and configuration.
+
+        Raises:
+            NotImplementedError: Must be implemented in action subclasses
+        """
         raise NotImplementedError("Must implement in subclass")
 
     def _resolve(self):
+        """Resolve dependencies and prepare for execution.
+
+        Must be implemented in subclasses. Called before _execute() and _check()
+        to resolve any dependencies, render templates, and prepare the action
+        for execution.
+
+        Raises:
+            NotImplementedError: Must be implemented in action subclasses
+        """
         raise NotImplementedError("Must implement in subclass")
 
     def _cancel(self):
+        """Cancel a running action gracefully.
+
+        Must be implemented in subclasses. Called to cancel an action that is
+        currently running. Should clean up resources and set the action to
+        failed state with appropriate reason.
+
+        Raises:
+            NotImplementedError: Must be implemented in action subclasses
+        """
         raise NotImplementedError("Must implement in subclass")
 
     def _unexecute(self):
+        """Rollback or undo action changes.
+
+        Must be implemented in subclasses. Called to reverse the effects of
+        a previously executed action. Should restore the system to its
+        pre-execution state.
+
+        Raises:
+            NotImplementedError: Must be implemented in action subclasses
+        """
         raise NotImplementedError("Must implement in subclass")
 
     def __init__(
@@ -222,6 +192,17 @@ class BaseAction(object):
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
+        """Initialize a new BaseAction instance.
+
+        Sets up the action with configuration from the ActionSpec, initializes
+        the Jinja2 renderer, and resolves action identity using either modern
+        metadata or legacy name fields.
+
+        Args:
+            definition: Action specification from deployspec.yaml
+            context: Jinja2 rendering context with deployment variables
+            deployment_details: Client/portfolio/app/branch/build information
+        """
         log.trace("BaseAction.__init__()")
 
         # All actions can use the Jinja2 renderer to parse CloudFormation.j2 templates
@@ -229,13 +210,11 @@ class BaseAction(object):
 
         # Extract action details from the definition
         self.definition = definition
-        self.name = definition.name
         self.context = context
         self.deployment_details = deployment_details
-        self.action_name = definition.action_name
-        self.save_outputs = definition.save_outputs
-        self.output_namespace = definition.output_namespace
-        self.state_namespace = definition.state_namespace
+
+        # Handle metadata-based vs legacy name-based configuration
+        self._resolve_action_identity()
 
         log.debug("Action name is: {}", self.name)
         log.debug("Action output namespace is: {}", self.output_namespace)
@@ -253,51 +232,203 @@ class BaseAction(object):
 
         log.trace("BaseAction.__init__() - complete")
 
-    def is_init(self) -> bool:
-        """
-        Check if the action is in the init state.
+    def _resolve_action_identity(self):
+        """Resolve action identity using metadata-first approach with legacy fallback.
 
-        :return: True if the action is in the init state
-        :rtype: bool
+        Priority order:
+        1. Use metadata.name and metadata.namespace if available (modern approach)
+        2. Fall back to legacy name field parsing if metadata not available
+        3. Create metadata from legacy name for forward compatibility
+
+        Raises:
+            ValueError: If neither metadata.name nor legacy name field is provided
+        """
+        # Check if we have modern metadata structure
+        if self.definition.metadata and self.definition.metadata.name:
+            # Modern metadata-based approach
+            self._setup_from_metadata()
+            log.debug("Using metadata-based action identity")
+
+        elif self.definition.name:
+            # Legacy name-based approach with metadata creation
+            self._setup_from_legacy_name()
+            log.debug("Using legacy name-based action identity with metadata creation")
+
+        else:
+            raise ValueError(
+                "Action must have either metadata.name or legacy name field"
+            )
+
+    def _setup_from_metadata(self):
+        """Setup action identity using metadata.name and metadata.namespace.
+
+        Configures action name, namespaces, and output settings based on the
+        ActionMetadata structure. Transforms namespaces for output and state
+        variable organization.
+        """
+        metadata = self.definition.metadata
+
+        # Set basic properties from metadata
+        self.action_name = metadata.name
+
+        # Handle save_outputs - check both definition level and metadata
+        save_outputs = getattr(self.definition, "save_outputs", None)
+        if save_outputs is None:
+            save_outputs = (
+                metadata.save_outputs if metadata.save_outputs is not None else True
+            )
+        self.save_outputs = save_outputs
+
+        # Build full name for backwards compatibility
+        if metadata.namespace:
+            self.name = f"{metadata.namespace}/{metadata.name}"
+        else:
+            self.name = metadata.name
+
+        # Calculate namespaces
+        if metadata.namespace:
+            # Use explicit namespace from metadata
+            base_namespace = metadata.namespace
+
+            # Transform namespace for outputs (e.g., "myapp:action" -> "myapp:output")
+            if ":action" in base_namespace:
+                self.output_namespace = (
+                    base_namespace.replace(":action", ":output")
+                    if save_outputs
+                    else None
+                )
+                self.state_namespace = base_namespace.replace(":action", ":var")
+            else:
+                # For simple namespaces, append type suffixes
+                self.output_namespace = (
+                    f"{base_namespace}:output" if save_outputs else None
+                )
+                self.state_namespace = f"{base_namespace}:var"
+        else:
+            # No namespace provided, use action name as namespace
+            self.output_namespace = self.action_name if save_outputs else None
+            self.state_namespace = self.action_name
+
+    def _setup_from_legacy_name(self):
+        """Setup action identity using legacy name field and create metadata.
+
+        Parses the legacy name field to extract namespace and action name,
+        then creates ActionMetadata for forward compatibility. Maintains
+        backward compatibility with existing action configurations.
+        """
+        legacy_name = self.definition.name
+        self.name = legacy_name
+
+        # Parse legacy name to extract action_name and namespace
+        if "/" in legacy_name:
+            parts = legacy_name.split("/")
+            namespace_part = parts[0]
+            action_name_part = parts[-1]
+        else:
+            namespace_part = None
+            action_name_part = legacy_name
+
+        self.action_name = action_name_part
+
+        # Handle save_outputs
+        save_outputs = getattr(self.definition, "save_outputs", None)
+        if save_outputs is None:
+            save_outputs = True  # Default True for backwards compatibility
+        self.save_outputs = save_outputs
+
+        # Calculate namespaces using legacy logic
+        if namespace_part:
+            # Transform namespace for outputs (e.g., "myapp:action" -> "myapp:output")
+            if ":action" in namespace_part:
+                self.output_namespace = (
+                    namespace_part.replace(":action", ":output")
+                    if save_outputs
+                    else None
+                )
+                self.state_namespace = legacy_name.replace(":action/", ":var/")
+            else:
+                # For simple namespaces
+                self.output_namespace = namespace_part if save_outputs else None
+                self.state_namespace = legacy_name
+        else:
+            # No namespace in legacy name
+            self.output_namespace = legacy_name if save_outputs else None
+            self.state_namespace = legacy_name
+
+        # Create metadata from legacy name for forward compatibility
+        self._create_metadata_from_legacy_name(namespace_part, action_name_part)
+
+    def _create_metadata_from_legacy_name(
+        self, namespace: str | None, action_name: str
+    ):
+        """Create metadata structure from legacy name for forward compatibility.
+
+        Creates an ActionMetadata instance from parsed legacy name components
+        to enable modern metadata-based features for legacy actions.
+
+        Args:
+            namespace: Parsed namespace from legacy name (can be None)
+            action_name: Parsed action name from legacy name
+        """
+        # Create metadata if it doesn't exist
+        if not self.definition.metadata:
+            self.definition.metadata = ActionMetadata(
+                name=action_name,
+                namespace=namespace,
+                description=f"Auto-generated metadata for legacy action: {self.definition.name}",
+            )
+            log.debug(
+                "Created metadata from legacy name: namespace='{}', name='{}'",
+                namespace,
+                action_name,
+            )
+        else:
+            # Update existing metadata if fields are missing
+            if not self.definition.metadata.name:
+                self.definition.metadata.name = action_name
+            if not self.definition.metadata.namespace:
+                self.definition.metadata.namespace = namespace
+
+    def is_init(self) -> bool:
+        """Check if the action is in the initial pending state.
+
+        Returns:
+            True if the action has not started execution
         """
         return self.__get_status_code() == StatusCode.PENDING.value
 
     def is_failed(self) -> bool:
-        """
-        Check if the action is in the failed state.
+        """Check if the action is in the failed state.
 
-        :return: True if the action is in the failed state
-        :rtype: bool
+        Returns:
+            True if the action encountered an error during execution
         """
         return self.__get_status_code() == StatusCode.FAILED.value
 
     def is_running(self) -> bool:
-        """
-        Check if the action is in the running state.
+        """Check if the action is currently executing.
 
-        :return: True if the action is in the running state
-        :rtype: bool
+        Returns:
+            True if the action is currently running
         """
         return self.__get_status_code() == StatusCode.RUNNING.value
 
     def is_complete(self) -> bool:
-        """
-        Check if the action is in the complete state.
+        """Check if the action completed successfully.
 
-        :return: True if the action is in the complete state
-        :rtype: bool
+        Returns:
+            True if the action finished execution without errors
         """
         return self.__get_status_code() == StatusCode.COMPLETE.value
 
     def set_failed(self, reason: str):
-        """
-        Set the status to failed and supply the given reason.
+        """Set the action status to failed with the specified reason.
 
-        :param reason: Reason the status failed
-        :type reason: str
+        Updates the action state to failed, executes lifecycle hooks, and logs
+        the failure. Ignores duplicate state updates with the same reason.
 
-        .. note::
-            This method will ignore duplicate state updates with the same reason.
+        Args:
+            reason: Detailed reason why the action failed
         """
         log.trace("Setting action to failed - {}", reason)
 
@@ -319,14 +450,13 @@ class BaseAction(object):
         log.trace("Action set to failed - {}", reason)
 
     def set_running(self, reason: str):
-        """
-        Set the status to running and supply the given reason.
+        """Set the action status to running with the specified reason.
 
-        :param reason: The reason the status is running
-        :type reason: str
+        Updates the action state to running, executes lifecycle hooks, and logs
+        the status change. Ignores duplicate state updates with the same reason.
 
-        .. note::
-            This method will ignore duplicate state updates with the same reason.
+        Args:
+            reason: Description of what the action is currently doing
         """
         log.trace("Setting action to running - {}", reason)
 
@@ -348,14 +478,13 @@ class BaseAction(object):
         log.trace("Action set to running - {}", reason)
 
     def set_complete(self, reason: str | None = None):
-        """
-        Set the status to complete and supply the given reason.
+        """Set the action status to complete with optional reason.
 
-        :param reason: The reason the status is complete. Defaults to "Action finished."
-        :type reason: str | None
+        Updates the action state to complete, executes lifecycle hooks, and logs
+        the completion. Ignores duplicate state updates with the same reason.
 
-        .. note::
-            This method will ignore duplicate state updates with the same reason.
+        Args:
+            reason: Optional description of completion (defaults to "Action finished.")
         """
         if reason is None:
             reason = "Action finished."
@@ -380,14 +509,13 @@ class BaseAction(object):
         log.trace("Action set to complete - {}", reason)
 
     def set_skipped(self, reason: str):
-        """
-        Set the status to skipped and supply the given reason.
+        """Set the action status to skipped with the specified reason.
 
-        :param reason: The reason the status is skipped
-        :type reason: str
+        Marks the action as complete but skipped, typically when conditions
+        are not met. Does not execute lifecycle hooks for skipped actions.
 
-        .. note::
-            This method will ignore duplicate state updates with the same reason.
+        Args:
+            reason: Explanation of why the action was skipped
         """
         log.trace("Setting action to skipped - {}", reason)
 
@@ -406,18 +534,15 @@ class BaseAction(object):
         log.trace("Action set to skipped - {}", reason)
 
     def set_output(self, name: str, value: Any):
-        """
-        Set the output of the action.
+        """Set an output variable that other actions can reference.
 
-        :param name: Variable name of the output within the action output namespace
-        :type name: str
-        :param value: Value of this variable
-        :type value: Any
+        Saves the output to both the output namespace (if SaveOutputs is enabled)
+        and the state namespace. Other actions can reference outputs using
+        Jinja2 expressions like {{ namespace.variable_name }}.
 
-        .. note::
-            If SaveOutputs is enabled, the output will be saved to both the output
-            namespace and the state namespace. Otherwise, only the state namespace
-            is used.
+        Args:
+            name: Variable name within the action's output namespace
+            value: Value to store (can be any serializable type)
         """
         log.trace("Setting output '{}' = '{}'", name, value)
 
@@ -434,13 +559,20 @@ class BaseAction(object):
         log.trace("Output '{}' set to '{}'", name, value)
 
     def get_output(self, name: str, default: Any = NO_DEFAULT_PROVIDED) -> str | None:
-        """
-        Get the output variable from the action within the output namespace.
+        """Get an output variable from the action's output namespace.
 
-        :param name: Name of the output variable
-        :type name: str
-        :return: Value of the output variable, or None if not found or no output namespace
-        :rtype: str | None
+        Retrieves a previously set output variable. Returns None if no output
+        namespace exists (SaveOutputs disabled).
+
+        Args:
+            name: Name of the output variable to retrieve
+            default: Default value if variable not found
+
+        Returns:
+            Value of the output variable, or None if no output namespace
+
+        Raises:
+            KeyError: If variable not found and no default provided
         """
         log.trace("Getting output '{}'", name)
 
@@ -449,52 +581,47 @@ class BaseAction(object):
         return None
 
     def set_state(self, name: str, value: Any):
-        """
-        Set a state variable of the action within the action state namespace.
+        """Set an internal state variable for this action.
 
-        :param name: Name of the state variable
-        :type name: str
-        :param value: Value of the state variable
-        :type value: Any
+        State variables are used for internal action bookkeeping and are
+        stored in the action's state namespace. Unlike outputs, state
+        variables are not typically referenced by other actions.
+
+        Args:
+            name: Name of the state variable
+            value: Value to store (can be any serializable type)
         """
         log.trace("Setting state '{}' = '{}'", name, value)
-
         self.__set_context(self.state_namespace, name, value)
 
     def get_state(self, name: str, default: Any = None) -> str:
-        """
-        Get a state variable of the action within the action state namespace.
+        """Get an internal state variable for this action.
 
-        :param name: Name of the state variable
-        :type name: str
-        :return: Value of the state variable
-        :rtype: str
-        :raises KeyError: If the state variable is not found
+        Retrieves a previously set state variable from the action's
+        state namespace.
+
+        Args:
+            name: Name of the state variable to retrieve
+            default: Default value if variable not found
+
+        Returns:
+            Value of the state variable
+
+        Raises:
+            KeyError: If variable not found and no default provided
         """
         log.trace("Getting state '{}'", name)
-
         return self.__get_context(self.state_namespace, name, default)
 
     def execute(self) -> Self:
-        """
-        Execute the action after checking its condition.
+        """Execute the action after evaluating its condition.
 
-        This method first evaluates the action's condition using Jinja2 templating.
-        If the condition evaluates to true, the action is resolved and executed.
-        If false, the action is skipped.
+        Evaluates the action's condition using Jinja2 templating. If true,
+        calls _resolve() then _execute(). If false, marks the action as skipped.
+        Handles all exceptions and sets failed status with detailed error info.
 
-        The context is used to render action variables and parameters before execution.
-
-        :return: This action object for method chaining
-        :rtype: Self
-
-        .. note::
-            This method is final and handles error handling and logging automatically.
-            Subclasses should implement _resolve() and _execute() instead.
-
-        .. warning::
-            Any exceptions raised during execution will be caught and the action
-            will be set to failed status with detailed error information.
+        Returns:
+            Self for method chaining
         """
         try:
             # Temporarily set the logger identity to this action's name
@@ -550,22 +677,13 @@ class BaseAction(object):
         return self
 
     def check(self) -> Self:
-        """
-        Check the action to determine if it is ready to run.
+        """Check if the action is ready to run.
 
-        This method resolves dependencies and performs pre-execution checks
-        to validate that the action can be executed successfully.
+        Calls _resolve() then _check() to validate prerequisites and readiness.
+        Handles all exceptions and sets failed status with detailed error info.
 
-        :return: This action object for method chaining
-        :rtype: Self
-
-        .. note::
-            This method is final and handles error handling and logging automatically.
-            Subclasses should implement _resolve() and _check() instead.
-
-        .. warning::
-            Any exceptions raised during checking will be caught and the action
-            will be set to failed status with detailed error information.
+        Returns:
+            Self for method chaining
         """
         try:
             # Temporarily set the logger identity to this action's name
@@ -610,23 +728,34 @@ class BaseAction(object):
         return self
 
     def __get_status_code(self):
+        """Get the current status code from context."""
         return self.__get_context(self.name, STATUS_CODE, StatusCode.PENDING.value)
 
     def __get_status_reason(self):
+        """Get the current status reason from context."""
         return self.__get_context(self.name, STATUS_REASON, None)
 
     def __get_context(
         self, prn: str, name: str, default: Any = NO_DEFAULT_PROVIDED
     ) -> Any:
-        """
-        Typical trypes returned are list, str, int, float, dict, datetime or None"""
+        """Get a value from the action context.
 
+        Args:
+            prn: Namespace/prefix for the context key
+            name: Variable name within the namespace
+            default: Default value if key not found
+
+        Returns:
+            Context value (can be list, str, int, float, dict, datetime, or None)
+
+        Raises:
+            KeyError: If key not found and no default provided
+        """
         log.trace("Getting context '{}' for '{}'", name, prn)
         key = "{}/{}".format(prn, name)
 
         if self.context and key in self.context:
             return self.context[key]
-
         else:
             if default == NO_DEFAULT_PROVIDED:
                 raise KeyError(
@@ -638,12 +767,23 @@ class BaseAction(object):
                 return default
 
     def __set_context(self, prn: str, name: str, value: Any):
+        """Set a value in the action context.
 
+        Args:
+            prn: Namespace/prefix for the context key
+            name: Variable name within the namespace
+            value: Value to store in context
+        """
         key = "{}/{}".format(prn, name)
-
         self.context[key] = value
 
     def __execute_lifecycle_hooks(self, event: str, reason: str):
+        """Execute lifecycle hooks for the specified event.
+
+        Args:
+            event: Lifecycle event (Pending, Running, Complete, Failed)
+            reason: Reason for the state change
+        """
         # Retrieve the event hooks for this action, for this state event
         event_hooks = [h for h in self.lifecycle_hooks if event in h.get("States", [])]
 
@@ -655,12 +795,24 @@ class BaseAction(object):
     def __execute_lifecycle_hook(
         self, event: str, hook_type: str, hook: dict[str, Any], reason: str
     ):
+        """Execute a single lifecycle hook.
+
+        Args:
+            event: Lifecycle event name
+            hook_type: Type of hook to execute
+            hook: Hook configuration
+            reason: Reason for the state change
+
+        Raises:
+            Exception: If unsupported hook type is encountered
+        """
         if hook_type == LC_TYPE_STATUS:
             self.__execute_status_hook(event, hook, reason)
         else:
             raise Exception("Unsupported hook type {}".format(hook_type))
 
     def __get_status_parameter(self, event: str, hook: dict[str, Any]) -> str | None:
+        """Extract status parameter from lifecycle hook configuration."""
         key = f"On{event}"
         parms = hook.get("Parameters", {})
         if key in parms:
@@ -670,6 +822,7 @@ class BaseAction(object):
         return None
 
     def __get_message_parameter(self, event, hook: dict[str, Any]) -> str | None:
+        """Extract message parameter from lifecycle hook configuration."""
         key = f"On{event}"
         parms = hook.get("Parameters", {})
         if key in parms:
@@ -679,12 +832,14 @@ class BaseAction(object):
         return None
 
     def __get_idenity_parameter(self, event: str, hook: dict[str, Any]) -> str | None:
+        """Extract identity parameter from lifecycle hook configuration."""
         parms = hook.get("Parameters", hook)
         if "Identity" in parms:
             return parms["Identity"]
         return None
 
     def __get_details_parameter(self, event: str, hook: dict[str, Any]) -> dict | None:
+        """Extract details parameter from lifecycle hook configuration."""
         parms = hook.get("Parameters", hook)
         if "Details" in parms:
             return parms["Details"]
@@ -693,6 +848,14 @@ class BaseAction(object):
     def __update_item_status(
         self, identity: str, status: str, message: str, details: Any
     ):
+        """Update status in the database for the specified identity.
+
+        Args:
+            identity: PRN identity to update
+            status: New status value
+            message: Status message
+            details: Additional status details
+        """
         try:
             # Log the status
             log.set_identity(identity)
@@ -738,7 +901,13 @@ class BaseAction(object):
     def __execute_status_hook(
         self, event: str, hook: dict[str, Any], reason: str | None
     ):
+        """Execute a status lifecycle hook.
 
+        Args:
+            event: Lifecycle event name
+            hook: Hook configuration
+            reason: Reason for the state change
+        """
         # Extract hook["Parameter"]["On<event>"]["Status"], then try hook["Status"]
         status = self.__get_status_parameter(event, hook)
         message = self.__get_message_parameter(event, hook)
@@ -781,22 +950,39 @@ class BaseAction(object):
         self.__update_item_status(identity, status, message, details)
 
     def __repr__(self):
+        """String representation for debugging."""
         return "{}({})".format(type(self).__name__, self.name)
 
     def __str__(self):
+        """String representation for display."""
         return "{}({})".format(type(self).__name__, self.name)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> ActionParams:
-        """
-        Subclasses should override this to return the model_dump of a validated parameter set
-        for the specific action
+        """Generate validated action parameters for this action type.
+
+        Subclasses should override this to return a validated parameter set
+        specific to their action type.
+
+        Args:
+            **kwargs: Parameter values to validate
+
+        Returns:
+            Validated ActionParams instance
         """
         return ActionParams(**kwargs)
 
     @classmethod
     def generate_action_spec(cls, **kwargs) -> ActionSpec:
-        """
-        Subclasses should override this to return the ActionSpec specific for the Action class
+        """Generate an ActionSpec for this action type.
+
+        Subclasses should override this to return an ActionSpec with
+        appropriate defaults and validation for their specific action type.
+
+        Args:
+            **kwargs: ActionSpec values to override
+
+        Returns:
+            ActionSpec instance for this action type
         """
         return ActionSpec(**kwargs)

@@ -40,7 +40,7 @@ def deploy_spec():
     This can be used to mock the deployspec in tests.
     """
     spec: dict[str, Any] = {
-        "Params": {
+        "Spec": {
             "Account": "1234567890123",  # Example AWS account ID
             "Region": util.get_region(),  # Example AWS region
             "KmsKeyId": "kms-key-id-1234567890abcdef",  # Example KMS Key ID

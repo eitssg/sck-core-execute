@@ -78,7 +78,7 @@ def deploy_spec():
     action_spec = PutMetricDataActionSpec(
         Name="event-namespace:action/test-put-metric",
         Kind="AWS::PutMetricData",
-        Params=validated_params.model_dump(),
+        Spec=validated_params.model_dump(),
         Scope="build",
     )
 

@@ -30,8 +30,8 @@ class CreateStackActionParams(ActionParams):
     :type stack_name: str
     :param template_url: The URL of the CloudFormation template (required)
     :type template_url: str
-    :param stack_parameters: The parameters to pass to the stack (optional)
-    :type stack_parameters: dict[str, Any]
+    :param parameters: The parameters to pass to the stack (optional)
+    :type parameters: dict[str, Any]
     :param on_failure: The action to take on failure (optional, defaults to DELETE)
     :type on_failure: str
     :param timeout_in_minutes: The time to wait for the stack to complete (optional, defaults to 15)
@@ -52,7 +52,12 @@ class CreateStackActionParams(ActionParams):
         alias="TemplateUrl",
         description="The URL of the CloudFormation template (required)",
     )
-    stack_parameters: dict[str, Any] = Field(
+    capabilities: list[str] = Field(
+        None,
+        alias="Capabilities",
+        description="The capabilities to enable for the stack (optional)",
+    )
+    parameters: dict[str, Any] = Field(
         alias="StackParameters",
         description="The parameters to pass to the stack (optional)",
         default={},
@@ -68,14 +73,14 @@ class CreateStackActionParams(ActionParams):
         default=15,
     )
     tags: dict[str, str] | None = Field(
+        None,
         alias="Tags",
         description="The tags to apply to the stack (optional)",
-        default=None,
     )
     stack_policy: dict | None = Field(
+        None,
         alias="StackPolicy",
         description="A policy statement to use within the stack deployment as needed (optional) (converted to JSON)",
-        default=None,
     )
 
     @property
@@ -129,13 +134,13 @@ class CreateStackActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
                 "stack_name": "",
                 "template_url": "",
-                "stack_parameters": {},
+                "parameters": {},
                 "on_failure": "DELETE",
                 "timeout_in_minutes": 15,
                 "tags": {},
@@ -162,15 +167,15 @@ class CreateStackAction(BaseAction):
 
     :Name: Enter a name to define this action instance
     :Kind: Use the value ``AWS::CreateStack``
-    :Params.Account: The account where CloudFormation is located (required)
-    :Params.Region: The region where CloudFormation is located (required)
-    :Params.StackName: The name of the stack to create (required)
-    :Params.TemplateUrl: The URL of the CloudFormation template (required)
-    :Params.StackParameters: The parameters to pass to the stack (optional)
-    :Params.OnFailure: The action to take on failure (optional, defaults to DELETE)
-    :Params.TimeoutInMinutes: The time to wait for the stack to complete (optional, defaults to 15)
-    :Params.Tags: The tags to apply to the stack (optional)
-    :Params.StackPolicy: A policy statement to use within the stack deployment (optional)
+    :Spec.Account: The account where CloudFormation is located (required)
+    :Spec.Region: The region where CloudFormation is located (required)
+    :Spec.StackName: The name of the stack to create (required)
+    :Spec.TemplateUrl: The URL of the CloudFormation template (required)
+    :Spec.StackParameters: The parameters to pass to the stack (optional)
+    :Spec.OnFailure: The action to take on failure (optional, defaults to DELETE)
+    :Spec.TimeoutInMinutes: The time to wait for the stack to complete (optional, defaults to 15)
+    :Spec.Tags: The tags to apply to the stack (optional)
+    :Spec.StackPolicy: A policy statement to use within the stack deployment (optional)
 
     .. rubric:: ActionSpec Example
 
@@ -178,7 +183,7 @@ class CreateStackAction(BaseAction):
 
         - Name: action-aws-createstack-name
           Kind: "AWS::CreateStack"
-          Params:
+          Spec:
             Account: "154798051514"
             Region: "ap-southeast-1"
             StackName: "my-application-stack"
@@ -249,18 +254,18 @@ class CreateStackAction(BaseAction):
             )
             self.params.timeout_in_minutes = 15
 
-        if self.params.stack_parameters:
+        if self.params.parameters:
             parameters_to_remove = []
-            for parameter_key, parameter_value in self.params.stack_parameters.items():
+            for parameter_key, parameter_value in self.params.parameters.items():
                 value = self.renderer.render_string(str(parameter_value), self.context)
                 if value == "_NULL_":
                     parameters_to_remove.append(parameter_key)
                 else:
-                    self.params.stack_parameters[parameter_key] = value
+                    self.params.parameters[parameter_key] = value
 
             # Remove null parameters
             for key in parameters_to_remove:
-                self.params.stack_parameters.pop(key)
+                self.params.parameters.pop(key)
 
         log.trace("Resolved CreateStackAction")
 
@@ -392,7 +397,7 @@ class CreateStackAction(BaseAction):
                 "TemplateURL": self.params.template_url,
                 "Capabilities": CAPABILITITES,
                 "Parameters": aws.transform_stack_parameter_hash(
-                    self.params.stack_parameters
+                    self.params.parameters
                 ),
                 "OnFailure": self.params.on_failure,
             }
@@ -410,7 +415,7 @@ class CreateStackAction(BaseAction):
                 "Creating stack with parameters: StackName={}, TemplateURL={}, ParameterCount={}, TagCount={}",
                 self.params.stack_name,
                 self.params.template_url,
-                len(self.params.stack_parameters),
+                len(self.params.parameters),
                 len(self.params.tags),
             )
 
@@ -496,7 +501,7 @@ class CreateStackAction(BaseAction):
                 "TemplateURL": self.params.template_url,
                 "Capabilities": CAPABILITITES,
                 "Parameters": aws.transform_stack_parameter_hash(
-                    self.params.stack_parameters or {}
+                    self.params.parameters or {}
                 ),
                 "ChangeSetName": change_set_name,
             }

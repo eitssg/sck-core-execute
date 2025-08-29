@@ -11,7 +11,7 @@ the RDS API before setting its state to complete.
 
       - Name: action-aws-rds-modifydbinstance-name
         Kind: "AWS::RDS::ModifyDbInstance"
-        Params:
+        Spec:
           Account: "123456789012"
           Region: "ap-southeast-1"
           ApiParams:
@@ -81,7 +81,7 @@ class ModifyDbInstanceActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "Account": "",
                 "Region": "",

@@ -2,7 +2,7 @@
   Type: "AWS::PutEvent"
   DependsOn:
   - put-a-label-here
-  Params:
+  Spec:
     Account: "154798051514"
     Region: "ap-southeast-1"
     Type: "The type of event to put (required) defaults to 'STATUS'"

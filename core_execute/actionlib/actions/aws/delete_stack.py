@@ -73,7 +73,7 @@ class DeleteStackActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -102,10 +102,10 @@ class DeleteStackAction(BaseAction):
 
     :Name: Enter a name to define this action instance
     :Kind: Use the value ``AWS::DeleteStack``
-    :Params.Account: The account where the stack is located (required)
-    :Params.Region: The region where the stack is located (required)
-    :Params.StackName: The name of the stack to delete (required)
-    :Params.SuccessStatuses: Stack statuses that indicate success (optional)
+    :Spec.Account: The account where the stack is located (required)
+    :Spec.Region: The region where the stack is located (required)
+    :Spec.StackName: The name of the stack to delete (required)
+    :Spec.SuccessStatuses: Stack statuses that indicate success (optional)
 
     .. rubric:: ActionSpec Example
 
@@ -113,7 +113,7 @@ class DeleteStackAction(BaseAction):
 
         - Name: action-aws-deletestack-name
           Kind: "AWS::DeleteStack"
-          Params:
+          Spec:
             Account: "154798051514"
             Region: "ap-southeast-1"
             StackName: "my-application-stack-name"

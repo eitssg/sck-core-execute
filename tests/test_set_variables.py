@@ -59,7 +59,7 @@ def deploy_spec(task_payload: dict):
     }
 
     # Define the action specifications with the no-op action
-    set_variables_action = SetVariablesActionSpec(**{"Params": data})
+    set_variables_action = SetVariablesActionSpec(**{"Spec": data})
 
     return DeploySpec(**{"actions": [set_variables_action]})
 

@@ -87,7 +87,7 @@ class DuplicateImageToAccountActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -124,12 +124,12 @@ class DuplicateImageToAccountAction(BaseAction):
 
     :Name: Enter a name to define this action instance
     :Kind: Use the value ``AWS::DuplicateImageToAccount``
-    :Params.Account: The source account where the AMI is located (required)
-    :Params.Region: The region where the AMI operations will occur (required)
-    :Params.ImageName: The name of the AMI to duplicate (required)
-    :Params.AccountsToShare: List of target accounts to copy the AMI to (required)
-    :Params.KmsKeyArn: The KMS key ARN for encryption in target accounts (required)
-    :Params.Tags: Additional tags to apply to copied AMIs (optional)
+    :Spec.Account: The source account where the AMI is located (required)
+    :Spec.Region: The region where the AMI operations will occur (required)
+    :Spec.ImageName: The name of the AMI to duplicate (required)
+    :Spec.AccountsToShare: List of target accounts to copy the AMI to (required)
+    :Spec.KmsKeyArn: The KMS key ARN for encryption in target accounts (required)
+    :Spec.Tags: Additional tags to apply to copied AMIs (optional)
 
     .. rubric:: ActionSpec Example
 
@@ -137,7 +137,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
         - Name: action-aws-duplicateimagetoaccount-name
           Kind: "AWS::DuplicateImageToAccount"
-          Params:
+          Spec:
             Account: "154798051514"
             Region: "ap-southeast-1"
             ImageName: "my-application-ami-v1.0"

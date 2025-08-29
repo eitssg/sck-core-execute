@@ -2,7 +2,7 @@
   Type: "AWS::UnprotectELB"
   DependsOn:
   - put-a-label-here
-  Params:
+  Spec:
     Account: "154798051514"
     Region: "ap-southeast-1"
     LoadBalancer: "The ARN of the load balancer to unprotect (required)"

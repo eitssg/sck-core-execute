@@ -42,7 +42,7 @@ class DeleteChangeSetActionSpec(ActionSpec):
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
-        if not (values.get("params") or values.get("Params")):
+        if not (values.get("params") or values.get("Spec")):
             values["params"] = {
                 "account": "",
                 "region": "",
@@ -69,7 +69,7 @@ class DeleteChangeSetAction(BaseAction):
 
             - Name: action-aws-deletechangeset-name
               Kind: "AWS::DeleteChangeSet"
-              Params:
+              Spec:
                 Account: "154798051514"
                 Region: "ap-southeast-1"
                 StackName: "my-stack"

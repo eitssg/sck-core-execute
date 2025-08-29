@@ -2,7 +2,7 @@
   Type: "AWS::PutMetricData"
   DependsOn:
   - put-a-label-here
-  Params:
+  Spec:
     Account: "154798051514"
     Region: "ap-southeast-1"
     Namespace: "The namespace for the metric data (required)"
