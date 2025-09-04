@@ -3,7 +3,7 @@ import pytest
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.system.set_variables import SetVariablesActionSpec
+from core_execute.actionlib.actions.system.set_variables import SetVariablesActionResource
 from core_execute.handler import handler as execute_handler
 
 from core_execute.execute import save_state, save_actions, load_state
@@ -59,7 +59,7 @@ def deploy_spec(task_payload: dict):
     }
 
     # Define the action specifications with the no-op action
-    set_variables_action = SetVariablesActionSpec(**{"Spec": data})
+    set_variables_action = SetVariablesActionResource(**{"Spec": data})
 
     return DeploySpec(**{"actions": [set_variables_action]})
 
@@ -83,39 +83,21 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):
 
         assert task_payload.task == "deploy"
 
-        assert (
-            task_payload.flow_control == "success"
-        ), "Expected flow_control to be 'success'"
+        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
 
         # I need to check the state information
 
         state = load_state(task_payload)
 
         assert state is not None, "Expected state to be loaded successfully"
-        assert (
-            "action-system-set-variables-name/Name" in state
-        ), "Expected variable 'Name' to be set in state"
-        assert (
-            state["action-system-set-variables-name/Name"] == "John Smith"
-        ), "Expected variable 'Name' to be 'John Smith'"
-        assert (
-            "action-system-set-variables-name/Age" in state
-        ), "Expected variable 'Age' to be set in state"
-        assert (
-            state["action-system-set-variables-name/Age"] == 25
-        ), "Expected variable 'Age' to be 25"
-        assert (
-            "action-system-set-variables-name/Height" in state
-        ), "Expected variable 'Height' to be set in state"
-        assert (
-            state["action-system-set-variables-name/Height"] == "6'2"
-        ), "Expected variable 'Height' to be '6'2'"
-        assert (
-            "action-system-set-variables-name/Weight" in state
-        ), "Expected variable 'Weight' to be set in state"
-        assert (
-            state["action-system-set-variables-name/Weight"] == 180
-        ), "Expected variable 'Weight' to be 180"
+        assert "action-system-set-variables-name/Name" in state, "Expected variable 'Name' to be set in state"
+        assert state["action-system-set-variables-name/Name"] == "John Smith", "Expected variable 'Name' to be 'John Smith'"
+        assert "action-system-set-variables-name/Age" in state, "Expected variable 'Age' to be set in state"
+        assert state["action-system-set-variables-name/Age"] == 25, "Expected variable 'Age' to be 25"
+        assert "action-system-set-variables-name/Height" in state, "Expected variable 'Height' to be set in state"
+        assert state["action-system-set-variables-name/Height"] == "6'2", "Expected variable 'Height' to be '6'2'"
+        assert "action-system-set-variables-name/Weight" in state, "Expected variable 'Weight' to be set in state"
+        assert state["action-system-set-variables-name/Weight"] == 180, "Expected variable 'Weight' to be 180"
 
     except Exception as e:
         print(traceback.format_exc())

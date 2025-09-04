@@ -3,7 +3,7 @@ import pytest
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.system.no_op import NoOpActionSpec
+from core_execute.actionlib.actions.system.no_op import NoOpActionResource
 from core_execute.actionlib.factory import ActionFactory
 from core_execute.handler import handler as execute_handler
 
@@ -49,12 +49,12 @@ def deploy_spec():
     }
 
     # Define the action specifications with the no-op action
-    action_spec = NoOpActionSpec(**{"params": params})
+    action_resource = NoOpActionResource(**{"params": params})
 
     # Please note that "DeploySpec" is NOT part of sck-core-execute.  However, the model is defined within the core framework
     # and is intantiated here only to be illustrative.  Plus, if you wanted to test multiple actions in the array, the
     # DeploySpec model does have a validator that inspects all actions.
-    return DeploySpec(**{"actions": [action_spec]})
+    return DeploySpec(**{"actions": [action_resource]})
 
 
 from core_execute.execute import save_state, save_actions
@@ -79,9 +79,7 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):
 
         assert task_payload.task == "deploy"
 
-        assert (
-            task_payload.flow_control == "success"
-        ), "Expected flow_control to be 'success'"
+        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
 
     except Exception as e:
         print(traceback.format_exc())

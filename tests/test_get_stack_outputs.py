@@ -7,8 +7,8 @@ import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.get_stack_outputs import (
+    GetStackOutputsActionResource,
     GetStackOutputsActionSpec,
-    GetStackOutputsActionParams,
 )
 
 from core_execute.execute import save_state, save_actions, load_state
@@ -47,7 +47,7 @@ def deploy_spec():
         "Region": "us-east-1",
         "StackName": "test-stack-name",
     }
-    action_spec = GetStackOutputsActionSpec(
+    action_resource = GetStackOutputsActionResource(
         **{
             "name": "test-get-stack-outputs",
             "kind": "AWS::GetStackOutputs",
@@ -55,12 +55,10 @@ def deploy_spec():
             "scope": "build",
         }
     )
-    return DeploySpec(**{"actions": [action_spec]})
+    return DeploySpec(**{"actions": [action_resource]})
 
 
-def test_get_stack_outputs_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_get_stack_outputs_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the get stack outputs action execution with comprehensive state tracking."""
 
     try:
@@ -152,9 +150,7 @@ def test_get_stack_outputs_action(
             assert action_outputs.get("account") == "123456789012"
             assert action_outputs.get("region") == "us-east-1"
             assert action_outputs.get("outputs_count") == 3
-            assert "Successfully retrieved 3 outputs" in action_outputs.get(
-                "message", ""
-            )
+            assert "Successfully retrieved 3 outputs" in action_outputs.get("message", "")
 
             # Verify stack outputs were saved
             assert action_outputs.get("VpcId") == "vpc-12345678"
@@ -162,10 +158,7 @@ def test_get_stack_outputs_action(
             assert action_outputs.get("SubnetId") == "subnet-87654321"
             assert action_outputs.get("SubnetId_description") == "The Subnet ID"
             assert action_outputs.get("SecurityGroupId") == "sg-abcdef12"
-            assert (
-                action_outputs.get("SecurityGroupId_description")
-                == "The Security Group ID"
-            )
+            assert action_outputs.get("SecurityGroupId_description") == "The Security Group ID"
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -173,9 +166,7 @@ def test_get_stack_outputs_action(
         pytest.fail(f"Test failed due to exception: {e}")
 
 
-def test_get_stack_outputs_action_stack_not_exists(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_get_stack_outputs_action_stack_not_exists(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the get stack outputs action when stack doesn't exist."""
 
     try:
@@ -194,9 +185,7 @@ def test_get_stack_outputs_action_stack_not_exists(
                 "Message": "Stack with id test-stack-name does not exist",
             }
         }
-        mock_cfn_client.describe_stacks.side_effect = ClientError(
-            error_response, "DescribeStacks"
-        )
+        mock_cfn_client.describe_stacks.side_effect = ClientError(error_response, "DescribeStacks")
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -238,9 +227,7 @@ def test_get_stack_outputs_action_stack_not_exists(
         pytest.fail(f"Test failed due to exception: {e}")
 
 
-def test_get_stack_outputs_action_no_outputs(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_get_stack_outputs_action_no_outputs(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the get stack outputs action when stack has no outputs."""
 
     try:
@@ -296,9 +283,7 @@ def test_get_stack_outputs_action_no_outputs(
             # Verify outputs
             assert action_outputs.get("status") == "success"
             assert action_outputs.get("outputs_count") == 0
-            assert "Successfully retrieved 0 outputs" in action_outputs.get(
-                "message", ""
-            )
+            assert "Successfully retrieved 0 outputs" in action_outputs.get("message", "")
 
     except Exception as e:
         print(f"An error occurred: {e}")

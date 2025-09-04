@@ -8,11 +8,41 @@ import os
 
 import core_logging as log
 
-from core_framework.models import ActionSpec
+from core_framework.models import ActionResource
 from pydantic import ValidationError
 from core_execute.actionlib.action import BaseAction
 
 from core_framework.models import DeploymentDetails
+
+
+def create_action(
+    action_resource: ActionResource,
+    context: dict,
+    deployment_details: DeploymentDetails,
+    parent_action_name: str = None,
+) -> BaseAction:
+    """Create action instance based on ActionResource.
+
+    Convenience function that wraps ActionFactory.load() with parent context support.
+    Used by Helper for creating action instances with optional parent namespace inheritance.
+
+    Args:
+        action_resource: Action specification from deployspec.yaml
+        context: Jinja2 rendering context with deployment variables
+        deployment_details: Client/portfolio/app/branch/build information
+        parent_action_name: Parent action name for lifecycle hooks (enables namespace inheritance)
+
+    Returns:
+        Fully initialized action instance ready for execution
+
+    Examples:
+        Create regular action:
+            action = create_action(action_resource, context, deployment_details)
+
+        Create lifecycle hook with parent context:
+            hook = create_action(hook_resource, context, deployment_details, "parent-action")
+    """
+    return ActionFactory.load(action_resource, context, deployment_details, parent_action_name)
 
 
 class ActionFactory:
@@ -65,12 +95,12 @@ class ActionFactory:
     Basic action creation::
 
         factory = ActionFactory()
-        action_spec = ActionSpec(
+        action_resource = ActionResource(
             name="create-vpc",
             kind="AWS::CreateStack",
             params={"StackName": "my-vpc", "Region": "us-east-1"}
         )
-        action = factory.load(action_spec, context, deployment_details)
+        action = factory.load(action_resource, context, deployment_details)
 
     Checking action validity::
 
@@ -97,7 +127,7 @@ class ActionFactory:
     See Also
     --------
     BaseAction : Base class for all actions
-    ActionSpec : Action specification model
+    ActionResource : Action specification model
     DeploymentDetails : Deployment context information
     """
 
@@ -198,9 +228,7 @@ class ActionFactory:
         """
         actions_path: list[str] = ["core_execute", "actionlib", "actions"]
         actions_root = os.path.join(os.path.dirname(__file__), "actions")
-        action_type = action_type.replace(
-            "-", "_"
-        )  # Normalize dashes to underscores.  create-stack -> create_stack
+        action_type = action_type.replace("-", "_")  # Normalize dashes to underscores.  create-stack -> create_stack
 
         # if the action_type is already lowercase snake_case, then search the actions_path and all subdirectories for the filename to build the module_path
         if re.match(r"^[a-z]+(?:_[a-z]+)*$", action_type):
@@ -208,31 +236,20 @@ class ActionFactory:
             for root, dirs, files in os.walk(actions_root):
                 for filename in files:
                     if filename == f"{action_type}.py":
-                        rel_path = os.path.relpath(
-                            os.path.join(root, filename), actions_root
-                        )
+                        rel_path = os.path.relpath(os.path.join(root, filename), actions_root)
                         # Remove .py extension and convert path separators to dots
-                        module_path = (
-                            ".".join(actions_path)
-                            + "."
-                            + rel_path[:-3].replace(os.sep, ".")
-                        )
+                        module_path = ".".join(actions_path) + "." + rel_path[:-3].replace(os.sep, ".")
                         break
                 if module_path:
                     break
             # create the class name by converting the action_type to PascalCase and appending the ACTION_CLASS_NAME_SUFFIX
-            class_name = (
-                ActionFactory.__snake_to_camel_case(action_type)
-                + ActionFactory.ACTION_CLASS_NAME_SUFFIX
-            )
+            class_name = ActionFactory.__snake_to_camel_case(action_type) + ActionFactory.ACTION_CLASS_NAME_SUFFIX
             return module_path, class_name
         elif "::" in action_type:
             # Work out the class name and module path from the action kind
             split_type = action_type.split("::")
             class_name = split_type[-1] + ActionFactory.ACTION_CLASS_NAME_SUFFIX
-            module_path = ActionFactory.__camel_to_snake_case(
-                ".".join(actions_path + split_type)
-            )
+            module_path = ActionFactory.__camel_to_snake_case(".".join(actions_path + split_type))
             return module_path, class_name
 
     @staticmethod
@@ -286,13 +303,9 @@ class ActionFactory:
         action_module = importlib.import_module(module_path)
         klass = getattr(action_module, class_name)
         if klass is None:
-            raise RuntimeError(
-                f"Action class '{class_name}' not found in module '{module_path}'"
-            )
+            raise RuntimeError(f"Action class '{class_name}' not found in module '{module_path}'")
         if not issubclass(klass, BaseAction):
-            raise TypeError(
-                f"Action class '{class_name}' does not inherit from BaseAction"
-            )
+            raise TypeError(f"Action class '{class_name}' does not inherit from BaseAction")
         return klass
 
     @staticmethod
@@ -343,9 +356,10 @@ class ActionFactory:
 
     @staticmethod
     def load(
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str = None,
     ) -> BaseAction:
         """Create and return a fully initialized action instance.
 
@@ -358,12 +372,14 @@ class ActionFactory:
 
         Parameters
         ----------
-        definition : ActionSpec
+        definition : ActionResource
             The action specification containing kind, name, and parameters
         context : dict[str, Any]
             Template rendering context with deployment variables and outputs
         deployment_details : DeploymentDetails
             Deployment context and metadata for the action
+        parent_action_name : str, optional
+            Parent action name for lifecycle hooks (enables namespace inheritance)
 
         Returns
         -------
@@ -395,7 +411,7 @@ class ActionFactory:
         --------
         Create a simple action::
 
-            action_spec = ActionSpec(
+            action_resource = ActionResource(
                 name="namespace:action/create-vpc",
                 kind="AWS::CreateStack",
                 params={
@@ -405,7 +421,7 @@ class ActionFactory:
                 }
             )
 
-            action = ActionFactory.load(action_spec, context, deployment_details)
+            action = ActionFactory.load(action_resource, context, deployment_details)
 
         Handle creation errors::
 
@@ -470,7 +486,7 @@ class ActionFactory:
         try:
             # Instantiate the action with detailed error handling.
             # Definition param attributes are validated to the action
-            action = klass(definition, context, deployment_details)
+            action = klass(definition, context, deployment_details, parent_action_name)
             log.debug("Successfully created action: {}", definition.name)
             return action
 
@@ -483,9 +499,7 @@ class ActionFactory:
                 "input_data": definition.params,
                 "error_count": e.error_count(),
             }
-            log.error(
-                "Parameter validation failed for action '{}': {}", definition.name, e
-            )
+            log.error("Parameter validation failed for action '{}': {}", definition.name, e)
             log.debug("Detailed validation errors: ", details=error_details)
 
             # Create a comprehensive error message
@@ -509,6 +523,4 @@ class ActionFactory:
             log.debug("Action initialization error details: ", details=error_details)
 
             # Preserve the original exception info
-            raise RuntimeError(
-                f"Failed to initialize action '{definition.name}': {str(e)}"
-            ) from e
+            raise RuntimeError(f"Failed to initialize action '{definition.name}': {str(e)}") from e

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator, field_valida
 
 import core_logging as log
 
-from core_framework.models import ActionSpec, DeploymentDetails, ActionParams
+from core_framework.models import ActionResource, DeploymentDetails, ActionSpec
 
 import core_helper.aws as aws
 
@@ -60,13 +60,9 @@ class MetricData(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
-    metric_name: str = Field(
-        ..., alias="MetricName", description="The name of the metric"
-    )
+    metric_name: str = Field(..., alias="MetricName", description="The name of the metric")
     value: float = Field(..., alias="Value", description="The value of the metric")
-    unit: str = Field(
-        default="None", alias="Unit", description="The unit of the metric"
-    )
+    unit: str = Field(default="None", alias="Unit", description="The unit of the metric")
     timestamp: Optional[datetime | str] = Field(
         default=None,
         alias="Timestamp",
@@ -126,9 +122,7 @@ class MetricData(BaseModel):
             "None",
         }
         if v not in valid_units:
-            raise ValueError(
-                f"Invalid unit '{v}'. Must be one of: {', '.join(sorted(valid_units))}"
-            )
+            raise ValueError(f"Invalid unit '{v}'. Must be one of: {', '.join(sorted(valid_units))}")
         return v
 
     @field_validator("timestamp", mode="before")
@@ -167,12 +161,10 @@ class MetricData(BaseModel):
             # Convert datetime to ISO 8601 string
             return v.isoformat()
 
-        raise ValueError(
-            f"Timestamp must be a string or datetime object, got {type(v)}"
-        )
+        raise ValueError(f"Timestamp must be a string or datetime object, got {type(v)}")
 
 
-class PutMetricDataActionParams(ActionParams):
+class PutMetricDataActionSpec(ActionSpec):
     """Parameters for the PutMetricDataAction.
 
     Contains all configuration needed to record metric data in CloudWatch,
@@ -197,9 +189,7 @@ class PutMetricDataActionParams(ActionParams):
         alias="Namespace",
         description="The CloudWatch namespace for the metric data",
     )
-    metrics: list[MetricData] = Field(
-        ..., alias="Metrics", description="List of metric data points to record"
-    )
+    metrics: list[MetricData] = Field(..., alias="Metrics", description="List of metric data points to record")
 
     @field_validator("namespace")
     @classmethod
@@ -226,9 +216,7 @@ class PutMetricDataActionParams(ActionParams):
         if len(v) > 255:
             raise ValueError("Namespace cannot exceed 255 characters")
         if v.startswith("AWS/"):
-            raise ValueError(
-                "Namespace cannot start with 'AWS/' (reserved for AWS services)"
-            )
+            raise ValueError("Namespace cannot start with 'AWS/' (reserved for AWS services)")
         return v
 
     @field_validator("metrics")
@@ -258,7 +246,7 @@ class PutMetricDataActionParams(ActionParams):
         return v
 
 
-class PutMetricDataActionSpec(ActionSpec):
+class PutMetricDataActionResource(ActionResource):
     """Generate the action definition for PutMetricData.
 
     Provides a convenience wrapper for creating PutMetricData actions
@@ -268,51 +256,20 @@ class PutMetricDataActionSpec(ActionSpec):
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Validate and set default parameters for the PutMetricDataActionSpec.
 
-        Provides sensible defaults for action name, kind, scope, and
-        a sample metric configuration using template variables.
+        if not isinstance(values, dict):
+            return values
 
-        Parameters
-        ----------
-        values : dict[str, Any]
-            The input values dictionary
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::PutMetricData"
 
-        Returns
-        -------
-        dict[str, Any]
-            The values dictionary with defaults applied
-        """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "put-metric-data"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::PutMetricData"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "Account": "{{ deployment.account }}",
-                "Region": "{{ deployment.region }}",
-                "Namespace": "MyApplication/Deployment",
-                "Metrics": [
-                    {
-                        "MetricName": "DeploymentSuccess",
-                        "Value": 1.0,
-                        "Unit": "Count",
-                        "Dimensions": [
-                            {
-                                "Name": "Environment",
-                                "Value": "{{ deployment.environment }}",
-                            },
-                            {"Name": "Application", "Value": "{{ app.name }}"},
-                        ],
-                    }
-                ],
-            }
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, PutMetricDataActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -415,7 +372,7 @@ class PutMetricDataAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
@@ -423,7 +380,7 @@ class PutMetricDataAction(BaseAction):
 
         Parameters
         ----------
-        definition : ActionSpec
+        definition : ActionResource
             The action specification containing parameters and configuration
         context : dict[str, Any]
             Template rendering context with deployment variables
@@ -433,7 +390,7 @@ class PutMetricDataAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = PutMetricDataActionParams(**definition.params)
+        self.params = PutMetricDataActionSpec(**definition.spec)
 
         # Processed metric data ready for CloudWatch API
         self.metric_data: list[dict[str, Any]] = []
@@ -488,19 +445,13 @@ class PutMetricDataAction(BaseAction):
             for i in range(0, total_metrics, batch_size):
                 batch = self.metric_data[i : i + batch_size]
 
-                log.debug(
-                    f"Sending batch {batches_processed + 1} with {len(batch)} metrics to CloudWatch"
-                )
+                log.debug(f"Sending batch {batches_processed + 1} with {len(batch)} metrics to CloudWatch")
 
                 # Send batch to CloudWatch
-                response = cloudwatch_client.put_metric_data(
-                    Namespace=self.params.namespace, MetricData=batch
-                )
+                response = cloudwatch_client.put_metric_data(Namespace=self.params.namespace, MetricData=batch)
 
                 batches_processed += 1
-                log.debug(
-                    f"Successfully sent batch {batches_processed}, response: {response}"
-                )
+                log.debug(f"Successfully sent batch {batches_processed}, response: {response}")
 
             completion_time = util.get_current_timestamp()
             self.set_state("metrics", self.metric_data)
@@ -514,9 +465,7 @@ class PutMetricDataAction(BaseAction):
                 f"Successfully recorded {total_metrics} metrics to CloudWatch namespace '{self.params.namespace}' in {batches_processed} batches"
             )
 
-            self.set_complete(
-                f"Successfully recorded {total_metrics} metrics to CloudWatch"
-            )
+            self.set_complete(f"Successfully recorded {total_metrics} metrics to CloudWatch")
 
         except Exception as e:
             error_time = util.get_current_timestamp()
@@ -565,9 +514,7 @@ class PutMetricDataAction(BaseAction):
         -----
         This is a no-op method as CloudWatch does not support metric deletion.
         """
-        log.debug(
-            "Unexecute requested for metric data - metrics cannot be deleted from CloudWatch"
-        )
+        log.debug("Unexecute requested for metric data - metrics cannot be deleted from CloudWatch")
         pass
 
     def _cancel(self):
@@ -580,9 +527,7 @@ class PutMetricDataAction(BaseAction):
         -----
         This is a no-op method as CloudWatch API calls cannot be cancelled.
         """
-        log.debug(
-            "Cancel requested for metric data recording - operation cannot be cancelled"
-        )
+        log.debug("Cancel requested for metric data recording - operation cannot be cancelled")
         pass
 
     def _resolve(self):
@@ -628,34 +573,22 @@ class PutMetricDataAction(BaseAction):
 
         try:
             # Render account, region, and namespace
-            self.params.account = self.renderer.render_string(
-                self.params.account, self.context
-            )
-            self.params.region = self.renderer.render_string(
-                self.params.region, self.context
-            )
-            self.params.namespace = self.renderer.render_string(
-                self.params.namespace, self.context
-            )
+            self.params.account = self.renderer.render_string(self.params.account, self.context)
+            self.params.region = self.renderer.render_string(self.params.region, self.context)
+            self.params.namespace = self.renderer.render_string(self.params.namespace, self.context)
 
             # Process each metric
             metric_data = []
             for metric in self.params.metrics:
                 # Render template variables in metric name and value
-                metric_name = self.renderer.render_string(
-                    metric.metric_name, self.context
-                )
-                metric_value = self.renderer.render_string(
-                    str(metric.value), self.context
-                )
+                metric_name = self.renderer.render_string(metric.metric_name, self.context)
+                metric_value = self.renderer.render_string(str(metric.value), self.context)
 
                 # Convert value to float
                 try:
                     metric_value_float = float(metric_value)
                 except (ValueError, TypeError) as e:
-                    raise ValueError(
-                        f"Metric '{metric_name}' value '{metric_value}' cannot be converted to float: {e}"
-                    )
+                    raise ValueError(f"Metric '{metric_name}' value '{metric_value}' cannot be converted to float: {e}")
 
                 # Prepare metric data entry
                 metric_entry = {
@@ -666,19 +599,13 @@ class PutMetricDataAction(BaseAction):
 
                 # Add timestamp if provided
                 if metric.timestamp:
-                    timestamp_str = self.renderer.render_string(
-                        metric.timestamp, self.context
-                    )
+                    timestamp_str = self.renderer.render_string(metric.timestamp, self.context)
                     try:
                         # Parse ISO 8601 timestamp
-                        timestamp_dt = datetime.fromisoformat(
-                            timestamp_str.replace("Z", "+00:00")
-                        )
+                        timestamp_dt = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
                         metric_entry["Timestamp"] = timestamp_dt
                     except ValueError as e:
-                        log.warn(
-                            f"Invalid timestamp format '{timestamp_str}' for metric '{metric_name}': {e}. Using current time."
-                        )
+                        log.warn(f"Invalid timestamp format '{timestamp_str}' for metric '{metric_name}': {e}. Using current time.")
 
                 # Process dimensions if provided
                 if metric.dimensions:
@@ -695,9 +622,7 @@ class PutMetricDataAction(BaseAction):
 
             self.metric_data = metric_data
 
-            log.debug(
-                f"Resolved {len(metric_data)} metrics for namespace '{self.params.namespace}'"
-            )
+            log.debug(f"Resolved {len(metric_data)} metrics for namespace '{self.params.namespace}'")
 
         except Exception as e:
             log.error(f"Failed to resolve metric data: {e}")
@@ -707,9 +632,9 @@ class PutMetricDataAction(BaseAction):
         log.trace("PutMetricDataAction._resolve() complete")
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> PutMetricDataActionSpec:
-        return PutMetricDataActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> PutMetricDataActionResource:
+        return PutMetricDataActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> PutMetricDataActionParams:
-        return PutMetricDataActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> PutMetricDataActionSpec:
+        return PutMetricDataActionSpec(**kwargs)

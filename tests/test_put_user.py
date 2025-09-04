@@ -7,7 +7,7 @@ import core_framework as util
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.put_user import PutUserActionSpec
+from core_execute.actionlib.actions.aws.put_user import PutUserActionResource
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
@@ -48,9 +48,9 @@ def deploy_spec():
         }
     }
 
-    action_spec = PutUserActionSpec(**spec)
+    action_resource = PutUserActionResource(**spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_spec]}
+    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
 
     return DeploySpec(**deploy_spec)
 
@@ -105,7 +105,7 @@ def test_put_user(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_sessi
 
         mock_session.client.return_value = mock_client
 
-        save_actions(task_payload, deploy_spec.action_specs)
+        save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
         # Execute the handler

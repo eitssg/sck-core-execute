@@ -8,12 +8,12 @@ import core_logging as log
 
 import core_framework as util
 import core_helper.aws as aws
-from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
+from core_framework.models import DeploymentDetails, ActionResource, ActionSpec
 
 from core_execute.actionlib.action import BaseAction
 
 
-class GetStackReferencesActionParams(ActionParams):
+class GetStackReferencesActionSpec(ActionSpec):
     """
     Parameters for the GetStackReferencesAction.
 
@@ -42,7 +42,7 @@ class GetStackReferencesActionParams(ActionParams):
     )
 
 
-class GetStackReferencesActionSpec(ActionSpec):
+class GetStackReferencesActionResource(ActionResource):
     """
     Action specification for the GetStackReferences action.
 
@@ -50,32 +50,22 @@ class GetStackReferencesActionSpec(ActionSpec):
     """
 
     @model_validator(mode="before")
+    @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Validate and set default parameters for the GetStackReferencesActionSpec.
 
-        :param values: Input values dictionary.
-        :type values: dict[str, Any]
-        :return: Validated values with defaults applied.
-        :rtype: dict[str, Any]
-        """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-getstackreferences-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::GetStackReferences"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "region": "",
-                "stack_name": "",
-                "output_name": "DefaultExport",
-            }
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::GetStackReferences"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, GetStackReferencesActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -92,7 +82,7 @@ class GetStackReferencesAction(BaseAction):
 
     Attributes
     ----------
-    params : GetStackReferencesActionParams
+    params : GetStackReferencesActionSpec
         Validated parameters for the action.
 
     Parameters
@@ -110,7 +100,7 @@ class GetStackReferencesAction(BaseAction):
 
     Examples
     --------
-    ActionSpec YAML configuration:
+    ActionResource YAML configuration:
 
     .. code-block:: yaml
 
@@ -139,7 +129,7 @@ class GetStackReferencesAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
@@ -147,7 +137,7 @@ class GetStackReferencesAction(BaseAction):
         Initialize the GetStackReferencesAction.
 
         :param definition: The action specification definition.
-        :type definition: ActionSpec
+        :type definition: ActionResource
         :param context: Execution context for variable resolution.
         :type context: dict[str, Any]
         :param deployment_details: Details about the current deployment.
@@ -157,7 +147,7 @@ class GetStackReferencesAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = GetStackReferencesActionParams(**definition.params)
+        self.params = GetStackReferencesActionSpec(**definition.spec)
 
     def _execute(self):
         """
@@ -234,9 +224,7 @@ class GetStackReferencesAction(BaseAction):
             )
 
             # Complete the action
-            self.set_complete(
-                f"Export '{output_export_name}' is referenced by {num_references} stack(s)"
-            )
+            self.set_complete(f"Export '{output_export_name}' is referenced by {num_references} stack(s)")
 
         except ClientError as e:
             completion_time = util.get_current_timestamp()
@@ -266,9 +254,7 @@ class GetStackReferencesAction(BaseAction):
                     f"Export '{output_export_name}' does not exist, treating as no references",
                 )
 
-                self.set_complete(
-                    f"Export '{output_export_name}' does not exist, treating stack as unreferenced"
-                )
+                self.set_complete(f"Export '{output_export_name}' does not exist, treating stack as unreferenced")
 
             elif "not imported" in error_message:
                 # Export exists but isn't imported by any stacks
@@ -302,9 +288,7 @@ class GetStackReferencesAction(BaseAction):
                         "ExportName": output_export_name,
                     },
                 )
-                self.set_complete(
-                    f"Export '{output_export_name}' is not referenced by any stacks"
-                )
+                self.set_complete(f"Export '{output_export_name}' is not referenced by any stacks")
 
             else:
                 # Other error - set error state
@@ -376,25 +360,17 @@ class GetStackReferencesAction(BaseAction):
         """
         log.trace("GetStackReferencesAction._resolve()")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.stack_name = self.renderer.render_string(
-            self.params.stack_name, self.context
-        )
-        self.params.output_name = self.renderer.render_string(
-            self.params.output_name, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
+        self.params.output_name = self.renderer.render_string(self.params.output_name, self.context)
 
         log.trace("GetStackReferencesAction._resolve() complete")
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> GetStackReferencesActionSpec:
-        return GetStackReferencesActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> GetStackReferencesActionResource:
+        return GetStackReferencesActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> GetStackReferencesActionParams:
-        return GetStackReferencesActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> GetStackReferencesActionSpec:
+        return GetStackReferencesActionSpec(**kwargs)

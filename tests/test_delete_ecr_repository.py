@@ -9,8 +9,8 @@ from botocore.exceptions import ClientError
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.delete_ecr_repository import (
+    DeleteEcrRepositoryActionResource,
     DeleteEcrRepositoryActionSpec,
-    DeleteEcrRepositoryActionParams,
 )
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
@@ -42,7 +42,7 @@ def deploy_spec():
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
-    Parameters are fore: DeleteEcrRepositoryActionParams
+    Parameters are fore: DeleteEcrRepositoryActionSpec
     """
     spec: dict[str, Any] = {
         "Spec": {
@@ -52,16 +52,14 @@ def deploy_spec():
         }
     }
 
-    action_spec = DeleteEcrRepositoryActionSpec(**spec)
+    action_resource = DeleteEcrRepositoryActionResource(**spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_spec]}
+    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
 
     return DeploySpec(**deploy_spec)
 
 
-def test_delete_ecr_repository_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_delete_ecr_repository_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
@@ -116,16 +114,12 @@ def test_delete_ecr_repository_action(
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert (
-            task_payload.flow_control == "success"
-        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
         # Verify ECR client method calls
-        mock_client.describe_repositories.assert_called_once_with(
-            registryId="154798051514", repositoryNames=["my-ecr-repository"]
-        )
+        mock_client.describe_repositories.assert_called_once_with(registryId="154798051514", repositoryNames=["my-ecr-repository"])
 
         mock_client.delete_repository.assert_called_once_with(
             registryId="154798051514", repositoryName="my-ecr-repository", force=True
@@ -159,10 +153,7 @@ def test_delete_ecr_repository_action(
 
         # Check repository metadata captured before deletion
         assert f"{action_name}/RepositoryUri" in state
-        assert (
-            state[f"{action_name}/RepositoryUri"]
-            == "154798051514.dkr.ecr.ap-southeast-1.amazonaws.com/my-ecr-repository"
-        )
+        assert state[f"{action_name}/RepositoryUri"] == "154798051514.dkr.ecr.ap-southeast-1.amazonaws.com/my-ecr-repository"
 
         assert f"{action_name}/ImageCount" in state
         assert state[f"{action_name}/ImageCount"] == 3
@@ -193,9 +184,7 @@ def test_delete_ecr_repository_action(
         pytest.fail(f"Test failed due to an exception: {e}")
 
 
-def test_delete_ecr_repository_not_found(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_delete_ecr_repository_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test deletion of a repository that doesn't exist."""
 
     try:
@@ -224,9 +213,7 @@ def test_delete_ecr_repository_not_found(
         task_payload = TaskPayload(**result)
 
         # Should still succeed when repository doesn't exist
-        assert (
-            task_payload.flow_control == "success"
-        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
@@ -254,9 +241,7 @@ def test_delete_ecr_repository_not_found(
         pytest.fail(f"Test failed due to an exception: {e}")
 
 
-def test_delete_ecr_repository_deletion_error(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_delete_ecr_repository_deletion_error(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test deletion failure scenario."""
 
     try:
@@ -301,9 +286,7 @@ def test_delete_ecr_repository_deletion_error(
         task_payload = TaskPayload(**result)
 
         # Should fail when deletion encounters an error
-        assert (
-            task_payload.flow_control == "failure"
-        ), f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "failure", f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 

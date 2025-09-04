@@ -1,13 +1,13 @@
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from core_framework.models import ActionSpec, DeploymentDetails, ActionParams
+from core_framework.models import ActionResource, DeploymentDetails, ActionSpec
 
 from core_execute.actionlib.action import BaseAction
 
 from core_renderer import Jinja2Renderer
 
 
-class ActionNameGoesHereActionParams(ActionParams):
+class ActionNameGoesHereActionSpec(ActionSpec):
     """Parameters for the ActionNameGoesHereAction
 
     This class defines the parameters that can be used in the action.
@@ -17,25 +17,26 @@ class ActionNameGoesHereActionParams(ActionParams):
     pass
 
 
-class ActionNameGoesHereActionSpec(ActionSpec):
+class ActionNameGoesHereActionResource(ActionResource):
     """Generate the action definition"""
 
     @model_validator(mode="before")
+    @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Validate the parameters for the TemplateActionSpec"""
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-system-actionnamegoeshere-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "SYSTEM::ActionNameGoesHere"
-        if not (values.get("depends_on") or values.get("DependsOn")):
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "region": "",
-            }
+
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "TEMPLATE::ActionNameGoesHere"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, ActionNameGoesHereActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -44,7 +45,7 @@ class ActionNameGoesHereAction(BaseAction):
 
     Kind: Use the value: ``SYSTEM::ActionNameGoesHere``
 
-    .. rubric: ActionSpec:
+    .. rubric: ActionResource:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -62,13 +63,13 @@ class ActionNameGoesHereAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.params = ActionNameGoesHereActionParams(**definition.params)
+        self.params = ActionNameGoesHereActionSpec(**definition.spec)
 
     def _execute(self):
         # TODO: implement action execution
@@ -91,9 +92,9 @@ class ActionNameGoesHereAction(BaseAction):
         pass
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> ActionNameGoesHereActionSpec:
-        return ActionNameGoesHereActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> ActionNameGoesHereActionResource:
+        return ActionNameGoesHereActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> ActionNameGoesHereActionParams:
-        return ActionNameGoesHereActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> ActionNameGoesHereActionSpec:
+        return ActionNameGoesHereActionSpec(**kwargs)

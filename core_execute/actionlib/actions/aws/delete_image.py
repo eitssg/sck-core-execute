@@ -5,7 +5,7 @@ from pydantic import Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionParams, ActionSpec
+from core_framework.models import DeploymentDetails, ActionSpec, ActionResource
 
 from botocore.exceptions import ClientError
 
@@ -15,7 +15,7 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class DeleteImageActionParams(ActionParams):
+class DeleteImageActionSpec(ActionSpec):
     """
     Parameters for the DeleteImageAction.
 
@@ -34,7 +34,7 @@ class DeleteImageActionParams(ActionParams):
     )
 
 
-class DeleteImageActionSpec(ActionSpec):
+class DeleteImageActionResource(ActionResource):
     """
     Generate the action definition for DeleteImageAction.
 
@@ -49,30 +49,20 @@ class DeleteImageActionSpec(ActionSpec):
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Validate the parameters for the DeleteImageActionSpec.
 
-        :param values: Input values for validation
-        :type values: dict[str, Any]
-        :return: Validated and potentially modified values
-        :rtype: dict[str, Any]
-        """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-deleteimage-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::DeleteImage"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "region": "",
-                "image_name": "",
-            }
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::DeleteImage"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, DeleteImageActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -84,7 +74,7 @@ class DeleteImageAction(BaseAction):
     The action handles both existing and non-existing images gracefully.
 
     :param definition: The action specification containing configuration details
-    :type definition: ActionSpec
+    :type definition: ActionResource
     :param context: The Jinja2 rendering context containing all variables
     :type context: dict[str, Any]
     :param deployment_details: Client/portfolio/app/branch/build information
@@ -98,7 +88,7 @@ class DeleteImageAction(BaseAction):
     :Spec.Region: The region where the image is located (required)
     :Spec.ImageName: The name of the image to delete (required)
 
-    .. rubric:: ActionSpec Example
+    .. rubric:: ActionResource Example
 
     .. code-block:: yaml
 
@@ -119,14 +109,14 @@ class DeleteImageAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = DeleteImageActionParams(**definition.params)
+        self.params = DeleteImageActionSpec(**definition.spec)
 
     def _resolve(self):
         """
@@ -136,15 +126,9 @@ class DeleteImageAction(BaseAction):
         """
         log.trace("Resolving DeleteImageAction")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.image_name = self.renderer.render_string(
-            self.params.image_name, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.image_name = self.renderer.render_string(self.params.image_name, self.context)
 
         log.trace("DeleteImageAction resolved")
 
@@ -195,9 +179,7 @@ class DeleteImageAction(BaseAction):
 
         try:
             log.debug("Finding image with name '{}'", self.params.image_name)
-            response = ec2_client.describe_images(
-                Filters=[{"Name": "name", "Values": [self.params.image_name]}]
-            )
+            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.params.image_name]}])
 
             if len(response["Images"]) == 0:
                 log.warning("Image '{}' does not exist", self.params.image_name)
@@ -209,9 +191,7 @@ class DeleteImageAction(BaseAction):
                 self.set_output("DeletionCompleted", True)
                 self.set_output("DeletionResult", "NOT_FOUND")
 
-                self.set_complete(
-                    f"Image '{self.params.image_name}' does not exist, may have been previously deleted"
-                )
+                self.set_complete(f"Image '{self.params.image_name}' does not exist, may have been previously deleted")
                 return
 
             image_info = response["Images"][0]
@@ -251,17 +231,11 @@ class DeleteImageAction(BaseAction):
                 self.params.image_name,
                 e.response["Error"]["Message"],
             )
-            self.set_failed(
-                f"Failed to describe image '{self.params.image_name}': {e.response['Error']['Message']}"
-            )
+            self.set_failed(f"Failed to describe image '{self.params.image_name}': {e.response['Error']['Message']}")
             return
         except Exception as e:
-            log.error(
-                "Unexpected error describing image '{}': {}", self.params.image_name, e
-            )
-            self.set_failed(
-                f"Unexpected error describing image '{self.params.image_name}': {e}"
-            )
+            log.error("Unexpected error describing image '{}': {}", self.params.image_name, e)
+            self.set_failed(f"Unexpected error describing image '{self.params.image_name}': {e}")
             return
 
         # Deregister image
@@ -277,10 +251,7 @@ class DeleteImageAction(BaseAction):
                 error_code = e.response["Error"]["Code"]
                 error_message = e.response["Error"]["Message"]
 
-                if (
-                    error_code == "InvalidAMIID.Unavailable"
-                    or error_code == "InvalidAMIID.NotFound"
-                ):
+                if error_code == "InvalidAMIID.Unavailable" or error_code == "InvalidAMIID.NotFound":
                     log.warning(
                         "Image '{}' was not found during deregistration (may have been deleted concurrently): {}",
                         image_id,
@@ -296,28 +267,20 @@ class DeleteImageAction(BaseAction):
                         error_message,
                     )
                     self.set_state("ImageDeregistrationFailed", True)
-                    self.set_state(
-                        "DeregistrationFailureReason", f"{error_code}: {error_message}"
-                    )
-                    self.set_failed(
-                        f"Failed to deregister image '{image_id}': {error_message}"
-                    )
+                    self.set_state("DeregistrationFailureReason", f"{error_code}: {error_message}")
+                    self.set_failed(f"Failed to deregister image '{image_id}': {error_message}")
                     return
 
             except Exception as e:
                 log.error("Unexpected error deregistering image '{}': {}", image_id, e)
                 self.set_state("ImageDeregistrationFailed", True)
                 self.set_state("DeregistrationFailureReason", str(e))
-                self.set_failed(
-                    f"Unexpected error deregistering image '{image_id}': {e}"
-                )
+                self.set_failed(f"Unexpected error deregistering image '{image_id}': {e}")
                 return
 
             # Delete image snapshots
             if snapshot_ids:
-                self.set_running(
-                    f"Deleting {len(snapshot_ids)} snapshots for image '{image_id}'"
-                )
+                self.set_running(f"Deleting {len(snapshot_ids)} snapshots for image '{image_id}'")
 
                 deleted_snapshots = []
                 failed_snapshots = []
@@ -340,9 +303,7 @@ class DeleteImageAction(BaseAction):
                                 snapshot_id,
                                 error_message,
                             )
-                            deleted_snapshots.append(
-                                snapshot_id
-                            )  # Treat as successfully deleted
+                            deleted_snapshots.append(snapshot_id)  # Treat as successfully deleted
                         elif error_code == "InvalidSnapshot.InUse":
                             log.warning(
                                 "Snapshot '{}' is in use and cannot be deleted: {}",
@@ -375,9 +336,7 @@ class DeleteImageAction(BaseAction):
                             snapshot_id,
                             e,
                         )
-                        failed_snapshots.append(
-                            {"SnapshotId": snapshot_id, "Error": str(e)}
-                        )
+                        failed_snapshots.append({"SnapshotId": snapshot_id, "Error": str(e)})
 
                 # Store snapshot deletion results
                 self.set_state("DeletedSnapshots", deleted_snapshots)
@@ -408,9 +367,7 @@ class DeleteImageAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "SUCCESS")
             self.set_output("ImageId", image_id)
-            self.set_output(
-                "DeletedSnapshotCount", len(deleted_snapshots) if snapshot_ids else 0
-            )
+            self.set_output("DeletedSnapshotCount", len(deleted_snapshots) if snapshot_ids else 0)
 
             self.set_complete(
                 f"Successfully deleted image '{self.params.image_name}' (ID: {image_id}) and {len(deleted_snapshots) if snapshot_ids else 0} snapshots"
@@ -428,9 +385,7 @@ class DeleteImageAction(BaseAction):
         log.trace("DeleteImageAction check")
 
         # AMI deletion is synchronous, so this shouldn't be called
-        self.set_failed(
-            "Internal error - _check() should not have been called for AMI deletion"
-        )
+        self.set_failed("Internal error - _check() should not have been called for AMI deletion")
 
         log.trace("DeleteImageAction check completed")
 
@@ -472,9 +427,9 @@ class DeleteImageAction(BaseAction):
         log.trace("DeleteImageAction cancellation completed")
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> DeleteImageActionSpec:
-        return DeleteImageActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> DeleteImageActionResource:
+        return DeleteImageActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> DeleteImageActionParams:
-        return DeleteImageActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> DeleteImageActionSpec:
+        return DeleteImageActionSpec(**kwargs)

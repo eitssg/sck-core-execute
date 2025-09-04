@@ -30,11 +30,11 @@ import core_logging as log
 import core_helper.aws as aws
 import core_framework as util
 
-from core_framework.models import ActionSpec, ActionParams, DeploymentDetails
+from core_framework.models import ActionResource, ActionSpec, DeploymentDetails
 from core_execute.actionlib.action import BaseAction
 
 
-class ModifyDbInstanceActionParams(ActionParams):
+class ModifyDbInstanceActionSpec(ActionSpec):
     """Parameters for the ModifyDbInstanceAction.
 
     :param account: The account to use for the action.
@@ -56,7 +56,7 @@ class ModifyDbInstanceActionParams(ActionParams):
     )
 
 
-class ModifyDbInstanceActionSpec(ActionSpec):
+class ModifyDbInstanceActionResource(ActionResource):
     """Generate the action definition for modifying an RDS database instance.
 
     This specification validates and sets defaults for the action parameters.
@@ -64,7 +64,7 @@ class ModifyDbInstanceActionSpec(ActionSpec):
 
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Validate the parameters for the ModifyDbInstanceActionSpec.
+        """Validate the parameters for the ModifyDbInstanceActionResource.
 
         :param values: Incoming parameter values.
         :type values: dict[str, Any]
@@ -75,9 +75,7 @@ class ModifyDbInstanceActionSpec(ActionSpec):
             values["name"] = "action-aws-rds-modifydbinstance-name"
         if not (values.get("kind") or values.get("Kind")):
             values["kind"] = "AWS::RDS::ModifyDbInstance"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
+        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
             values["depends_on"] = []
         if not (values.get("scope") or values.get("Scope")):
             values["scope"] = "build"
@@ -98,7 +96,7 @@ class ModifyDbInstanceAction(BaseAction):
     based on the 'PendingModifiedValues' returned in the response.
 
     :param definition: The action specification containing parameters.
-    :type definition: ActionSpec
+    :type definition: ActionResource
     :param context: The execution context used for template rendering.
     :type context: dict[str, Any]
     :param deployment_details: The deployment details for the action.
@@ -107,13 +105,13 @@ class ModifyDbInstanceAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
         # Validate and load action parameters
-        self.params = ModifyDbInstanceActionParams(**definition.params)
+        self.params = ModifyDbInstanceActionSpec(**definition.spec)
 
     def _execute(self):
         """
@@ -148,11 +146,7 @@ class ModifyDbInstanceAction(BaseAction):
                 self.set_complete("All modifications complete")
             else:
                 self.set_output("PendingModifiedValues", pending_modified_values)
-                self.set_running(
-                    "Waiting for modifications to complete: {}".format(
-                        pending_modified_values
-                    )
-                )
+                self.set_running("Waiting for modifications to complete: {}".format(pending_modified_values))
         except ClientError as e:
             error_message = e.response.get("Error", {}).get("Message", "")
             if "No modifications" in error_message:
@@ -175,20 +169,14 @@ class ModifyDbInstanceAction(BaseAction):
             role=util.get_provisioning_role_arn(self.params.account),
         )
 
-        response = rds_client.describe_db_instances(
-            DBInstanceIdentifier=self.params.api_params["DBInstanceIdentifier"]
-        )
+        response = rds_client.describe_db_instances(DBInstanceIdentifier=self.params.api_params["DBInstanceIdentifier"])
         db_instance = response["DBInstances"][0]
         pending_modified_values = db_instance.get("PendingModifiedValues", {})
 
         if not pending_modified_values:
             self.set_complete("All modifications complete")
         else:
-            self.set_running(
-                "Waiting for modifications to complete: {}".format(
-                    pending_modified_values
-                )
-            )
+            self.set_running("Waiting for modifications to complete: {}".format(pending_modified_values))
 
     def _unexecute(self):
         """
@@ -217,20 +205,14 @@ class ModifyDbInstanceAction(BaseAction):
         This method uses the Jinja2 renderer to resolve any template strings or objects in the
         account, region, and api_params fields.
         """
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.api_params = self.renderer.render_object(
-            self.params.api_params, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.api_params = self.renderer.render_object(self.params.api_params, self.context)
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> ModifyDbInstanceActionSpec:
+    def generate_action_resource(cls, **kwargs) -> ModifyDbInstanceActionResource:
+        return ModifyDbInstanceActionResource(**kwargs)
+
+    @classmethod
+    def generate_action_parameters(cls, **kwargs) -> ModifyDbInstanceActionSpec:
         return ModifyDbInstanceActionSpec(**kwargs)
-
-    @classmethod
-    def generate_action_parameters(cls, **kwargs) -> ModifyDbInstanceActionParams:
-        return ModifyDbInstanceActionParams(**kwargs)

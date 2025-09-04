@@ -9,8 +9,8 @@ from botocore.exceptions import ClientError
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.apply_change_set import (
-    ApplyChangeSetActionParams,
     ApplyChangeSetActionSpec,
+    ApplyChangeSetActionResource,
 )
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
@@ -43,7 +43,7 @@ def deploy_spec():
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
-    Parameters are fore: ApplyChangeSetActionParams
+    Parameters are fore: ApplyChangeSetActionSpec
     """
     params = {
         "Account": "154798051514",
@@ -52,16 +52,14 @@ def deploy_spec():
         "ChangeSetName": "my-changeset",
     }
 
-    validate_params = ApplyChangeSetActionParams(**params)
+    validate_params = ApplyChangeSetActionSpec(**params)
 
-    action_spec = ApplyChangeSetActionSpec(**{"params": validate_params.model_dump()})
+    action_resource = ApplyChangeSetActionResource(**{"params": validate_params.model_dump()})
 
-    return DeploySpec(actions=[action_spec])
+    return DeploySpec(actions=[action_resource])
 
 
-def test_apply_change_set_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
@@ -162,9 +160,7 @@ def test_apply_change_set_action(
 
         # Mock for error scenarios - change set not found case
         def describe_change_set_side_effect(*args, **kwargs):
-            if "ChangeSetName" in kwargs and "non-existent" in str(
-                kwargs["ChangeSetName"]
-            ):
+            if "ChangeSetName" in kwargs and "non-existent" in str(kwargs["ChangeSetName"]):
                 error_response = {
                     "Error": {
                         "Code": "ChangeSetNotFoundException",
@@ -211,9 +207,7 @@ def test_apply_change_set_action(
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert (
-            task_payload.flow_control == "success"
-        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 

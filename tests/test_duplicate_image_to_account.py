@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.duplicate_image_to_account import (
-    DuplicateImageToAccountActionSpec,
+    DuplicateImageToAccountActionResource,
 )
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
@@ -41,7 +41,7 @@ def deploy_spec():
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
-    Parameters are fore: DeleteImageActionParams
+    Parameters are fore: DeleteImageActionSpec
     """
     spec: dict[str, Any] = {
         "Spec": {
@@ -54,9 +54,9 @@ def deploy_spec():
         }
     }
 
-    action_spec = DuplicateImageToAccountActionSpec(**spec)
+    action_resource = DuplicateImageToAccountActionResource(**spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_spec]}
+    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
 
     return DeploySpec(**deploy_spec)
 
@@ -97,15 +97,12 @@ def mock_source_ec2_client():
             "AccessKeyId": "SourceAccessKeyId",
             "SecretAccessKey": "SourceSecretAccessKey",
             "SessionToken": "SourceSessionToken",
-            "Expiration": datetime.now(timezone.utc)
-            + timedelta(hours=1),  # Set expiration to 1 hour from now
+            "Expiration": datetime.now(timezone.utc) + timedelta(hours=1),  # Set expiration to 1 hour from now
         }
     }
 
     # Mock snapshot sharing (modify_snapshot_attribute)
-    mock_source_ec2_client.modify_snapshot_attribute.return_value = {
-        "ResponseMetadata": {"HTTPStatusCode": 200}
-    }
+    mock_source_ec2_client.modify_snapshot_attribute.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
     return mock_source_ec2_client
 
@@ -140,15 +137,12 @@ def mock_target_ec2_client():
             "AccessKeyId": "TargetAccessKeyId",
             "SecretAccessKey": "wJalExExampleKey",
             "SessionToken": "FwoGZXhZ2ExaW5nZXJzZXhhbXBsZQ==",
-            "Expiration": datetime.now(timezone.utc)
-            + timedelta(hours=1),  # Set expiration to 1 hour from now
+            "Expiration": datetime.now(timezone.utc) + timedelta(hours=1),  # Set expiration to 1 hour from now
         }
     }
 
     # Mock target EC2 client tagging
-    mock_target_ec2_client.create_tags.return_value = {
-        "ResponseMetadata": {"HTTPStatusCode": 200}
-    }
+    mock_target_ec2_client.create_tags.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
     # Mock target account describe_images for _check() method
     return mock_target_ec2_client
@@ -188,9 +182,7 @@ def test_duplicate_image_to_account(
             else:
                 return mock_copied_snapshot
 
-        mock_target_ec2_client.register_image.return_value = {
-            "ImageId": "ami-target123"
-        }
+        mock_target_ec2_client.register_image.return_value = {"ImageId": "ami-target123"}
 
         mock_target_ec2_resource = MagicMock()
         mock_target_ec2_resource.Snapshot.side_effect = mock_target_snapshot_side_effect
@@ -235,9 +227,7 @@ def test_duplicate_image_to_account(
         ):
 
             # Execute the test
-            save_actions(
-                task_payload, deploy_spec.actions
-            )  # Fixed: use .actions instead of .action_specs
+            save_actions(task_payload, deploy_spec.actions)  # Fixed: use .actions instead of .actions
             save_state(task_payload, {})
 
             # Execute the handler
@@ -277,9 +267,7 @@ def test_duplicate_image_to_account(
             mock_source_ec2_client.modify_snapshot_attribute.assert_called()
             mock_target_ec2_client.register_image.assert_called()
 
-            print(
-                "✅ test_duplicate_image_to_account passed - AMI duplicated successfully"
-            )
+            print("✅ test_duplicate_image_to_account passed - AMI duplicated successfully")
 
     except Exception as e:
         traceback.print_exc()

@@ -61,16 +61,17 @@ def handler(event: dict, context: Any | None = None) -> dict:
     try:
         # Task payload is a model object should have been created with TaskPayload.model_dump()
         task_payload = TaskPayload(**event)
+        log.set_correlation_id(task_payload.correlation_id)
 
         log.setup(task_payload.identity)
 
-        log.info("Entering handler for task: {}", task_payload.task)
-        log.debug("Event: ", details=task_payload.model_dump())
+        log.debug("Entering Execute handler for task: {}", task_payload.task)
+        log.debug("Execute Event: ", details=task_payload.model_dump())
 
         # Load actions from the S3 bucket "{task}.actions"
         log.debug("Loading actions for task: {}", task_payload.task)
-        definitions = load_actions(task_payload)
-        log.debug("Loaded {} action definitions", len(definitions))
+        actions = load_actions(task_payload)
+        log.debug("Loaded {} action actions", len(actions))
 
         # Load state - this should have been a document created from "get_facts" for Jinja2 rendering
         log.debug("Loading state for task: {}", task_payload.task)
@@ -80,26 +81,22 @@ def handler(event: dict, context: Any | None = None) -> dict:
             len(context_state.keys()) if context_state else 0,
         )
 
-        # Create action helper with loaded definitions and state
-        action_helper = Helper(definitions, context_state, task_payload)
+        # Create action helper with loaded actions and state
+        action_helper = Helper(actions, context_state, task_payload)
 
         # Execute state machine - designed for Step Functions
         # Instead of a tight loop, do limited iterations
         max_iterations = 10  # Prevent runaway loops
         iteration = 0
-        flow_control = FlowControl.from_value(task_payload.flow_control)
-        while (
-            flow_control == FlowControl.EXECUTE
-            and not timeout_imminent(context)
-            and iteration < max_iterations
-        ):
+        flow_control = FlowControl(task_payload.flow_control)
+        while flow_control == FlowControl.EXECUTE and not timeout_imminent(context) and iteration < max_iterations:
 
             iteration += 1
             log.debug("State machine iteration {} (max {})", iteration, max_iterations)
 
             flow_control = run_state_machine(action_helper, context)
             if isinstance(flow_control, str):
-                flow_control = FlowControl.from_value(flow_control)
+                flow_control = FlowControl(flow_control)
 
             # Pause briefly to allow other processes to run
             time.sleep(0.5)
@@ -113,9 +110,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
                 )
 
             if timeout_imminent(context):
-                log.warning(
-                    "Execution stopped due to timeout, Step Functions will retry"
-                )
+                log.warning("Execution stopped due to timeout, Step Functions will retry")
 
         # Update the task payload with the final flow control state
         task_payload.flow_control = flow_control.value
@@ -124,9 +119,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
         log.debug("Saving state for task: {}", task_payload.task)
         save_state(task_payload, context_state)
 
-        log.debug(
-            "Exiting handler with flow_control state: {}", task_payload.flow_control
-        )
+        log.debug("Exiting handler with flow_control state: {}", task_payload.flow_control)
         log.debug("Execution completed after {} loops", iteration)
 
         result = task_payload.model_dump()

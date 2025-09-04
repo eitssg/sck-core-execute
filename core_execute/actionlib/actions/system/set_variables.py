@@ -5,17 +5,15 @@ from pydantic import Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
+from core_framework.models import DeploymentDetails, ActionResource, ActionSpec
 
 from core_execute.actionlib.action import BaseAction
 
 
-class SetVariablesActionParams(ActionParams):
+class SetVariablesActionSpec(ActionSpec):
     """Parameters for the SetVariablesAction"""
 
-    variables: dict[str, Any] = Field(
-        ..., alias="Variables", description="The variables to set (required)"
-    )
+    variables: dict[str, Any] = Field(..., alias="Variables", description="The variables to set (required)")
 
     @model_validator(mode="before")
     @classmethod
@@ -29,23 +27,25 @@ class SetVariablesActionParams(ActionParams):
         return values
 
 
-class SetVariablesActionSpec(ActionSpec):
+class SetVariablesActionResource(ActionResource):
 
     @model_validator(mode="before")
-    def validate_params(cls, values: dict) -> dict:
+    @classmethod
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
 
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-system-set-variables-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "SYSTEM::SetVariables"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {"variables": {}}
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "SYSTEM::SetVariables"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, SetVariablesActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -58,7 +58,7 @@ class SetVariablesAction(BaseAction):
         Kind: Use the value: ``SYSTEM::SetVariables``
         Spec.Variables: The variables to set (required)
 
-    .. rubric: ActionSpec:
+    .. rubric: ActionResource:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -80,13 +80,13 @@ class SetVariablesAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.params = SetVariablesActionParams(**definition.params)
+        self.params = SetVariablesActionSpec(**definition.spec)
 
     def _execute(self):
 
@@ -135,9 +135,9 @@ class SetVariablesAction(BaseAction):
         log.trace("SetVariablesAction._resolve()")
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> SetVariablesActionSpec:
-        return SetVariablesActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> SetVariablesActionResource:
+        return SetVariablesActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> SetVariablesActionParams:
-        return SetVariablesActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> SetVariablesActionSpec:
+        return SetVariablesActionSpec(**kwargs)

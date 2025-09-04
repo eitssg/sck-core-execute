@@ -9,8 +9,8 @@ from botocore.exceptions import ClientError
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.delete_image import (
+    DeleteImageActionResource,
     DeleteImageActionSpec,
-    DeleteImageActionParams,
 )
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
@@ -43,7 +43,7 @@ def deploy_spec():
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
-    Parameters are fore: DeleteImageActionParams
+    Parameters are fore: DeleteImageActionSpec
     """
     spec: dict[str, Any] = {
         "Spec": {
@@ -53,16 +53,14 @@ def deploy_spec():
         }
     }
 
-    action_spec = DeleteImageActionSpec(**spec)
+    action_resource = DeleteImageActionResource(**spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_spec]}
+    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
 
     return DeploySpec(**deploy_spec)
 
 
-def test_delete_image_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
@@ -147,26 +145,18 @@ def test_delete_image_action(
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert (
-            task_payload.flow_control == "success"
-        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
         # Verify EC2 client method calls
-        mock_client.describe_images.assert_called_once_with(
-            Filters=[{"Name": "name", "Values": ["my-image-name"]}]
-        )
+        mock_client.describe_images.assert_called_once_with(Filters=[{"Name": "name", "Values": ["my-image-name"]}])
 
-        mock_client.deregister_image.assert_called_once_with(
-            ImageId="ami-1234567890abcdef0"
-        )
+        mock_client.deregister_image.assert_called_once_with(ImageId="ami-1234567890abcdef0")
 
         # Should be called twice for both snapshots
         assert mock_client.delete_snapshot.call_count == 2
-        snapshot_calls = [
-            call.kwargs for call in mock_client.delete_snapshot.call_args_list
-        ]
+        snapshot_calls = [call.kwargs for call in mock_client.delete_snapshot.call_args_list]
         snapshot_ids = [call["SnapshotId"] for call in snapshot_calls]
         assert "snap-1234567890abcdef0" in snapshot_ids
         assert "snap-0987654321fedcba0" in snapshot_ids
@@ -250,9 +240,7 @@ def test_delete_image_action(
         print(f"📊 Image: {state.get(f'{action_name}/ImageName')}")
         print(f"📊 Image ID: {state.get(f'{action_name}/ImageId')}")
         print(f"📊 Deletion Result: {state.get(f'{action_name}/DeletionResult')}")
-        print(
-            f"📊 Snapshots Deleted: {state.get(f'{action_name}/DeletedSnapshotCount')}"
-        )
+        print(f"📊 Snapshots Deleted: {state.get(f'{action_name}/DeletedSnapshotCount')}")
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -260,9 +248,7 @@ def test_delete_image_action(
         pytest.fail(f"Test failed due to an exception: {e}")
 
 
-def test_delete_image_not_found(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_delete_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test deletion of an image that doesn't exist."""
 
     try:
@@ -285,9 +271,7 @@ def test_delete_image_not_found(
         task_payload = TaskPayload(**result)
 
         # Should still succeed when image doesn't exist
-        assert (
-            task_payload.flow_control == "success"
-        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
@@ -314,9 +298,7 @@ def test_delete_image_not_found(
         pytest.fail(f"Test failed due to an exception: {e}")
 
 
-def test_delete_image_deregistration_error(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test image deregistration failure scenario."""
 
     try:
@@ -370,9 +352,7 @@ def test_delete_image_deregistration_error(
         task_payload = TaskPayload(**result)
 
         # Should fail when deregistration encounters an error
-        assert (
-            task_payload.flow_control == "failure"
-        ), f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "failure", f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
@@ -386,10 +366,7 @@ def test_delete_image_deregistration_error(
         assert state[f"{action_name}/ImageDeregistrationFailed"] is True
 
         assert f"{action_name}/DeregistrationFailureReason" in state
-        assert (
-            "UnauthorizedOperation"
-            in state[f"{action_name}/DeregistrationFailureReason"]
-        )
+        assert "UnauthorizedOperation" in state[f"{action_name}/DeregistrationFailureReason"]
 
         print("✅ Image deregistration error test passed")
 

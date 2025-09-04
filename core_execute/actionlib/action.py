@@ -8,9 +8,9 @@ import enum
 import core_logging as log
 
 from core_framework.models import (
-    ActionSpec,
+    ActionResource,
     ActionMetadata,
-    ActionParams,
+    ActionSpec,
     DeploymentDetails,
 )
 
@@ -43,7 +43,7 @@ LC_HOOK_COMPLETE = "Complete"
 NO_DEFAULT_PROVIDED = "_!NO!DEFAULT!PROVIDED!_"
 
 
-class StatusCode(enum.Enum):
+class StatusCode(str, enum.Enum):
     """Action execution status codes.
 
     PENDING: Action has not started execution
@@ -77,7 +77,7 @@ class BaseAction(object):
     - _unexecute(): Rollback/undo action changes
 
     Args:
-        definition (ActionSpec): ActionSpec specification from deployspec.yaml
+        definition (ActionResource): ActionResource specification from deployspec.yaml
         context (dict): Jinja2 rendering context with all deployment variables
         deployment_details (DeploymentDetails): Client/portfolio/app/branch/build information
 
@@ -188,13 +188,14 @@ class BaseAction(object):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
         """Initialize a new BaseAction instance.
 
-        Sets up the action with configuration from the ActionSpec, initializes
+        Sets up the action with configuration from the ActionResource, initializes
         the Jinja2 renderer, and resolves action identity using either modern
         metadata or legacy name fields.
 
@@ -202,6 +203,7 @@ class BaseAction(object):
             definition: Action specification from deployspec.yaml
             context: Jinja2 rendering context with deployment variables
             deployment_details: Client/portfolio/app/branch/build information
+            parent_action_name: Parent action name for lifecycle hooks (enables namespace inheritance)
         """
         log.trace("BaseAction.__init__()")
 
@@ -212,6 +214,7 @@ class BaseAction(object):
         self.definition = definition
         self.context = context
         self.deployment_details = deployment_details
+        self.parent_action_name = parent_action_name
 
         # Handle metadata-based vs legacy name-based configuration
         self._resolve_action_identity()
@@ -219,18 +222,9 @@ class BaseAction(object):
         log.debug("Action name is: {}", self.name)
         log.debug("Action output namespace is: {}", self.output_namespace)
         log.debug("Action state namespace is: {}", self.state_namespace)
+        if parent_action_name:
+            log.debug("Action parent namespace: {}", parent_action_name)
         log.debug("Action context is: ", details=self.context)
-
-        after = definition.after or []
-        depends = definition.depends_on or []
-
-        self.kind = definition.kind
-        self.condition = definition.condition or "True"
-        self.before = definition.before or []
-        self.after = after + depends
-        self.lifecycle_hooks = definition.lifecycle_hooks or []
-
-        log.trace("BaseAction.__init__() - complete")
 
     def _resolve_action_identity(self):
         """Resolve action identity using metadata-first approach with legacy fallback.
@@ -255,16 +249,14 @@ class BaseAction(object):
             log.debug("Using legacy name-based action identity with metadata creation")
 
         else:
-            raise ValueError(
-                "Action must have either metadata.name or legacy name field"
-            )
+            raise ValueError("Action must have either metadata.name or legacy name field")
 
     def _setup_from_metadata(self):
         """Setup action identity using metadata.name and metadata.namespace.
 
         Configures action name, namespaces, and output settings based on the
         ActionMetadata structure. Transforms namespaces for output and state
-        variable organization.
+        variable organization. Inherits parent namespace for lifecycle hooks.
         """
         metadata = self.definition.metadata
 
@@ -274,35 +266,32 @@ class BaseAction(object):
         # Handle save_outputs - check both definition level and metadata
         save_outputs = getattr(self.definition, "save_outputs", None)
         if save_outputs is None:
-            save_outputs = (
-                metadata.save_outputs if metadata.save_outputs is not None else True
-            )
+            save_outputs = metadata.save_outputs if metadata.save_outputs is not None else True
         self.save_outputs = save_outputs
 
-        # Build full name for backwards compatibility
-        if metadata.namespace:
+        # Build full name with parent namespace inheritance for lifecycle hooks
+        if self.parent_action_name:
+            # Lifecycle hook: inherit parent's namespace hierarchy
+            self.name = f"{self.parent_action_name}/{metadata.name}"
+            base_namespace = self.parent_action_name
+        elif metadata.namespace:
+            # Regular action with explicit namespace
             self.name = f"{metadata.namespace}/{metadata.name}"
-        else:
-            self.name = metadata.name
-
-        # Calculate namespaces
-        if metadata.namespace:
-            # Use explicit namespace from metadata
             base_namespace = metadata.namespace
+        else:
+            # Regular action without namespace
+            self.name = metadata.name
+            base_namespace = metadata.name
 
+        # Calculate namespaces using inherited or explicit base
+        if base_namespace:
             # Transform namespace for outputs (e.g., "myapp:action" -> "myapp:output")
             if ":action" in base_namespace:
-                self.output_namespace = (
-                    base_namespace.replace(":action", ":output")
-                    if save_outputs
-                    else None
-                )
+                self.output_namespace = base_namespace.replace(":action", ":output") if save_outputs else None
                 self.state_namespace = base_namespace.replace(":action", ":var")
             else:
                 # For simple namespaces, append type suffixes
-                self.output_namespace = (
-                    f"{base_namespace}:output" if save_outputs else None
-                )
+                self.output_namespace = f"{base_namespace}:output" if save_outputs else None
                 self.state_namespace = f"{base_namespace}:var"
         else:
             # No namespace provided, use action name as namespace
@@ -313,20 +302,36 @@ class BaseAction(object):
         """Setup action identity using legacy name field and create metadata.
 
         Parses the legacy name field to extract namespace and action name,
-        then creates ActionMetadata for forward compatibility. Maintains
-        backward compatibility with existing action configurations.
+        then creates ActionMetadata for forward compatibility. Inherits parent
+        namespace for lifecycle hooks to prevent state collision.
         """
         legacy_name = self.definition.name
-        self.name = legacy_name
+
+        # Build name with parent namespace inheritance
+        if self.parent_action_name:
+            # Lifecycle hook: inherit parent's namespace hierarchy
+            self.name = f"{self.parent_action_name}/{legacy_name}"
+            # Parse parent namespace for base calculations
+            if "/" in self.parent_action_name:
+                base_namespace = self.parent_action_name
+            else:
+                base_namespace = self.parent_action_name
+        else:
+            # Regular action: use legacy name as-is
+            self.name = legacy_name
+            base_namespace = None
 
         # Parse legacy name to extract action_name and namespace
         if "/" in legacy_name:
             parts = legacy_name.split("/")
-            namespace_part = parts[0]
             action_name_part = parts[-1]
+            if not self.parent_action_name:
+                # Only use legacy namespace if not a lifecycle hook
+                base_namespace = parts[0]
         else:
-            namespace_part = None
             action_name_part = legacy_name
+            if not base_namespace:
+                base_namespace = None
 
         self.action_name = action_name_part
 
@@ -336,31 +341,26 @@ class BaseAction(object):
             save_outputs = True  # Default True for backwards compatibility
         self.save_outputs = save_outputs
 
-        # Calculate namespaces using legacy logic
-        if namespace_part:
+        # Calculate namespaces using inherited or legacy logic
+        if base_namespace:
             # Transform namespace for outputs (e.g., "myapp:action" -> "myapp:output")
-            if ":action" in namespace_part:
-                self.output_namespace = (
-                    namespace_part.replace(":action", ":output")
-                    if save_outputs
-                    else None
-                )
-                self.state_namespace = legacy_name.replace(":action/", ":var/")
+            if ":action" in base_namespace:
+                self.output_namespace = base_namespace.replace(":action", ":output") if save_outputs else None
+                self.state_namespace = self.name.replace(":action/", ":var/")
             else:
                 # For simple namespaces
-                self.output_namespace = namespace_part if save_outputs else None
-                self.state_namespace = legacy_name
+                self.output_namespace = base_namespace if save_outputs else None
+                self.state_namespace = self.name
         else:
             # No namespace in legacy name
-            self.output_namespace = legacy_name if save_outputs else None
-            self.state_namespace = legacy_name
+            self.output_namespace = self.name if save_outputs else None
+            self.state_namespace = self.name
 
         # Create metadata from legacy name for forward compatibility
-        self._create_metadata_from_legacy_name(namespace_part, action_name_part)
+        legacy_namespace = base_namespace if not self.parent_action_name else None
+        self._create_metadata_from_legacy_name(legacy_namespace, action_name_part)
 
-    def _create_metadata_from_legacy_name(
-        self, namespace: str | None, action_name: str
-    ):
+    def _create_metadata_from_legacy_name(self, namespace: str | None, action_name: str):
         """Create metadata structure from legacy name for forward compatibility.
 
         Creates an ActionMetadata instance from parsed legacy name components
@@ -388,6 +388,16 @@ class BaseAction(object):
                 self.definition.metadata.name = action_name
             if not self.definition.metadata.namespace:
                 self.definition.metadata.namespace = namespace
+
+    def is_rerunnable(self) -> bool:
+        """Check to see if the task is re-runnable after complete or failure.
+
+        In order for this to work, you must override this in your own action
+
+        Returns:
+            True if the action can be re-run
+        """
+        return False
 
     def is_init(self) -> bool:
         """Check if the action is in the initial pending state.
@@ -548,9 +558,7 @@ class BaseAction(object):
 
         # Set output variable (if user chose to save outputs)
         if self.output_namespace:
-            log.debug(
-                "Setting output '{}/{}' = '{}'", self.output_namespace, name, value
-            )
+            log.debug("Setting output '{}/{}' = '{}'", self.output_namespace, name, value)
             self.__set_context(self.output_namespace, name, value)
 
         # Set state variable
@@ -630,9 +638,7 @@ class BaseAction(object):
             log.trace("Executing action for {}", self.name)
 
             # Render the action condition, and see if it evaluates to true
-            condition_result = self.renderer.render_string(
-                "{{ " + self.condition + " }}", self.context
-            )
+            condition_result = self.renderer.render_string("{{ " + self.condition + " }}", self.context)
 
             if condition_result.lower() == "true":
                 # Condition is true, execute the action
@@ -657,9 +663,7 @@ class BaseAction(object):
                 lineno = -1
             tb_str = "".join(traceback.format_exception(exc_type, exc_obj, exc_tb))
             self.set_failed(
-                "Internal error {} in {} at {} - {}\nTraceback:\n{}".format(
-                    exc_type.__name__, fname, lineno, str(e), tb_str
-                )
+                "Internal error {} in {} at {} - {}\nTraceback:\n{}".format(exc_type.__name__, fname, lineno, str(e), tb_str)
             )
             log.error(
                 "Internal error {} in {} at {} - {}",
@@ -709,9 +713,7 @@ class BaseAction(object):
                 lineno = -1
             tb_str = "".join(traceback.format_exception(exc_type, exc_obj, exc_tb))
             self.set_failed(
-                "Internal error {} in {} at {} - {}\nTraceback:\n{}".format(
-                    exc_type.__name__, fname, lineno, str(e), tb_str
-                )
+                "Internal error {} in {} at {} - {}\nTraceback:\n{}".format(exc_type.__name__, fname, lineno, str(e), tb_str)
             )
             log.error(
                 "Internal error {} in {} at {} - {}",
@@ -735,9 +737,7 @@ class BaseAction(object):
         """Get the current status reason from context."""
         return self.__get_context(self.name, STATUS_REASON, None)
 
-    def __get_context(
-        self, prn: str, name: str, default: Any = NO_DEFAULT_PROVIDED
-    ) -> Any:
+    def __get_context(self, prn: str, name: str, default: Any = NO_DEFAULT_PROVIDED) -> Any:
         """Get a value from the action context.
 
         Args:
@@ -758,11 +758,7 @@ class BaseAction(object):
             return self.context[key]
         else:
             if default == NO_DEFAULT_PROVIDED:
-                raise KeyError(
-                    "Key '{}' is not in the context and no default was provided".format(
-                        name
-                    )
-                )
+                raise KeyError("Key '{}' is not in the context and no default was provided".format(name))
             else:
                 return default
 
@@ -792,9 +788,7 @@ class BaseAction(object):
             hook_type = event_hook["Type"]
             self.__execute_lifecycle_hook(event, hook_type, event_hook, reason)
 
-    def __execute_lifecycle_hook(
-        self, event: str, hook_type: str, hook: dict[str, Any], reason: str
-    ):
+    def __execute_lifecycle_hook(self, event: str, hook_type: str, hook: dict[str, Any], reason: str):
         """Execute a single lifecycle hook.
 
         Args:
@@ -845,9 +839,7 @@ class BaseAction(object):
             return parms["Details"]
         return None
 
-    def __update_item_status(
-        self, identity: str, status: str, message: str, details: Any
-    ):
+    def __update_item_status(self, identity: str, status: str, message: str, details: Any):
         """Update status in the database for the specified identity.
 
         Args:
@@ -867,9 +859,7 @@ class BaseAction(object):
                 build_prn = ":".join(prn_sections[0:5])
 
                 # Update the build status
-                update_status(
-                    prn=build_prn, status=status, message=message, details=details
-                )
+                update_status(prn=build_prn, status=status, message=message, details=details)
 
                 # If a new build is being released, update the branch's released_build_prn pointer
                 if status == RELEASE_IN_PROGRESS:
@@ -881,9 +871,7 @@ class BaseAction(object):
                 component_prn = ":".join(prn_sections[0:6])
 
                 # Update the component status
-                update_status(
-                    prn=component_prn, status=status, message=message, details=details
-                )
+                update_status(prn=component_prn, status=status, message=message, details=details)
 
                 # If component has failed, update the build status to failed
                 if "_FAILED" in status:
@@ -898,9 +886,7 @@ class BaseAction(object):
         finally:
             log.reset_identity()
 
-    def __execute_status_hook(
-        self, event: str, hook: dict[str, Any], reason: str | None
-    ):
+    def __execute_status_hook(self, event: str, hook: dict[str, Any], reason: str | None):
         """Execute a status lifecycle hook.
 
         Args:
@@ -958,7 +944,7 @@ class BaseAction(object):
         return "{}({})".format(type(self).__name__, self.name)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> ActionParams:
+    def generate_action_parameters(cls, **kwargs) -> ActionSpec:
         """Generate validated action parameters for this action type.
 
         Subclasses should override this to return a validated parameter set
@@ -968,21 +954,73 @@ class BaseAction(object):
             **kwargs: Parameter values to validate
 
         Returns:
-            Validated ActionParams instance
+            Validated ActionSpec instance
         """
-        return ActionParams(**kwargs)
+        return ActionSpec(**kwargs)
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> ActionSpec:
-        """Generate an ActionSpec for this action type.
+    def generate_action_resource(cls, **kwargs) -> ActionResource:
+        """Generate an ActionResource for this action type.
 
-        Subclasses should override this to return an ActionSpec with
+        Subclasses should override this to return an ActionResource with
         appropriate defaults and validation for their specific action type.
 
         Args:
-            **kwargs: ActionSpec values to override
+            **kwargs: ActionResource values to override
 
         Returns:
-            ActionSpec instance for this action type
+            ActionResource instance for this action type
         """
-        return ActionSpec(**kwargs)
+        return ActionResource(**kwargs)
+
+    def can_initialize(self) -> bool:
+        """
+        Check if action can be reinitialized for rerun.
+
+        Default implementation allows reinitialization unless action
+        is in a critical state that cannot be reset.
+
+        Returns:
+            bool: True if action can be reinitialized, False otherwise
+        """
+        return True
+
+    def initialize(self):
+        """
+        Initialize action for rerun.
+
+        This method should reset action state to allow clean rerun.
+        Default implementation clears state and output data.
+        """
+        log.debug("Initializing action {} for rerun", self.name)
+
+        # Clear action-specific state (keep deployment context)
+        state_keys_to_clear = []
+        for key in self.context.keys():
+            if key.startswith(f"{self.name}/"):
+                state_keys_to_clear.append(key)
+
+        for key in state_keys_to_clear:
+            self.context.pop(key, None)
+            log.trace("Cleared state key: {}", key)
+
+    def is_rerunnable(self) -> bool:
+        """
+        Check if action supports rerunning.
+
+        Returns:
+            bool: True if action can be re-runned, False otherwise
+        """
+        return True
+
+    def can_execute(self) -> bool:
+        """
+        Check if action can execute based on current conditions.
+
+        This is called before execution to validate prerequisites.
+        Default implementation always returns True.
+
+        Returns:
+            bool: True if action can execute, False otherwise
+        """
+        return True

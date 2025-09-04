@@ -8,8 +8,8 @@ import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.put_metric_data import (
+    PutMetricDataActionResource,
     PutMetricDataActionSpec,
-    PutMetricDataActionParams,
 )
 
 from core_execute.execute import save_state, save_actions, load_state
@@ -72,22 +72,20 @@ def deploy_spec():
     }
 
     # validate the params here before we run the action
-    validated_params = PutMetricDataActionParams(**params)
+    validated_params = PutMetricDataActionSpec(**params)
 
     # Define the action specification
-    action_spec = PutMetricDataActionSpec(
+    action_resource = PutMetricDataActionResource(
         Name="event-namespace:action/test-put-metric",
         Kind="AWS::PutMetricData",
         Spec=validated_params.model_dump(),
         Scope="build",
     )
 
-    return DeploySpec(Actions=[action_spec])
+    return DeploySpec(Actions=[action_resource])
 
 
-def test_put_metric_data_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session: MagicMock
-):
+def test_put_metric_data_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session: MagicMock):
     """Test the put metric data action successful execution."""
 
     try:
@@ -142,13 +140,8 @@ def test_put_metric_data_action(
 
         # Verify dimensions
         dimensions = first_metric["Dimensions"]
-        assert any(
-            d["Name"] == "Environment" and d["Value"] == "production"
-            for d in dimensions
-        )
-        assert any(
-            d["Name"] == "DataCenter" and d["Value"] == "zone-1" for d in dimensions
-        )
+        assert any(d["Name"] == "Environment" and d["Value"] == "production" for d in dimensions)
+        assert any(d["Name"] == "DataCenter" and d["Value"] == "zone-1" for d in dimensions)
 
         # Verify second metric
         second_metric = metrics_data[1]
@@ -160,21 +153,12 @@ def test_put_metric_data_action(
         assert state is not None, "State should not be None"
 
         # Check that the action completed successfully
-        assert (
-            state.get("event-namespace:var/test-put-metric/status") == "success"
-        ), "Action should have completed successfully"
-        assert (
-            state.get("event-namespace:var/test-put-metric/total_metrics_sent") == 2
-        ), "Should have sent 2 metrics"
+        assert state.get("event-namespace:var/test-put-metric/status") == "success", "Action should have completed successfully"
+        assert state.get("event-namespace:var/test-put-metric/total_metrics_sent") == 2, "Should have sent 2 metrics"
 
         # Verify completion and error states are properly set
-        assert (
-            state.get("event-namespace:var/test-put-metric/metrics_count") == 2
-        ), "Should track metrics count"
-        assert (
-            state.get("event-namespace:var/test-put-metric/namespace")
-            == "event-namespace"
-        ), "Should track namespace"
+        assert state.get("event-namespace:var/test-put-metric/metrics_count") == 2, "Should track metrics count"
+        assert state.get("event-namespace:var/test-put-metric/namespace") == "event-namespace", "Should track namespace"
 
     except Exception as e:
         traceback.print_exc()

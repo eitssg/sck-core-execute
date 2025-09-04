@@ -6,7 +6,7 @@ from botocore.exceptions import ClientError
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
+from core_framework.models import DeploymentDetails, ActionResource, ActionSpec
 
 import core_helper.aws as aws
 
@@ -14,7 +14,7 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class PutUserActionParams(ActionParams):
+class PutUserActionSpec(ActionSpec):
     """
     Parameters for the PutUserAction.
 
@@ -40,7 +40,7 @@ class PutUserActionParams(ActionParams):
     )
 
 
-class PutUserActionSpec(ActionSpec):
+class PutUserActionResource(ActionResource):
     """
     Generate the action definition for PutUserAction.
 
@@ -55,31 +55,20 @@ class PutUserActionSpec(ActionSpec):
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Validate the parameters for the PutUserActionSpec.
 
-        :param values: Input values for validation
-        :type values: dict[str, Any]
-        :return: Validated and potentially modified values
-        :rtype: dict[str, Any]
-        """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-putuser-name"  # FIXED
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::PutUser"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "region": "",
-                "user_names": [],
-                "roles": [],
-            }
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::PutUser"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, PutUserActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -92,7 +81,7 @@ class PutUserAction(BaseAction):
     If a user already exists, only the role assignments will be updated.
 
     :param definition: The action specification containing configuration details
-    :type definition: ActionSpec
+    :type definition: ActionResource
     :param context: The Jinja2 rendering context containing all variables
     :type context: dict[str, Any]
     :param deployment_details: Client/portfolio/app/branch/build information
@@ -106,7 +95,7 @@ class PutUserAction(BaseAction):
     :Spec.Region: The region for the IAM operations (required)
     :Spec.UserNames: The list of user names to create/update (required)
 
-    .. rubric:: ActionSpec Example
+    .. rubric:: ActionResource Example
 
     .. code-block:: yaml
 
@@ -129,14 +118,14 @@ class PutUserAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
         # Validate the parameters
-        self.params = PutUserActionParams(**definition.params)
+        self.params = PutUserActionSpec(**definition.spec)
 
     def _resolve(self):
         """
@@ -146,19 +135,13 @@ class PutUserAction(BaseAction):
         """
         log.trace("Resolving PutUserAction")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
 
         if isinstance(self.params.user_names, list):
             for i, user_name in enumerate(self.params.user_names):
                 # If user_names is a list, render each item as a Jinja2 template
-                self.params.user_names[i] = self.renderer.render_string(
-                    user_name, self.context
-                )
+                self.params.user_names[i] = self.renderer.render_string(user_name, self.context)
         elif isinstance(self.params.user_names, str):
             # If user_names is a string, render it as a Jinja2 template
             names = self.renderer.render_string(self.params.user_names, self.context)
@@ -209,12 +192,8 @@ class PutUserAction(BaseAction):
 
         # Validate required parameters
         if not self.params.user_names:
-            self.set_failed(
-                "UserNames parameter is required and must contain at least one user"
-            )
-            log.error(
-                "UserNames parameter is required and must contain at least one user"
-            )
+            self.set_failed("UserNames parameter is required and must contain at least one user")
+            log.error("UserNames parameter is required and must contain at least one user")
             return
 
         # Set initial state information
@@ -299,9 +278,7 @@ class PutUserAction(BaseAction):
 
             try:
                 # Create and attach inline policy that allows assuming the specified roles
-                policy_name, policy_document = self._attach_inline_policy_to_user(
-                    iam_client, user_name, self.params.roles
-                )
+                policy_name, policy_document = self._attach_inline_policy_to_user(iam_client, user_name, self.params.roles)
                 log.info(
                     "Successfully attached/updated role assumption policy for user '{}'",
                     user_name,
@@ -371,12 +348,8 @@ class PutUserAction(BaseAction):
         if failed_users:
             self.set_state("CreationResult", "PARTIAL_FAILURE")
             self.set_output("CreationResult", "PARTIAL_FAILURE")
-            failure_details = [
-                f"{user['UserName']} ({user['Operation']})" for user in failed_users
-            ]
-            self.set_failed(
-                f"Failed operations for users: {', '.join(failure_details)}"
-            )
+            failure_details = [f"{user['UserName']} ({user['Operation']})" for user in failed_users]
+            self.set_failed(f"Failed operations for users: {', '.join(failure_details)}")
         else:
             self.set_state("CreationResult", "SUCCESS")
             self.set_output("CreationResult", "SUCCESS")
@@ -454,9 +427,7 @@ class PutUserAction(BaseAction):
                 # Re-raise other errors
                 raise
 
-    def _attach_inline_policy_to_user(
-        self, iam_client, user_name: str, roles: list[str]
-    ) -> tuple[str, dict]:
+    def _attach_inline_policy_to_user(self, iam_client, user_name: str, roles: list[str]) -> tuple[str, dict]:
         """
         Create and attach an inline policy to a user that allows assuming specified roles.
         If the policy already exists, replace only the sts:AssumeRole resources with the new ones,
@@ -496,9 +467,7 @@ class PutUserAction(BaseAction):
             # Try to get existing policy first
             existing_policy = None
             try:
-                response = iam_client.get_user_policy(
-                    UserName=user_name, PolicyName=policy_name
-                )
+                response = iam_client.get_user_policy(UserName=user_name, PolicyName=policy_name)
                 existing_policy_doc = response["PolicyDocument"]
 
                 # Parse the URL-decoded policy document
@@ -523,9 +492,7 @@ class PutUserAction(BaseAction):
             # Create the final policy document
             if existing_policy:
                 # Update existing policy by replacing sts:AssumeRole resources
-                policy_document = self._replace_assume_role_resources(
-                    existing_policy, new_role_arns
-                )
+                policy_document = self._replace_assume_role_resources(existing_policy, new_role_arns)
             else:
                 # Create new policy with just the assume role statement
                 policy_document = self._create_policy_with_role_arns(new_role_arns)
@@ -563,9 +530,7 @@ class PutUserAction(BaseAction):
             )
             raise
 
-    def _replace_assume_role_resources(
-        self, existing_policy: dict, new_role_arns: set
-    ) -> dict:
+    def _replace_assume_role_resources(self, existing_policy: dict, new_role_arns: set) -> dict:
         """
         Replace the resources in sts:AssumeRole statements with new role ARNs,
         while preserving all other policy statements.
@@ -669,9 +634,9 @@ class PutUserAction(BaseAction):
         return self._create_policy_with_role_arns(role_arns)
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> PutUserActionSpec:
-        return PutUserActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> PutUserActionResource:
+        return PutUserActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> PutUserActionParams:
-        return PutUserActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> PutUserActionSpec:
+        return PutUserActionSpec(**kwargs)

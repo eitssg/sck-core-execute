@@ -5,7 +5,7 @@ from pydantic import Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
+from core_framework.models import DeploymentDetails, ActionResource, ActionSpec
 
 import core_helper.aws as aws
 
@@ -13,7 +13,7 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class CreateImageActionParams(ActionParams):
+class CreateImageActionSpec(ActionSpec):
     """
     Parameters for the CreateImageAction.
 
@@ -46,7 +46,7 @@ class CreateImageActionParams(ActionParams):
     )
 
 
-class CreateImageActionSpec(ActionSpec):
+class CreateImageActionResource(ActionResource):
     """
     Generate the action definition for CreateImageAction.
 
@@ -59,33 +59,21 @@ class CreateImageActionSpec(ActionSpec):
     """
 
     @model_validator(mode="before")
+    @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Validate the parameters for the CreateImageActionSpec.
 
-        :param values: Input values for validation
-        :type values: dict[str, Any]
-        :return: Validated and potentially modified values
-        :rtype: dict[str, Any]
-        """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-createimage-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::CreateImage"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "image_name": "",
-                "instance_id": "",
-                "region": "",
-                "tags": {},
-            }
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::CreateImage"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, CreateImageActionSpec):
+            values["spec"] = spec.model_dump()
 
         return values
 
@@ -98,7 +86,7 @@ class CreateImageAction(BaseAction):
     The action will apply tags to both the image and associated snapshots when available.
 
     :param definition: The action specification containing configuration details
-    :type definition: ActionSpec
+    :type definition: ActionResource
     :param context: The Jinja2 rendering context containing all variables
     :type context: dict[str, Any]
     :param deployment_details: Client/portfolio/app/branch/build information
@@ -114,7 +102,7 @@ class CreateImageAction(BaseAction):
     :Spec.ImageName: The name of the image to create (required)
     :Spec.Tags: Optional tags to apply to the created image
 
-    .. rubric:: ActionSpec Example
+    .. rubric:: ActionResource Example
 
     .. code-block:: yaml
 
@@ -139,13 +127,13 @@ class CreateImageAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.params = CreateImageActionParams(**definition.params)
+        self.params = CreateImageActionSpec(**definition.spec)
 
         tags = self.params.tags or {}
         if deployment_details.delivered_by:
@@ -200,18 +188,14 @@ class CreateImageAction(BaseAction):
         self.set_running(f"Creating new image '{self.params.image_name}'")
 
         try:
-            response = ec2_client.create_image(
-                InstanceId=self.params.instance_id, Name=self.params.image_name
-            )
+            response = ec2_client.create_image(InstanceId=self.params.instance_id, Name=self.params.image_name)
         except Exception as e:
             log.error(
                 "Failed to create image from instance '{}': {}",
                 self.params.instance_id,
                 e,
             )
-            self.set_failed(
-                f"Failed to create image from instance '{self.params.instance_id}': {e}"
-            )
+            self.set_failed(f"Failed to create image from instance '{self.params.instance_id}': {e}")
             return
 
         image_id = response["ImageId"]
@@ -252,9 +236,7 @@ class CreateImageAction(BaseAction):
         # Wait for image creation to complete / fail
         image_id = self.get_state("ImageId")
         if image_id is None:
-            log.error(
-                "Internal error - state variable ImageId should have been set during action execution"
-            )
+            log.error("Internal error - state variable ImageId should have been set during action execution")
             self.set_failed("No image previously created - cannot continue")
             return
 
@@ -307,9 +289,7 @@ class CreateImageAction(BaseAction):
             # Tag the snapshots
             image_snapshots = self.__get_image_snapshots(describe_images_response)
             if len(image_snapshots) > 0:
-                self.set_running(
-                    f"Tagging image snapshots: '{', '.join(image_snapshots)}'"
-                )
+                self.set_running(f"Tagging image snapshots: '{', '.join(image_snapshots)}'")
 
                 # Store snapshot information
                 self.set_state("SnapshotIds", image_snapshots)
@@ -417,18 +397,10 @@ class CreateImageAction(BaseAction):
         """
         log.trace("Resolving CreateImageAction")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.image_name = self.renderer.render_string(
-            self.params.image_name, self.context
-        )
-        self.params.instance_id = self.renderer.render_string(
-            self.params.instance_id, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.image_name = self.renderer.render_string(self.params.image_name, self.context)
+        self.params.instance_id = self.renderer.render_string(self.params.instance_id, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
 
         log.trace("CreateImageAction resolved")
 
@@ -477,18 +449,16 @@ class CreateImageAction(BaseAction):
                         )
 
         except (KeyError, IndexError, TypeError) as e:
-            log.warning(
-                "Error extracting snapshot IDs from describe_images response: {}", e
-            )
+            log.warning("Error extracting snapshot IDs from describe_images response: {}", e)
             log.trace("Response structure: {}", describe_images_response)
 
         log.debug("Found {} snapshots for image: {}", len(snapshots), snapshots)
         return snapshots
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> CreateImageActionSpec:
-        return CreateImageActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> CreateImageActionResource:
+        return CreateImageActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> CreateImageActionParams:
-        return CreateImageActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> CreateImageActionSpec:
+        return CreateImageActionSpec(**kwargs)

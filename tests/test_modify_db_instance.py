@@ -6,7 +6,7 @@ import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.rds.modify_db_instance import (
-    ModifyDbInstanceActionSpec,
+    ModifyDbInstanceActionResource,
 )
 
 from core_execute.execute import save_state, save_actions
@@ -47,7 +47,7 @@ def minimal_deploy_spec():
             "ApplyImmediately": True,
         },
     }
-    modify_db_instance_action = ModifyDbInstanceActionSpec(**{"params": params})
+    modify_db_instance_action = ModifyDbInstanceActionResource(**{"params": params})
     return DeploySpec(**{"actions": [modify_db_instance_action]})
 
 
@@ -87,13 +87,11 @@ def deploy_spec(task_payload: TaskPayload):
     }
 
     # Define the action specifications with the modify DB instance action
-    modify_db_instance_action = ModifyDbInstanceActionSpec(**{"params": params})
+    modify_db_instance_action = ModifyDbInstanceActionResource(**{"params": params})
     return DeploySpec(**{"actions": [modify_db_instance_action]})
 
 
-def test_lambda_handler(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
@@ -137,9 +135,7 @@ def test_lambda_handler(
         task_payload = TaskPayload(**response)
 
         # Validate the flow control in the task payload
-        assert (
-            task_payload.flow_control == "success"
-        ), "Expected flow_control to be 'success'"
+        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
 
         # Additional checks can be added here as needed
 

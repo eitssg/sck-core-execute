@@ -8,8 +8,8 @@ from unittest.mock import MagicMock
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.create_image import (
+    CreateImageActionResource,
     CreateImageActionSpec,
-    CreateImageActionParams,
 )
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
@@ -41,7 +41,7 @@ def deploy_spec():
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
-    Parameters are fore: CreateImageActionParams
+    Parameters are fore: CreateImageActionSpec
     """
     spec: dict[str, Any] = {
         "Spec": {
@@ -53,16 +53,14 @@ def deploy_spec():
         }
     }
 
-    action_spec = CreateImageActionSpec(**spec)
+    action_resource = CreateImageActionResource(**spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_spec]}
+    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
 
     return DeploySpec(**deploy_spec)
 
 
-def test_create_image_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_create_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
@@ -146,9 +144,7 @@ def test_create_image_action(
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert (
-            task_payload.flow_control == "success"
-        ), "Expected flow_control to be 'success'"
+        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
 
         state = load_state(task_payload)
 

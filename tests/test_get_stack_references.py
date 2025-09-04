@@ -6,8 +6,8 @@ import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.get_stack_references import (
+    GetStackReferencesActionResource,
     GetStackReferencesActionSpec,
-    GetStackReferencesActionParams,
 )
 
 from core_execute.execute import save_state, save_actions, load_state
@@ -45,7 +45,7 @@ def deploy_spec():
         "Region": "us-east-1",
         "StackName": "test-stack-name",
     }
-    action_spec = GetStackReferencesActionSpec(
+    action_resource = GetStackReferencesActionResource(
         **{
             "name": "test-get-stack-references",
             "kind": "AWS::GetStackReferences",
@@ -53,12 +53,10 @@ def deploy_spec():
             "scope": "build",
         }
     )
-    return DeploySpec(**{"actions": [action_spec]})
+    return DeploySpec(**{"actions": [action_resource]})
 
 
-def test_get_stack_references_action_with_references(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_get_stack_references_action_with_references(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the get stack references action when export has references."""
 
     try:
@@ -69,9 +67,7 @@ def test_get_stack_references_action_with_references(
         mock_session.client.return_value = mock_cfn_client
 
         # Mock the list_imports response with sample importing stacks
-        mock_list_imports_response = {
-            "Imports": ["importing-stack-1", "importing-stack-2", "importing-stack-3"]
-        }
+        mock_list_imports_response = {"Imports": ["importing-stack-1", "importing-stack-2", "importing-stack-3"]}
 
         mock_cfn_client.list_imports.return_value = mock_list_imports_response
 
@@ -142,9 +138,7 @@ def test_get_stack_references_action_with_references(
         pytest.fail(f"Test failed due to exception: {e}")
 
 
-def test_get_stack_references_action_export_not_found(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_get_stack_references_action_export_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the get stack references action when export doesn't exist."""
 
     try:
@@ -163,9 +157,7 @@ def test_get_stack_references_action_export_not_found(
                 "Message": "Export test-stack-name:DefaultExport does not exist",
             }
         }
-        mock_cfn_client.list_imports.side_effect = ClientError(
-            error_response, "ListImports"
-        )
+        mock_cfn_client.list_imports.side_effect = ClientError(error_response, "ListImports")
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -210,9 +202,7 @@ def test_get_stack_references_action_export_not_found(
         pytest.fail(f"Test failed due to exception: {e}")
 
 
-def test_get_stack_references_action_no_references(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_get_stack_references_action_no_references(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the get stack references action when export exists but has no references."""
 
     try:
@@ -231,9 +221,7 @@ def test_get_stack_references_action_no_references(
                 "Message": "Export test-stack-name:DefaultExport is not imported by any stack",
             }
         }
-        mock_cfn_client.list_imports.side_effect = ClientError(
-            error_response, "ListImports"
-        )
+        mock_cfn_client.list_imports.side_effect = ClientError(error_response, "ListImports")
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -270,9 +258,7 @@ def test_get_stack_references_action_no_references(
             assert action_outputs.get("has_references") == False
             assert action_outputs.get("num_references") == 0
             assert action_outputs.get("references") == []
-            assert "is not referenced by any stacks" in action_outputs.get(
-                "message", ""
-            )
+            assert "is not referenced by any stacks" in action_outputs.get("message", "")
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -280,9 +266,7 @@ def test_get_stack_references_action_no_references(
         pytest.fail(f"Test failed due to exception: {e}")
 
 
-def test_get_stack_references_action_custom_output_name(
-    task_payload: TaskPayload, mock_session
-):
+def test_get_stack_references_action_custom_output_name(task_payload: TaskPayload, mock_session):
     """Test the get stack references action with custom output name."""
 
     try:
@@ -293,7 +277,7 @@ def test_get_stack_references_action_custom_output_name(
             "StackName": "test-stack-name",
             "OutputName": "CustomExport",
         }
-        action_spec = GetStackReferencesActionSpec(
+        action_resource = GetStackReferencesActionResource(
             **{
                 "name": "test-get-stack-references-custom",
                 "kind": "AWS::GetStackReferences",
@@ -301,7 +285,7 @@ def test_get_stack_references_action_custom_output_name(
                 "scope": "build",
             }
         )
-        deploy_spec = DeploySpec(**{"actions": [action_spec]})
+        deploy_spec = DeploySpec(**{"actions": [action_resource]})
 
         # Mock CloudFormation client
         mock_cfn_client = MagicMock()

@@ -6,7 +6,7 @@ from botocore.exceptions import ClientError
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
+from core_framework.models import DeploymentDetails, ActionResource, ActionSpec
 
 import core_helper.aws as aws
 
@@ -14,7 +14,7 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class DeleteStackActionParams(ActionParams):
+class DeleteStackActionSpec(ActionSpec):
     """
     Parameters for the DeleteStackAction.
 
@@ -40,7 +40,7 @@ class DeleteStackActionParams(ActionParams):
     )
 
 
-class DeleteStackActionSpec(ActionSpec):
+class DeleteStackActionResource(ActionResource):
     """
     Generate the action definition for DeleteStackAction.
 
@@ -55,31 +55,20 @@ class DeleteStackActionSpec(ActionSpec):
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Validate the parameters for the DeleteStackActionSpec.
 
-        :param values: Input values for validation
-        :type values: dict[str, Any]
-        :return: Validated and potentially modified values
-        :rtype: dict[str, Any]
-        """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-deletestack-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::DeleteStack"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "region": "",
-                "stack_name": "",
-                "success_statuses": [],
-            }
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::DeleteStack"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, DeleteStackActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -92,7 +81,7 @@ class DeleteStackAction(BaseAction):
     that fail to delete.
 
     :param definition: The action specification containing configuration details
-    :type definition: ActionSpec
+    :type definition: ActionResource
     :param context: The Jinja2 rendering context containing all variables
     :type context: dict[str, Any]
     :param deployment_details: Client/portfolio/app/branch/build information
@@ -107,7 +96,7 @@ class DeleteStackAction(BaseAction):
     :Spec.StackName: The name of the stack to delete (required)
     :Spec.SuccessStatuses: Stack statuses that indicate success (optional)
 
-    .. rubric:: ActionSpec Example
+    .. rubric:: ActionResource Example
 
     .. code-block:: yaml
 
@@ -129,14 +118,14 @@ class DeleteStackAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
         # Validate and set the parameters
-        self.params = DeleteStackActionParams(**definition.params)
+        self.params = DeleteStackActionSpec(**definition.spec)
 
     def _resolve(self):
         """
@@ -146,26 +135,100 @@ class DeleteStackAction(BaseAction):
         """
         log.trace("Resolving DeleteStackAction")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.stack_name = self.renderer.render_string(
-            self.params.stack_name, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
 
         log.trace("DeleteStackAction resolved")
 
+    def can_initialize(self) -> bool:
+        """
+        Check if DeleteStackAction can be reinitialized for teardown reruns.
+
+        Delete actions can generally be reinitialized unless they're in
+        the middle of a deletion operation.
+        """
+        stack_status = self.get_state("CurrentStackStatus") or self.get_state("InitialStackStatus")
+        if stack_status and "DELETE_IN_PROGRESS" in stack_status:
+            log.warning("Cannot reinitialize DeleteStackAction - stack deletion in progress: {}", stack_status)
+            return False
+
+        return True
+
+    def initialize(self):
+        """
+        Initialize DeleteStackAction for teardown rerun.
+
+        Clears deletion-specific state while preserving configuration.
+        Allows the action to rediscover stack state during execution.
+        """
+        log.info("Initializing DeleteStackAction {} for teardown rerun", self.name)
+
+        # Call parent to clear basic state
+        super().initialize()
+
+        # Clear delete-specific state but keep stack identification
+        delete_state_keys = [
+            "DeletionStarted",
+            "DeletionInitiated",
+            "DeletionCompleted",
+            "DeletionResult",
+            "StackExists",
+            "CurrentStackStatus",
+            "CompletionTime",
+            "DeletionInitiatedTime",
+            "StartTime",
+            "DeletionError",
+            "FailedResources",
+            "RecentStackEvents",
+            "RollbackAttempted",
+            "RollbackResult",
+            "UnexpectedStatus",
+        ]
+
+        for key in delete_state_keys:
+            state_key = f"{self.name}/{key}"
+            if state_key in self.context:
+                self.context.pop(state_key)
+                log.trace("Cleared deletion state: {}", state_key)
+
+        log.info("DeleteStackAction {} reinitialized for teardown", self.name)
+
+    def can_execute(self) -> bool:
+        """
+        Check if DeleteStackAction can execute in teardown pipeline.
+
+        Enhanced validation for CD pipeline robustness.
+        """
+        # Basic parameter validation
+        if not self.params.stack_name:
+            log.error("Cannot execute teardown - StackName is required")
+            return False
+
+        # Test AWS connectivity before starting teardown
+        try:
+            cfn_client = aws.cfn_client(
+                region=self.params.region,
+                role=util.get_provisioning_role_arn(self.params.account),
+            )
+
+            # Quick connectivity test
+            cfn_client.list_stacks(MaxItems=1)
+            return True
+
+        except Exception as e:
+            log.error("Cannot execute teardown - AWS connectivity failed: {}", e)
+            return False
+
     def _execute(self):
         """
-        Execute the stack deletion operation.
+        Execute the stack deletion operation with enhanced teardown logic.
 
         This method initiates the deletion of the CloudFormation stack and sets up
         monitoring for the deletion process.
 
-        :raises: Sets action to failed if stack name is missing or CloudFormation operation fails
+        Enhanced for CD pipeline teardown with better error handling and
+        parallel-friendly state management.
         """
         log.trace("Executing DeleteStackAction")
 
@@ -189,7 +252,10 @@ class DeleteStackAction(BaseAction):
 
         # Obtain a CloudFormation client
         try:
-            cfn_client = aws.cfn_client()
+            cfn_client = aws.cfn_client(
+                region=self.params.region,
+                role=util.get_provisioning_role_arn(self.params.account),
+            )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
             self.set_failed(f"Failed to create CloudFormation client: {e}")
@@ -199,7 +265,7 @@ class DeleteStackAction(BaseAction):
         stack_info = self._get_stack_status(cfn_client)
 
         if not stack_info["exists"]:
-            # Stack doesn't exist - already deleted
+            # Stack doesn't exist - already deleted (common in teardown reruns)
             self.set_state("StackExists", False)
             self.set_state("DeletionCompleted", True)
             self.set_state("CompletionTime", util.get_current_timestamp())
@@ -209,9 +275,8 @@ class DeleteStackAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "ALREADY_DELETED")
 
-            self.set_complete(
-                f"Stack '{self.params.stack_name}' does not exist, it may have been previously deleted"
-            )
+            log.info("Stack '{}' does not exist - already deleted (common in teardown)", self.params.stack_name)
+            self.set_complete(f"Stack '{self.params.stack_name}' already deleted")
             return
 
         # Stack exists - store initial information
@@ -224,6 +289,8 @@ class DeleteStackAction(BaseAction):
         self.set_output("StackId", stack_id)
         self.set_output("StackStatus", stack_status)
 
+        log.info("Found stack '{}' with status '{}' for teardown", self.params.stack_name, stack_status)
+
         if stack_status == "DELETE_COMPLETE":
             # Stack already deleted
             self.set_state("DeletionCompleted", True)
@@ -233,25 +300,35 @@ class DeleteStackAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "ALREADY_DELETED")
 
-            self.set_complete(
-                f"Stack '{self.params.stack_name}' has been previously deleted"
-            )
+            self.set_complete(f"Stack '{self.params.stack_name}' has been previously deleted")
             return
 
         elif "DELETE_IN_PROGRESS" in stack_status:
-            # Stack deletion already in progress
+            # Stack deletion already in progress (parallel execution or rerun)
             log.info(
-                "Stack '{}' deletion already in progress with status '{}'",
+                "Stack '{}' deletion already in progress with status '{}' (parallel execution)",
                 self.params.stack_name,
                 stack_status,
             )
-            self.set_running(
-                f"Stack '{self.params.stack_name}' deletion already in progress"
-            )
+            self.set_running(f"Stack '{self.params.stack_name}' deletion already in progress")
             return
 
+        elif stack_status in ["CREATE_FAILED", "ROLLBACK_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"]:
+            # Stack is in a failed state - can still be deleted
+            log.info(
+                "Stack '{}' is in failed state '{}' - proceeding with deletion",
+                self.params.stack_name,
+                stack_status,
+            )
+            # Continue to deletion logic below
+
         elif stack_status in self.params.success_statuses:
-            # Stack is in a success status - don't delete
+            # Stack is in a success status - don't delete if configured
+            log.warning(
+                "Stack '{}' has status '{}' which is configured as success - skipping deletion",
+                self.params.stack_name,
+                stack_status,
+            )
             self.set_state("DeletionCompleted", True)
             self.set_state("CompletionTime", util.get_current_timestamp())
             self.set_state("DeletionResult", "SKIPPED_SUCCESS_STATUS")
@@ -259,24 +336,31 @@ class DeleteStackAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "SKIPPED_SUCCESS_STATUS")
 
-            self.set_complete(
-                f"Stack '{self.params.stack_name}' not deleted - status '{stack_status}' is configured as success"
-            )
+            self.set_complete(f"Stack '{self.params.stack_name}' not deleted - status '{stack_status}' is configured as success")
             return
 
         # Initiate stack deletion
         try:
-            log.info("Initiating deletion of stack '{}'", self.params.stack_name)
+            log.info("Initiating teardown deletion of stack '{}'", self.params.stack_name)
             cfn_client.delete_stack(StackName=stack_id)
 
             self.set_state("DeletionInitiated", True)
             self.set_state("DeletionInitiatedTime", util.get_current_timestamp())
 
-            self.set_running(f"Deleting stack '{self.params.stack_name}'")
+            self.set_running(f"Teardown: Deleting stack '{self.params.stack_name}'")
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
+
+            # Handle common teardown errors gracefully
+            if error_code == "ValidationError" and "does not exist" in error_message:
+                # Stack was deleted between status check and delete call
+                log.info("Stack '{}' no longer exists (deleted during execution)", self.params.stack_name)
+                self.set_state("DeletionCompleted", True)
+                self.set_state("DeletionResult", "ALREADY_DELETED")
+                self.set_complete(f"Stack '{self.params.stack_name}' already deleted")
+                return
 
             log.error(
                 "Failed to initiate stack deletion for '{}': {} - {}",
@@ -363,9 +447,7 @@ class DeleteStackAction(BaseAction):
             # Track failed resources if available
             self._track_stack_events(cfn_client)
 
-            self.set_running(
-                f"Stack '{self.params.stack_name}' deletion in progress (status: {stack_status})"
-            )
+            self.set_running(f"Stack '{self.params.stack_name}' deletion in progress (status: {stack_status})")
             return
 
         elif stack_status == "DELETE_FAILED":
@@ -398,9 +480,7 @@ class DeleteStackAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "SKIPPED_SUCCESS_STATUS")
 
-            self.set_complete(
-                f"Stack '{self.params.stack_name}' not deleted - status '{stack_status}' is configured as success"
-            )
+            self.set_complete(f"Stack '{self.params.stack_name}' not deleted - status '{stack_status}' is configured as success")
             return
 
         else:
@@ -419,9 +499,7 @@ class DeleteStackAction(BaseAction):
             self.set_output("DeletionResult", "UNEXPECTED_STATUS")
             self.set_output("UnexpectedStatus", stack_status)
 
-            self.set_failed(
-                f"Stack '{self.params.stack_name}' has unexpected status '{stack_status}'"
-            )
+            self.set_failed(f"Stack '{self.params.stack_name}' has unexpected status '{stack_status}'")
             return
 
         log.trace("DeleteStackAction check completed")
@@ -501,9 +579,7 @@ class DeleteStackAction(BaseAction):
                 raise
 
         except Exception as e:
-            log.error(
-                "Unexpected error describing stack '{}': {}", self.params.stack_name, e
-            )
+            log.error("Unexpected error describing stack '{}': {}", self.params.stack_name, e)
             raise
 
     def _track_stack_events(self, cfn_client):
@@ -526,11 +602,7 @@ class DeleteStackAction(BaseAction):
             for event in events[:10]:
                 recent_events.append(
                     {
-                        "Timestamp": (
-                            event.get("Timestamp").isoformat()
-                            if event.get("Timestamp")
-                            else None
-                        ),
+                        "Timestamp": (event.get("Timestamp").isoformat() if event.get("Timestamp") else None),
                         "LogicalResourceId": event.get("LogicalResourceId"),
                         "ResourceType": event.get("ResourceType"),
                         "ResourceStatus": event.get("ResourceStatus"),
@@ -571,13 +643,9 @@ class DeleteStackAction(BaseAction):
                             "PhysicalResourceId": resource.get("PhysicalResourceId"),
                             "ResourceType": resource.get("ResourceType"),
                             "ResourceStatus": resource_status,
-                            "ResourceStatusReason": resource.get(
-                                "ResourceStatusReason"
-                            ),
+                            "ResourceStatusReason": resource.get("ResourceStatusReason"),
                             "LastUpdatedTimestamp": (
-                                resource.get("LastUpdatedTimestamp").isoformat()
-                                if resource.get("LastUpdatedTimestamp")
-                                else None
+                                resource.get("LastUpdatedTimestamp").isoformat() if resource.get("LastUpdatedTimestamp") else None
                             ),
                         }
                     )
@@ -588,9 +656,9 @@ class DeleteStackAction(BaseAction):
         return failed_resources
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> DeleteStackActionSpec:
-        return DeleteStackActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> DeleteStackActionResource:
+        return DeleteStackActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> DeleteStackActionParams:
-        return DeleteStackActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> DeleteStackActionSpec:
+        return DeleteStackActionSpec(**kwargs)

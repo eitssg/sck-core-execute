@@ -6,7 +6,7 @@ from botocore.exceptions import ClientError
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
+from core_framework.models import DeploymentDetails, ActionResource, ActionSpec
 
 import core_helper.aws as aws
 
@@ -18,7 +18,7 @@ from core_execute.actionlib.action import BaseAction
 ENI_OWNER_HYPERPLANE = "amazon-aws"
 
 
-class DeleteSecurityGroupEnisActionParams(ActionParams):
+class DeleteSecurityGroupEnisActionSpec(ActionSpec):
     """
     Parameters for the DeleteSecurityGroupEnisAction.
 
@@ -37,7 +37,7 @@ class DeleteSecurityGroupEnisActionParams(ActionParams):
     )
 
 
-class DeleteSecurityGroupEnisActionSpec(ActionSpec):
+class DeleteSecurityGroupEnisActionResource(ActionResource):
     """
     Generate the action definition for DeleteSecurityGroupEnisAction.
 
@@ -52,30 +52,20 @@ class DeleteSecurityGroupEnisActionSpec(ActionSpec):
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Validate the parameters for the DeleteSecurityGroupEnisActionSpec.
 
-        :param values: Input values for validation
-        :type values: dict[str, Any]
-        :return: Validated and potentially modified values
-        :rtype: dict[str, Any]
-        """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-deletesecuritygroupenis-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::DeleteSecurityGroupEnis"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "region": "",
-                "security_group_id": "",
-            }
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::DeleteSecurityGroupEnis"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, DeleteSecurityGroupEnisActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -88,7 +78,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
     ENIs appropriately.
 
     :param definition: The action specification containing configuration details
-    :type definition: ActionSpec
+    :type definition: ActionResource
     :param context: The Jinja2 rendering context containing all variables
     :type context: dict[str, Any]
     :param deployment_details: Client/portfolio/app/branch/build information
@@ -102,7 +92,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
     :Spec.Region: The region where the security group is located (required)
     :Spec.SecurityGroupId: The ID of the security group to delete ENIs from (required)
 
-    .. rubric:: ActionSpec Example
+    .. rubric:: ActionResource Example
 
     .. code-block:: yaml
 
@@ -123,14 +113,14 @@ class DeleteSecurityGroupEnisAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
         # Validate and set the parameters
-        self.params = DeleteSecurityGroupEnisActionParams(**definition.params)
+        self.params = DeleteSecurityGroupEnisActionSpec(**definition.spec)
 
     def _resolve(self):
         """
@@ -140,15 +130,9 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         """
         log.trace("Resolving DeleteSecurityGroupEnisAction")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.security_group_id = self.renderer.render_string(
-            self.params.security_group_id, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.security_group_id = self.renderer.render_string(self.params.security_group_id, self.context)
 
         log.trace("DeleteSecurityGroupEnisAction resolved")
 
@@ -180,9 +164,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         self.set_output("Region", self.params.region)
         self.set_output("DeletionStarted", True)
 
-        self.set_running(
-            f"Deleting ENIs attached to security group '{self.params.security_group_id}'"
-        )
+        self.set_running(f"Deleting ENIs attached to security group '{self.params.security_group_id}'")
         self._detach_enis()
 
         log.trace("DeleteSecurityGroupEnisAction execution completed")
@@ -243,9 +225,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         This method handles the core logic of finding, detaching, and deleting ENIs
         while properly handling different ENI states and error conditions.
         """
-        log.trace(
-            "Processing ENIs for security group '{}'", self.params.security_group_id
-        )
+        log.trace("Processing ENIs for security group '{}'", self.params.security_group_id)
 
         # Obtain an EC2 client
         try:
@@ -261,9 +241,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         # Retrieve security group ENIs
         try:
             response = ec2_client.describe_network_interfaces(
-                Filters=[
-                    {"Name": "group-id", "Values": [self.params.security_group_id]}
-                ]
+                Filters=[{"Name": "group-id", "Values": [self.params.security_group_id]}]
             )
             network_interfaces = response["NetworkInterfaces"]
 
@@ -291,9 +269,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                 self.set_output("DeletionCompleted", True)
                 self.set_output("DeletionResult", "SECURITY_GROUP_NOT_FOUND")
 
-                self.set_complete(
-                    f"Security group '{self.params.security_group_id}' not found, no ENIs to delete"
-                )
+                self.set_complete(f"Security group '{self.params.security_group_id}' not found, no ENIs to delete")
                 return
             else:
                 log.error(
@@ -302,9 +278,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                     error_code,
                     error_message,
                 )
-                self.set_failed(
-                    f"Failed to describe network interfaces: {error_message}"
-                )
+                self.set_failed(f"Failed to describe network interfaces: {error_message}")
                 return
 
         except Exception as e:
@@ -348,9 +322,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                 self.set_output("DeletionResult", "SUCCESS")
                 self.set_output("ProcessedEniCount", 0)
 
-                self.set_complete(
-                    f"No ENIs found attached to security group '{self.params.security_group_id}'"
-                )
+                self.set_complete(f"No ENIs found attached to security group '{self.params.security_group_id}'")
                 return
             else:
                 # No more ENIs found - all previous ENIs have been processed
@@ -367,8 +339,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
 
             # Check if this ENI was already processed
             already_processed = any(
-                eni_id == item.get("EniId")
-                for item in (detached_enis + deleted_enis + skipped_enis + failed_enis)
+                eni_id == item.get("EniId") for item in (detached_enis + deleted_enis + skipped_enis + failed_enis)
             )
 
             if already_processed:
@@ -392,9 +363,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                         deleted_enis.append({"EniId": eni_id, "Status": eni_status})
                         in_use_enis.remove(eni_id)  # Remove from in_use tracking
 
-                        log.debug(
-                            "Successfully deleted previously detached ENI '{}'", eni_id
-                        )
+                        log.debug("Successfully deleted previously detached ENI '{}'", eni_id)
 
                     except ClientError as e:
                         error_code = e.response["Error"]["Code"]
@@ -406,12 +375,8 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                             error_code,
                             error_message,
                         )
-                        failed_enis.append(
-                            {"EniId": eni_id, "Error": f"{error_code}: {error_message}"}
-                        )
-                        in_use_enis.remove(
-                            eni_id
-                        )  # Remove from in_use tracking even on failure
+                        failed_enis.append({"EniId": eni_id, "Error": f"{error_code}: {error_message}"})
+                        in_use_enis.remove(eni_id)  # Remove from in_use tracking even on failure
 
                     except Exception as e:
                         log.error(
@@ -420,9 +385,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                             e,
                         )
                         failed_enis.append({"EniId": eni_id, "Error": str(e)})
-                        in_use_enis.remove(
-                            eni_id
-                        )  # Remove from in_use tracking even on failure
+                        in_use_enis.remove(eni_id)  # Remove from in_use tracking even on failure
 
                 continue  # Skip to next ENI
 
@@ -471,9 +434,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
 
                             log.debug("Successfully detached ENI '{}'", eni_id)
                         else:
-                            log.warning(
-                                "ENI '{}' is in-use but has no attachment ID", eni_id
-                            )
+                            log.warning("ENI '{}' is in-use but has no attachment ID", eni_id)
                             failed_enis.append(
                                 {
                                     "EniId": eni_id,
@@ -515,9 +476,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                     error_code,
                     error_message,
                 )
-                failed_enis.append(
-                    {"EniId": eni_id, "Error": f"{error_code}: {error_message}"}
-                )
+                failed_enis.append({"EniId": eni_id, "Error": f"{error_code}: {error_message}"})
 
             except Exception as e:
                 log.error("Unexpected error processing ENI '{}': {}", eni_id, e)
@@ -544,9 +503,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                 len(in_use_enis),
                 in_use_enis,
             )
-            self.set_running(
-                f"Waiting for {len(in_use_enis)} detached ENIs to become available for deletion"
-            )
+            self.set_running(f"Waiting for {len(in_use_enis)} detached ENIs to become available for deletion")
             return
 
         # Operation complete
@@ -590,11 +547,9 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         )
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> DeleteSecurityGroupEnisActionSpec:
-        return DeleteSecurityGroupEnisActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> DeleteSecurityGroupEnisActionResource:
+        return DeleteSecurityGroupEnisActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(
-        cls, **kwargs
-    ) -> DeleteSecurityGroupEnisActionParams:
-        return DeleteSecurityGroupEnisActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> DeleteSecurityGroupEnisActionSpec:
+        return DeleteSecurityGroupEnisActionSpec(**kwargs)

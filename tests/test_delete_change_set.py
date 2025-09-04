@@ -9,8 +9,8 @@ from botocore.exceptions import ClientError
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.delete_change_set import (
+    DeleteChangeSetActionResource,
     DeleteChangeSetActionSpec,
-    DeleteChangeSetActionParams,
 )
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
@@ -43,7 +43,7 @@ def deploy_spec():
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
-    Parameters are fore: DeleteChangeSetActionParams
+    Parameters are fore: DeleteChangeSetActionSpec
     """
     spec: dict[str, Any] = {
         "Spec": {
@@ -54,16 +54,14 @@ def deploy_spec():
         }
     }
 
-    action_spec = DeleteChangeSetActionSpec(**spec)
+    action_resource = DeleteChangeSetActionResource(**spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_spec]}
+    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
 
     return DeploySpec(**deploy_spec)
 
 
-def test_delete_change_set_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_delete_change_set_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
@@ -95,9 +93,7 @@ def test_delete_change_set_action(
                 stack_name = kwargs.get("StackName", "")
 
                 # Test case for non-existent change set
-                if "non-existent" in str(changeset_name) or "non-existent" in str(
-                    stack_name
-                ):
+                if "non-existent" in str(changeset_name) or "non-existent" in str(stack_name):
                     error_response = {
                         "Error": {
                             "Code": "ChangeSetNotFoundException",
@@ -153,9 +149,7 @@ def test_delete_change_set_action(
         task_payload = TaskPayload(**result)
 
         # Validate the flow control in the task payload
-        assert (
-            task_payload.flow_control == "success"
-        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
 
@@ -182,12 +176,7 @@ def test_delete_change_set_action(
         assert state["action-aws-deletechangeset-name/ChangeSetExists"] == True
 
         # Validate output variables
-        outputs = [
-            key
-            for key in state.keys()
-            if key.startswith("action-aws-deletechangeset-name/")
-            and not key.endswith("/state")
-        ]
+        outputs = [key for key in state.keys() if key.startswith("action-aws-deletechangeset-name/") and not key.endswith("/state")]
         assert len(outputs) > 0, "Should have output variables set"
 
     except Exception as e:

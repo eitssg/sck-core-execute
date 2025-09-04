@@ -9,8 +9,8 @@ from botocore.exceptions import ClientError
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.delete_security_group_enis import (
+    DeleteSecurityGroupEnisActionResource,
     DeleteSecurityGroupEnisActionSpec,
-    DeleteSecurityGroupEnisActionParams,
 )
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
@@ -43,7 +43,7 @@ def deploy_spec():
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
-    Parameters are fore: DeleteSecurityGroupEnisActionParams
+    Parameters are fore: DeleteSecurityGroupEnisActionSpec
     """
     spec: dict[str, Any] = {
         "Spec": {
@@ -53,16 +53,14 @@ def deploy_spec():
         }
     }
 
-    action_spec = DeleteSecurityGroupEnisActionSpec(**spec)
+    action_resource = DeleteSecurityGroupEnisActionResource(**spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_spec]}
+    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
 
     return DeploySpec(**deploy_spec)
 
 
-def test_delete_security_group_enis(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -180,18 +178,14 @@ def test_delete_security_group_enis(
         task_payload = TaskPayload(**result)
 
         # Should be complete after internal iterations
-        assert (
-            task_payload.flow_control == "success"
-        ), f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
         action_name = "action-aws-deletesecuritygroupenis-name"
 
         # Verify final completion state
         assert state[f"{action_name}/TotalEnisFound"] == 3
-        assert (
-            state[f"{action_name}/DeletedEniCount"] == 2
-        )  # Both available ENIs deleted
+        assert state[f"{action_name}/DeletedEniCount"] == 2  # Both available ENIs deleted
         assert state[f"{action_name}/DetachedEniCount"] == 1  # One ENI was detached
         assert state[f"{action_name}/SkippedEniCount"] == 1  # Hyperplane ENI skipped
         assert state[f"{action_name}/InUseEniCount"] == 0  # No ENIs waiting anymore
@@ -200,23 +194,17 @@ def test_delete_security_group_enis(
         assert state[f"{action_name}/StatusCode"] == "complete"
 
         # Verify all EC2 operations were called
-        assert (
-            mock_client.describe_network_interfaces.call_count == 2
-        )  # Called in _execute and _check
+        assert mock_client.describe_network_interfaces.call_count == 2  # Called in _execute and _check
         assert mock_client.delete_network_interface.call_count == 2  # Two ENIs deleted
         assert mock_client.detach_network_interface.call_count == 1  # One ENI detached
 
         # Verify specific operation calls
         delete_calls = mock_client.delete_network_interface.call_args_list
         delete_eni_ids = [call[1]["NetworkInterfaceId"] for call in delete_calls]
-        assert (
-            "eni-1234567890abcdef0" in delete_eni_ids
-        )  # Available ENI deleted immediately
+        assert "eni-1234567890abcdef0" in delete_eni_ids  # Available ENI deleted immediately
         assert "eni-0987654321fedcba0" in delete_eni_ids  # Detached ENI deleted later
 
-        mock_client.detach_network_interface.assert_called_with(
-            AttachmentId="eni-attach-1234567890abcdef0", Force=True
-        )
+        mock_client.detach_network_interface.assert_called_with(AttachmentId="eni-attach-1234567890abcdef0", Force=True)
 
         # Verify final state tracking
         deleted_enis = state[f"{action_name}/DeletedEnis"]
@@ -242,9 +230,7 @@ def test_delete_security_group_enis(
         pytest.fail(f"Test failed due to an exception: {e}")
 
 
-def test_delete_security_group_enis_immediate_completion(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_delete_security_group_enis_immediate_completion(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test immediate completion when all ENIs disappear after first iteration"""
 
     try:

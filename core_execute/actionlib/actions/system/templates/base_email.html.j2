@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{% block title %}{{ company_name }}{% endblock %}</title>
+    <style>{% include 'email_styles.css' %}</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            {% block header %}
+                <h1>{{ company_name }}</h1>
+            {% endblock %}
+        </div>
+        
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+        
+        <div class="footer">
+            {% block footer %}
+                {% include 'email_footer.html' %}
+            {% endblock %}
+        </div>
+    </div>
+</body>
+</html>

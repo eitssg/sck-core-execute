@@ -7,8 +7,8 @@ import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.unprotect_elb import (
+    UnprotectELBActionResource,
     UnprotectELBActionSpec,
-    UnprotectELBActionParams,
 )
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
@@ -41,7 +41,7 @@ def deploy_spec():
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     """
-    validated_params = UnprotectELBActionParams(
+    validated_params = UnprotectELBActionSpec(
         **{
             "Account": "123456789012",  # Fixed: 12 digits
             "Region": util.get_region(),
@@ -49,16 +49,12 @@ def deploy_spec():
         }
     )
 
-    action_spec = UnprotectELBActionSpec(
-        Name="unprotect-elb", Spec=validated_params.model_dump()
-    )
+    action_resource = UnprotectELBActionResource(Name="unprotect-elb", Spec=validated_params.model_dump())
 
-    return DeploySpec(actions=[action_spec])
+    return DeploySpec(actions=[action_resource])
 
 
-def test_unprotect_elb(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_unprotect_elb(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the unprotect ELB action successful execution."""
     try:
         # Create mock ELBv2 client (not EC2)
@@ -92,9 +88,7 @@ def test_unprotect_elb(
 
         mock_session.client.return_value = mock_client
 
-        save_actions(
-            task_payload, deploy_spec.actions
-        )  # Fixed: use .actions not .action_specs
+        save_actions(task_payload, deploy_spec.actions)  # Fixed: use .actions not .actions
         save_state(task_payload, {})
 
         # Execute the handler
@@ -107,9 +101,7 @@ def test_unprotect_elb(
 
         # Parse the response back into TaskPayload
         updated_payload = TaskPayload(**response)
-        assert (
-            updated_payload.flow_control == "success"
-        ), "Flow control should be success"
+        assert updated_payload.flow_control == "success", "Flow control should be success"
 
         # Load the saved state to verify completion
         state = load_state(updated_payload)
@@ -135,21 +127,11 @@ def test_unprotect_elb(
             state.get(f"{namespace}/load_balancer_arn")
             == "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-load-balancer/1234567890abcdef"
         )
-        assert (
-            state.get(f"{namespace}/deletion_protection_disabled") == True
-        ), "Should track that protection was disabled"
-        assert (
-            state.get(f"{namespace}/load_balancer_name") == "my-load-balancer"
-        ), "Should capture load balancer name"
-        assert (
-            state.get(f"{namespace}/load_balancer_type") == "application"
-        ), "Should capture load balancer type"
-        assert (
-            state.get(f"{namespace}/load_balancer_scheme") == "internet-facing"
-        ), "Should capture load balancer scheme"
-        assert (
-            state.get(f"{namespace}/load_balancer_state") == "active"
-        ), "Should capture load balancer state"
+        assert state.get(f"{namespace}/deletion_protection_disabled") == True, "Should track that protection was disabled"
+        assert state.get(f"{namespace}/load_balancer_name") == "my-load-balancer", "Should capture load balancer name"
+        assert state.get(f"{namespace}/load_balancer_type") == "application", "Should capture load balancer type"
+        assert state.get(f"{namespace}/load_balancer_scheme") == "internet-facing", "Should capture load balancer scheme"
+        assert state.get(f"{namespace}/load_balancer_state") == "active", "Should capture load balancer state"
 
     except Exception as e:
         traceback.print_exc()
@@ -160,7 +142,7 @@ def test_unprotect_elb_skip_none(task_payload: TaskPayload, mock_session):
     """Test the unprotect ELB action when LoadBalancer is 'none'."""
     try:
         # Create params with 'none' load balancer
-        validated_params = UnprotectELBActionParams(
+        validated_params = UnprotectELBActionSpec(
             **{
                 "Account": "123456789012",
                 "Region": util.get_region(),
@@ -168,11 +150,9 @@ def test_unprotect_elb_skip_none(task_payload: TaskPayload, mock_session):
             }
         )
 
-        action_spec = UnprotectELBActionSpec(
-            Name="unprotect-elb-skip", Spec=validated_params.model_dump()
-        )
+        action_resource = UnprotectELBActionResource(Name="unprotect-elb-skip", Spec=validated_params.model_dump())
 
-        deploy_spec = DeploySpec(actions=[action_spec])
+        deploy_spec = DeploySpec(actions=[action_resource])
 
         # Create mock client (shouldn't be called)
         mock_client = MagicMock()
@@ -187,24 +167,16 @@ def test_unprotect_elb_skip_none(task_payload: TaskPayload, mock_session):
 
         # Parse the response
         updated_payload = TaskPayload(**response)
-        assert (
-            updated_payload.flow_control == "success"
-        ), "Should complete successfully when skipping"
+        assert updated_payload.flow_control == "success", "Should complete successfully when skipping"
 
         # Load state
         state = load_state(updated_payload)
         namespace = "unprotect-elb-skip"
 
         # Verify skipped behavior
-        assert (
-            state.get(f"{namespace}/status") == "skipped"
-        ), "Should have skipped status"
-        assert (
-            state.get(f"{namespace}/load_balancer_arn") == "none"
-        ), "Should track 'none' value"
-        assert (
-            state.get(f"{namespace}/deletion_protection_disabled") == False
-        ), "Should not have disabled protection"
+        assert state.get(f"{namespace}/status") == "skipped", "Should have skipped status"
+        assert state.get(f"{namespace}/load_balancer_arn") == "none", "Should track 'none' value"
+        assert state.get(f"{namespace}/deletion_protection_disabled") == False, "Should not have disabled protection"
 
         # Verify no ELB API calls were made
         mock_client.describe_load_balancers.assert_not_called()
@@ -215,17 +187,13 @@ def test_unprotect_elb_skip_none(task_payload: TaskPayload, mock_session):
         pytest.fail(f"Test failed with exception: {e}")
 
 
-def test_unprotect_elb_not_found(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_unprotect_elb_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the unprotect ELB action when load balancer is not found."""
     try:
         # Create mock client that returns no load balancers
         mock_client = MagicMock()
 
-        mock_client.describe_load_balancers.return_value = {
-            "LoadBalancers": []
-        }  # Empty list = load balancer not found
+        mock_client.describe_load_balancers.return_value = {"LoadBalancers": []}  # Empty list = load balancer not found
 
         mock_session.client.return_value = mock_client
 
@@ -238,9 +206,7 @@ def test_unprotect_elb_not_found(
 
         # Parse the response
         updated_payload = TaskPayload(**response)
-        assert (
-            updated_payload.flow_control == "failure"
-        ), "Should fail when load balancer not found"
+        assert updated_payload.flow_control == "failure", "Should fail when load balancer not found"
 
         # Load state
         state = load_state(updated_payload)
@@ -248,12 +214,8 @@ def test_unprotect_elb_not_found(
 
         # Verify error handling
         assert state.get(f"{namespace}/status") == "error", "Should have error status"
-        assert (
-            "not found" in state.get(f"{namespace}/error_message", "").lower()
-        ), "Error should mention load balancer not found"
-        assert (
-            state.get(f"{namespace}/deletion_protection_disabled") == False
-        ), "Should not have disabled protection"
+        assert "not found" in state.get(f"{namespace}/error_message", "").lower(), "Error should mention load balancer not found"
+        assert state.get(f"{namespace}/deletion_protection_disabled") == False, "Should not have disabled protection"
 
         # Verify modify_load_balancer_attributes was NOT called
         mock_client.modify_load_balancer_attributes.assert_not_called()

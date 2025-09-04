@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
+from core_framework.models import DeploymentDetails, ActionResource, ActionSpec
 
 from core_execute.actionlib.action import BaseAction
 
 
-class NoOpActionParams(ActionParams):
+class NoOpActionSpec(ActionSpec):
     """Parameters for the NoOpAction"""
 
     @model_validator(mode="before")
@@ -26,28 +26,25 @@ class NoOpActionParams(ActionParams):
         return values
 
 
-class NoOpActionSpec(ActionSpec):
+class NoOpActionResource(ActionResource):
     """Generate the action specification for the NoOp action"""
 
     @model_validator(mode="before")
-    def validate_params(cls, values) -> dict:
+    @classmethod
+    def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
 
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-system-noop-name"
+        if not isinstance(values, dict):
+            return values
 
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "SYSTEM::NoOp"
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "SYSTEM::NoOp"
 
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {}
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, NoOpActionSpec):
+            values["spec"] = spec.model_dump()
 
         return values
 
@@ -60,7 +57,7 @@ class NoOpAction(BaseAction):
     Attributes:
         Kind: Use the value: ``SYSTEM::NoOp``
 
-    .. rubric: ActionSpec:
+    .. rubric: ActionResource:
 
     .. tip:: s3:/<bucket>/artfacts/<deployment_details>/{task}.actions:
 
@@ -75,21 +72,21 @@ class NoOpAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.params = NoOpActionParams(**definition.params)
+        self.params = NoOpActionSpec(**definition.spec)
 
     @classmethod
-    def generate_spec(cls, action_spec: dict) -> ActionSpec:
+    def generate_spec(cls, action_resource: dict) -> ActionResource:
         """
         Return the action specification for the NoOp action
         This will be a generic class method called from the helper or action factory.
         """
-        return NoOpActionSpec(**action_spec)
+        return NoOpActionResource(**action_resource)
 
     def _execute(self):
 
@@ -150,9 +147,9 @@ class NoOpAction(BaseAction):
         pass
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> NoOpActionSpec:
-        return NoOpActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> NoOpActionResource:
+        return NoOpActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> NoOpActionParams:
-        return NoOpActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> NoOpActionSpec:
+        return NoOpActionSpec(**kwargs)

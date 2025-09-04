@@ -6,8 +6,8 @@ import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.put_event import (
+    PutEventActionResource,
     PutEventActionSpec,
-    PutEventActionParams,
 )
 
 from core_execute.execute import save_state, save_actions, load_state
@@ -47,17 +47,17 @@ def deploy_spec():
     }
 
     # validate the params here before we run the action
-    validated_params = PutEventActionParams(**params)
+    validated_params = PutEventActionSpec(**params)
 
     # Define the action specification
-    action_spec = PutEventActionSpec(
+    action_resource = PutEventActionResource(
         Name="event-namespace:action/test-put-event",
         Kind="AWS::PutEvent",
         Spec=validated_params.model_dump(),
         Scope="build",
     )
 
-    return DeploySpec(Actions=[action_spec])
+    return DeploySpec(Actions=[action_resource])
 
 
 def test_put_event_action_success(task_payload: TaskPayload, deploy_spec: DeploySpec):
@@ -120,9 +120,7 @@ def test_put_event_action_success(task_payload: TaskPayload, deploy_spec: Deploy
         pytest.fail(f"Test failed due to exception: {e}")
 
 
-def test_put_event_action_database_error(
-    task_payload: TaskPayload, deploy_spec: DeploySpec
-):
+def test_put_event_action_database_error(task_payload: TaskPayload, deploy_spec: DeploySpec):
     """Test the put event action when database operation fails."""
 
     try:
@@ -163,21 +161,14 @@ def test_put_event_action_database_error(
                 assert action_state.get("error_message") == "Database connection failed"
                 assert action_state.get("event_type") == "STATUS"
                 assert action_state.get("event_status") == "SUCCESS"
-                assert (
-                    action_state.get("event_message")
-                    == "Deployment completed successfully"
-                )
+                assert action_state.get("event_message") == "Deployment completed successfully"
                 assert action_state.get("event_identity") == "prn:my-portfolio:my-app"
                 assert action_state.get("error_time") is not None
 
                 # Verify error outputs
                 assert action_outputs.get("status") == "error"
-                assert (
-                    action_outputs.get("error_message") == "Database connection failed"
-                )
-                assert "Failed to save event to database" in action_outputs.get(
-                    "message", ""
-                )
+                assert action_outputs.get("error_message") == "Database connection failed"
+                assert "Failed to save event to database" in action_outputs.get("message", "")
                 assert action_outputs.get("error_time") is not None
 
     except Exception as e:
@@ -198,7 +189,7 @@ def test_put_event_action_invalid_type(task_payload: TaskPayload):
             "Identity": "prn:my-portfolio:my-app",
         }
 
-        action_spec = PutEventActionSpec(
+        action_resource = PutEventActionResource(
             **{
                 "name": "test-put-event-invalid",
                 "kind": "AWS::PutEvent",
@@ -206,7 +197,7 @@ def test_put_event_action_invalid_type(task_payload: TaskPayload):
                 "scope": "build",
             }
         )
-        deploy_spec = DeploySpec(**{"actions": [action_spec]})
+        deploy_spec = DeploySpec(**{"actions": [action_resource]})
 
         # Mock the EventActions.create method (shouldn't be called for real.  No DynamoDB is running)
         with patch("core_db.event.actions.EventActions.create") as mock_create:
@@ -272,7 +263,7 @@ def test_put_event_action_different_types(task_payload: TaskPayload):
                 "Identity": "prn:my-portfolio:my-app",
             }
 
-            action_spec = PutEventActionSpec(
+            action_resource = PutEventActionResource(
                 **{
                     "name": f"test-put-event-{event_type.lower()}",
                     "kind": "AWS::PutEvent",
@@ -280,7 +271,7 @@ def test_put_event_action_different_types(task_payload: TaskPayload):
                     "scope": "build",
                 }
             )
-            deploy_spec = DeploySpec(**{"actions": [action_spec]})
+            deploy_spec = DeploySpec(**{"actions": [action_resource]})
 
             # Mock the EventActions.create method
             with patch("core_db.event.actions.EventActions.create") as mock_create:
@@ -294,12 +285,8 @@ def test_put_event_action_different_types(task_payload: TaskPayload):
                 response = execute_handler(event, None)
 
                 # Verify the response
-                assert (
-                    response is not None
-                ), f"Response should not be None for {event_type}"
-                assert isinstance(
-                    response, dict
-                ), f"Response should be a dictionary for {event_type}"
+                assert response is not None, f"Response should not be None for {event_type}"
+                assert isinstance(response, dict), f"Response should be a dictionary for {event_type}"
 
                 # Verify EventActions.create was called with correct parameters
                 mock_create.assert_called_once_with(
@@ -315,6 +302,4 @@ def test_put_event_action_different_types(task_payload: TaskPayload):
         except Exception as e:
             print(f"An error occurred testing {event_type}: {e}")
             traceback.print_exc()
-            pytest.fail(
-                f"Test failed for event type {event_type} due to exception: {e}"
-            )
+            pytest.fail(f"Test failed for event type {event_type} due to exception: {e}")

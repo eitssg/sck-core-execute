@@ -5,12 +5,12 @@ from botocore.exceptions import ClientError
 import core_logging as log
 import core_framework as util
 
-from core_framework.models import ActionSpec, ActionParams, DeploymentDetails
+from core_framework.models import ActionResource, ActionSpec, DeploymentDetails
 from core_execute.actionlib.action import BaseAction
 import core_helper.aws as aws
 
 
-class DeleteChangeSetActionParams(ActionParams):
+class DeleteChangeSetActionSpec(ActionSpec):
     """Parameters for the DeleteChangeSetAction
 
     This class defines the parameters that can be used in the action.
@@ -21,34 +21,29 @@ class DeleteChangeSetActionParams(ActionParams):
         alias="StackName",
         description="The name of the stack containing the change set",
     )
-    change_set_name: str = Field(
-        ..., alias="ChangeSetName", description="The name of the change set to delete"
-    )
+    change_set_name: str = Field(..., alias="ChangeSetName", description="The name of the change set to delete")
 
 
-class DeleteChangeSetActionSpec(ActionSpec):
+class DeleteChangeSetActionResource(ActionResource):
     """Generate the action definition"""
 
     @model_validator(mode="before")
+    @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Validate the parameters for the DeleteChangeSetActionSpec"""
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-deletechangeset-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::DeleteChangeSet"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "region": "",
-                "stack_name": "",
-                "change_set_name": "",
-            }
+
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::DeleteChangeSet"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, DeleteChangeSetActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -61,7 +56,7 @@ class DeleteChangeSetAction(BaseAction):
 
     Kind: Use the value: ``AWS::DeleteChangeSet``
 
-    .. rubric: ActionSpec:
+    .. rubric: ActionResource:
 
     .. tip:: s3:/<bucket>/artifacts/<deployment_details>/{task}.actions:
 
@@ -92,13 +87,13 @@ class DeleteChangeSetAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.params = DeleteChangeSetActionParams(**definition.params)
+        self.params = DeleteChangeSetActionSpec(**definition.spec)
 
     def _resolve(self):
         """
@@ -108,18 +103,10 @@ class DeleteChangeSetAction(BaseAction):
         """
         log.trace("Resolving DeleteChangeSetAction")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.stack_name = self.renderer.render_string(
-            self.params.stack_name, self.context
-        )
-        self.params.change_set_name = self.renderer.render_string(
-            self.params.change_set_name, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
+        self.params.change_set_name = self.renderer.render_string(self.params.change_set_name, self.context)
 
         log.trace("DeleteChangeSetAction resolved")
 
@@ -210,9 +197,7 @@ class DeleteChangeSetAction(BaseAction):
                     error_code,
                     error_message,
                 )
-                self.set_failed(
-                    f"Failed to check change set '{self.params.change_set_name}': {error_message}"
-                )
+                self.set_failed(f"Failed to check change set '{self.params.change_set_name}': {error_message}")
                 return
 
         except Exception as e:
@@ -221,9 +206,7 @@ class DeleteChangeSetAction(BaseAction):
                 self.params.change_set_name,
                 e,
             )
-            self.set_failed(
-                f"Unexpected error checking change set '{self.params.change_set_name}': {e}"
-            )
+            self.set_failed(f"Unexpected error checking change set '{self.params.change_set_name}': {e}")
             return
 
         self.set_state("ChangeSetExists", change_set_exists)
@@ -290,9 +273,7 @@ class DeleteChangeSetAction(BaseAction):
                     )
                     self.set_state("DeletionResult", "FAILED")
                     self.set_state("FailureReason", f"{error_code}: {error_message}")
-                    self.set_failed(
-                        f"Failed to delete change set '{self.params.change_set_name}': {error_message}"
-                    )
+                    self.set_failed(f"Failed to delete change set '{self.params.change_set_name}': {error_message}")
 
             except Exception as e:
                 log.error(
@@ -302,9 +283,7 @@ class DeleteChangeSetAction(BaseAction):
                 )
                 self.set_state("DeletionResult", "FAILED")
                 self.set_state("FailureReason", str(e))
-                self.set_failed(
-                    f"Unexpected error deleting change set '{self.params.change_set_name}': {e}"
-                )
+                self.set_failed(f"Unexpected error deleting change set '{self.params.change_set_name}': {e}")
         else:
             # Change set doesn't exist - treat as successful deletion
             log.info(
@@ -335,9 +314,7 @@ class DeleteChangeSetAction(BaseAction):
         log.trace("DeleteChangeSetAction check")
 
         # Change set deletion is synchronous, so this shouldn't be called
-        self.set_failed(
-            "Internal error - _check() should not have been called for change set deletion"
-        )
+        self.set_failed("Internal error - _check() should not have been called for change set deletion")
 
     def _unexecute(self):
         """
@@ -355,9 +332,7 @@ class DeleteChangeSetAction(BaseAction):
         )
 
         self.set_state("RollbackResult", "NOT_POSSIBLE")
-        self.set_complete(
-            f"Change set deletion cannot be rolled back - '{self.params.change_set_name}' would need to be recreated"
-        )
+        self.set_complete(f"Change set deletion cannot be rolled back - '{self.params.change_set_name}' would need to be recreated")
 
         log.trace("DeleteChangeSetAction unexecution completed")
 
@@ -376,9 +351,9 @@ class DeleteChangeSetAction(BaseAction):
         log.trace("DeleteChangeSetAction cancellation completed")
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> DeleteChangeSetActionSpec:
-        return DeleteChangeSetActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> DeleteChangeSetActionResource:
+        return DeleteChangeSetActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> DeleteChangeSetActionParams:
-        return DeleteChangeSetActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> DeleteChangeSetActionSpec:
+        return DeleteChangeSetActionSpec(**kwargs)

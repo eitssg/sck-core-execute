@@ -1,0 +1,52 @@
+🔒 PASSWORD SUCCESSFULLY UPDATED 🔒
+
+Hello {{ user_name|title }},
+
+🛡️ SECURITY UPDATE CONFIRMATION
+================================
+Your password for {{ company_name }} has been successfully updated. This change helps keep your account secure and protected.
+
+📋 UPDATE DETAILS
+=================
+Account: {{ user_name }}
+Date & Time: {{ update_date }} at {{ update_time }}
+{% if ip_address %}IP Address: {{ ip_address }}{% endif %}
+{% if user_agent %}Device: {{ user_agent }}{% endif %}
+
+⚠️ DID YOU MAKE THIS CHANGE?
+=============================
+If this was you: No further action is required. You can continue using your account normally with your new password.
+
+🚨 IF THIS WASN'T YOU - TAKE ACTION IMMEDIATELY!
+================================================
+If you did NOT change your password:
+
+• Someone may have unauthorized access to your account
+• Contact our support team immediately: {{ support_email }}
+• Do not ignore this email - your account security may be compromised  
+• We will help you secure your account and investigate the unauthorized access
+
+URGENT CONTACT: {{ support_email }}
+Subject: URGENT: Unauthorized Password Change - {{ user_name }}
+
+🔐 SECURITY TIPS
+================
+• Use a strong, unique password for your {{ company_name }} account
+• Enable two-factor authentication if available
+• Never share your password with anyone
+• Monitor your account for any suspicious activity
+• Log out from shared devices after use
+
+🔑 SIGN IN TO YOUR ACCOUNT
+==========================
+Visit: {{ login_url }}
+
+If you have any questions about your account security, please contact our support team at {{ support_email }}.
+
+Best regards,
+{{ company_name }} Security Team
+
+---
+Contact Support: {{ support_email }}
+This security notification was sent to ensure your account safety.
+This is an automated security message. Please do not reply to this email.

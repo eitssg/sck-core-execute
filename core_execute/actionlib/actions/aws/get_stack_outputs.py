@@ -8,12 +8,12 @@ import core_logging as log
 
 import core_framework as util
 import core_helper.aws as aws
-from core_framework.models import DeploymentDetails, ActionSpec, ActionParams
+from core_framework.models import DeploymentDetails, ActionResource, ActionSpec
 
 from core_execute.actionlib.action import BaseAction
 
 
-class GetStackOutputsActionParams(ActionParams):
+class GetStackOutputsActionSpec(ActionSpec):
     """
     Parameters for the GetStackOutputsAction.
 
@@ -34,7 +34,7 @@ class GetStackOutputsActionParams(ActionParams):
     )
 
 
-class GetStackOutputsActionSpec(ActionSpec):
+class GetStackOutputsActionResource(ActionResource):
     """
     Action specification for the GetStackOutputs action.
 
@@ -42,31 +42,22 @@ class GetStackOutputsActionSpec(ActionSpec):
     """
 
     @model_validator(mode="before")
+    @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Validate and set default parameters for the GetStackOutputsActionSpec.
 
-        :param values: Input values dictionary.
-        :type values: dict[str, Any]
-        :return: Validated values with defaults applied.
-        :rtype: dict[str, Any]
-        """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-getstackoutputs-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::GetStackOutputs"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "region": "",
-                "stack_name": "",
-            }
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::GetStackOutputs"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, GetStackOutputsActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -83,7 +74,7 @@ class GetStackOutputsAction(BaseAction):
 
     Attributes
     ----------
-    params : GetStackOutputsActionParams
+    params : GetStackOutputsActionSpec
         Validated parameters for the action.
 
     Parameters
@@ -99,7 +90,7 @@ class GetStackOutputsAction(BaseAction):
 
     Examples
     --------
-    ActionSpec YAML configuration:
+    ActionResource YAML configuration:
 
     .. code-block:: yaml
 
@@ -122,7 +113,7 @@ class GetStackOutputsAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
@@ -130,7 +121,7 @@ class GetStackOutputsAction(BaseAction):
         Initialize the GetStackOutputsAction.
 
         :param definition: The action specification definition.
-        :type definition: ActionSpec
+        :type definition: ActionResource
         :param context: Execution context for variable resolution.
         :type context: dict[str, Any]
         :param deployment_details: Details about the current deployment.
@@ -140,7 +131,7 @@ class GetStackOutputsAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = GetStackOutputsActionParams(**definition.params)
+        self.params = GetStackOutputsActionSpec(**definition.spec)
 
     def _execute(self):
         """
@@ -161,9 +152,7 @@ class GetStackOutputsAction(BaseAction):
         self.set_state("account", self.params.account)
         self.set_state("region", self.params.region)
 
-        self.set_running(
-            f"Retrieving outputs from CloudFormation stack '{self.params.stack_name}'"
-        )
+        self.set_running(f"Retrieving outputs from CloudFormation stack '{self.params.stack_name}'")
 
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
@@ -172,19 +161,13 @@ class GetStackOutputsAction(BaseAction):
         )
 
         try:
-            describe_stack_response = cfn_client.describe_stacks(
-                StackName=self.params.stack_name
-            )
+            describe_stack_response = cfn_client.describe_stacks(StackName=self.params.stack_name)
             stack = describe_stack_response["Stacks"][0]
 
             # Extract stack information
             stack_id = stack["StackId"]
             stack_status = stack["StackStatus"]
-            creation_time = (
-                stack.get("CreationTime", "").isoformat()
-                if stack.get("CreationTime")
-                else ""
-            )
+            creation_time = stack.get("CreationTime", "").isoformat() if stack.get("CreationTime") else ""
 
             # Save comprehensive state
             completion_time = util.get_current_timestamp()
@@ -213,9 +196,7 @@ class GetStackOutputsAction(BaseAction):
                 f"Successfully retrieved {outputs_count} outputs from stack '{self.params.stack_name}'",
             )
 
-            self.set_complete(
-                f"Retrieved {outputs_count} outputs from stack '{self.params.stack_name}'"
-            )
+            self.set_complete(f"Retrieved {outputs_count} outputs from stack '{self.params.stack_name}'")
 
         except ClientError as e:
             completion_time = util.get_current_timestamp()
@@ -309,15 +290,9 @@ class GetStackOutputsAction(BaseAction):
         """
         log.trace("GetStackOutputsAction._resolve()")
 
-        self.params.account = self.renderer.render_string(
-            self.params.account, self.context
-        )
-        self.params.region = self.renderer.render_string(
-            self.params.region, self.context
-        )
-        self.params.stack_name = self.renderer.render_string(
-            self.params.stack_name, self.context
-        )
+        self.params.account = self.renderer.render_string(self.params.account, self.context)
+        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
 
         log.trace("GetStackOutputsAction._resolve() complete")
 
@@ -359,9 +334,9 @@ class GetStackOutputsAction(BaseAction):
         return outputs_count
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> GetStackOutputsActionSpec:
-        return GetStackOutputsActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> GetStackOutputsActionResource:
+        return GetStackOutputsActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> GetStackOutputsActionParams:
-        return GetStackOutputsActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> GetStackOutputsActionSpec:
+        return GetStackOutputsActionSpec(**kwargs)

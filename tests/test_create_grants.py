@@ -7,7 +7,7 @@ import core_framework as util
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.kms.create_grants import CreateGrantsActionSpec
+from core_execute.actionlib.actions.aws.kms.create_grants import CreateGrantsActionResource
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
@@ -50,16 +50,14 @@ def deploy_spec():
         }
     }
 
-    action_spec = CreateGrantsActionSpec(**spec)
+    action_resource = CreateGrantsActionResource(**spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_spec]}
+    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
 
     return DeploySpec(**deploy_spec)
 
 
-def test_lambda_handler(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
@@ -88,7 +86,7 @@ def test_lambda_handler(
 
         mock_session.client.return_value = mock_kms_client
 
-        save_actions(task_payload, deploy_spec.action_specs)
+        save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
         # Create TaskPayload instance from the payload data.  This validates the structure and populates defauluts.
@@ -103,38 +101,28 @@ def test_lambda_handler(
 
         assert task_payload.task == "deploy"
 
-        assert (
-            task_payload.flow_control == "success"
-        ), "Expected flow_control to be 'success'"
+        assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
 
         state = load_state(task_payload)
 
         assert state is not None, "Expected state to be loaded successfully"
 
-        assert (
-            "action-aws-kms-creategrants-name/GrantIds" in state
-        ), "Expected GrantId to be set in state"
+        assert "action-aws-kms-creategrants-name/GrantIds" in state, "Expected GrantId to be set in state"
 
         assert (
             "example-grant-id" in state["action-aws-kms-creategrants-name/GrantIds"]
         ), "Expected GrantIds to be ['example-grant-id']"
 
-        assert (
-            "action-aws-kms-creategrants-name/GrantTokens" in state
-        ), "Expected GrantTokens to be set in state"
+        assert "action-aws-kms-creategrants-name/GrantTokens" in state, "Expected GrantTokens to be set in state"
 
         assert (
-            "example-grant-token"
-            in state["action-aws-kms-creategrants-name/GrantTokens"]
+            "example-grant-token" in state["action-aws-kms-creategrants-name/GrantTokens"]
         ), "Expected GrantToken to be ['example-grant-token']"
 
-        assert (
-            "action-aws-kms-creategrants-name/KmsKeyId" in state
-        ), "Expected KeyId to be set in state"
+        assert "action-aws-kms-creategrants-name/KmsKeyId" in state, "Expected KeyId to be set in state"
 
         assert (
-            state["action-aws-kms-creategrants-name/KmsKeyId"]
-            == "kms-key-id-1234567890abcdef"
+            state["action-aws-kms-creategrants-name/KmsKeyId"] == "kms-key-id-1234567890abcdef"
         ), "Expected KeyId to be 'kms-key-id-1234567890abcdef'"
 
     except Exception as e:

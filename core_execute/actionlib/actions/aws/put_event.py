@@ -6,14 +6,14 @@ from pydantic import Field, model_validator
 import core_logging as log
 import core_framework as util
 
-from core_framework.models import ActionSpec, DeploymentDetails, ActionParams
+from core_framework.models import ActionResource, DeploymentDetails, ActionSpec
 
 from core_execute.actionlib.action import BaseAction
 
 from core_db.event.actions import EventActions
 
 
-class PutEventActionParams(ActionParams):
+class PutEventActionSpec(ActionSpec):
     """
     Parameters for the PutEventAction.
 
@@ -66,7 +66,7 @@ class PutEventActionParams(ActionParams):
         return values
 
 
-class PutEventActionSpec(ActionSpec):
+class PutEventActionResource(ActionResource):
     """
     Action specification for the PutEvent action.
 
@@ -74,32 +74,21 @@ class PutEventActionSpec(ActionSpec):
     """
 
     @model_validator(mode="before")
+    @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Validate and set default parameters for the PutEventActionSpec.
 
-        :param values: Input values dictionary.
-        :type values: dict[str, Any]
-        :return: Validated values with defaults applied.
-        :rtype: dict[str, Any]
-        """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-putevent-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::PutEvent"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "Type": "INFO",
-                "Status": "",
-                "Message": "",
-                "Identity": None,
-            }
+        if not isinstance(values, dict):
+            return values
+
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::PutEvent"
+
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, PutEventActionSpec):
+            values["spec"] = spec.model_dump()
 
         return values
 
@@ -117,7 +106,7 @@ class PutEventAction(BaseAction):
 
     Attributes
     ----------
-    params : PutEventActionParams
+    params : PutEventActionSpec
         Validated parameters for the action.
 
     Parameters
@@ -136,7 +125,7 @@ class PutEventAction(BaseAction):
 
     Examples
     --------
-    ActionSpec YAML configuration:
+    ActionResource YAML configuration:
 
     .. code-block:: yaml
 
@@ -169,7 +158,7 @@ class PutEventAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
@@ -177,7 +166,7 @@ class PutEventAction(BaseAction):
         Initialize the PutEventAction.
 
         :param definition: The action specification definition.
-        :type definition: ActionSpec
+        :type definition: ActionResource
         :param context: Execution context for variable resolution.
         :type context: dict[str, Any]
         :param deployment_details: Details about the current deployment.
@@ -187,7 +176,7 @@ class PutEventAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = PutEventActionParams(**definition.params)
+        self.params = PutEventActionSpec(**definition.spec)
 
         self.item_type = deployment_details.scope
 
@@ -204,9 +193,7 @@ class PutEventAction(BaseAction):
 
         # Create a unique timestamp label for this event instance
         start_time = util.get_current_timestamp()
-        datetime_label = start_time.replace(":", "-").replace(
-            ".", "-"
-        )  # Make filesystem/key safe
+        datetime_label = start_time.replace(":", "-").replace(".", "-")  # Make filesystem/key safe
 
         # Track this event instance in general state
         self.set_state("last_event_time", start_time)
@@ -232,9 +219,7 @@ class PutEventAction(BaseAction):
                 log.error(self.params.message, identity=self.params.identity)
             else:
                 log.fatal("Invalid event type: {}", t)
-                raise ValueError(
-                    f"Invalid event type: {t}.  Must be one of: STATUS, DEBUG, INFO, WARN, ERROR"
-                )
+                raise ValueError(f"Invalid event type: {t}.  Must be one of: STATUS, DEBUG, INFO, WARN, ERROR")
 
             event = EventActions.create(
                 self.params.identity,
@@ -273,9 +258,7 @@ class PutEventAction(BaseAction):
             self.set_state("status", "error")
             self.set_state("error_time", error_time)
             self.set_state("error_message", error_message)
-            self.set_state(
-                "message", f"Failed to save event to database: {error_message}"
-            )
+            self.set_state("message", f"Failed to save event to database: {error_message}")
 
             log.error("Failed to save event to database: {}", e)
             self.set_failed("Failed to save event to database")
@@ -324,22 +307,16 @@ class PutEventAction(BaseAction):
         log.trace("PutEventAction._resolve()")
 
         self.params.type = self.renderer.render_string(self.params.type, self.context)
-        self.params.status = self.renderer.render_string(
-            self.params.status, self.context
-        )
-        self.params.message = self.renderer.render_string(
-            self.params.message, self.context
-        )
-        self.params.identity = self.renderer.render_string(
-            self.params.identity, self.context
-        )
+        self.params.status = self.renderer.render_string(self.params.status, self.context)
+        self.params.message = self.renderer.render_string(self.params.message, self.context)
+        self.params.identity = self.renderer.render_string(self.params.identity, self.context)
 
         log.trace("PutEventAction._resolve() complete")
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> PutEventActionSpec:
-        return PutEventActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> PutEventActionResource:
+        return PutEventActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> PutEventActionParams:
-        return PutEventActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> PutEventActionSpec:
+        return PutEventActionSpec(**kwargs)

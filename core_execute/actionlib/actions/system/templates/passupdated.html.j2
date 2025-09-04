@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Updated - {{ company_name }}</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; 
+            line-height: 1.6; 
+            margin: 0; 
+            padding: 20px; 
+            background-color: #f8f9fa; 
+            color: #333;
+        }
+        .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            background: white; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            overflow: hidden;
+        }
+        .header { 
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%); 
+            color: white; 
+            text-align: center; 
+            padding: 40px 30px;
+        }
+        .header h1 { 
+            margin: 0; 
+            font-size: 26px; 
+            font-weight: 600;
+        }
+        .header p { 
+            margin: 10px 0 0 0; 
+            opacity: 0.9; 
+            font-size: 16px;
+        }
+        .content { 
+            padding: 40px 30px;
+        }
+        .security-notice { 
+            background: #d1ecf1; 
+            border-left: 4px solid #0c5460; 
+            padding: 20px; 
+            margin: 25px 0; 
+            border-radius: 0 8px 8px 0;
+        }
+        .security-notice h3 {
+            margin-top: 0;
+            color: #0c5460;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .warning-box { 
+            background: #fff3cd; 
+            border: 2px solid #ffc107; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin: 25px 0;
+        }
+        .warning-box h3 {
+            margin-top: 0;
+            color: #856404;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .alert-box { 
+            background: #f8d7da; 
+            border: 2px solid #dc3545; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin: 25px 0;
+        }
+        .alert-box h3 {
+            margin-top: 0;
+            color: #721c24;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .button { 
+            display: inline-block; 
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); 
+            color: white; 
+            padding: 15px 30px; 
+            text-decoration: none; 
+            border-radius: 8px; 
+            font-weight: 600; 
+            margin: 20px 0; 
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(220,53,69,0.3);
+        }
+        .success-button { 
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%); 
+            box-shadow: 0 2px 4px rgba(40,167,69,0.3);
+        }
+        .details-table {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #e9ecef;
+        }
+        .details-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .details-table td {
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .details-table td:first-child {
+            font-weight: 600;
+            color: #495057;
+            width: 30%;
+        }
+        .footer { 
+            background: #f8f9fa; 
+            padding: 30px; 
+            text-align: center; 
+            border-top: 1px solid #e9ecef;
+        }
+        .footer p { 
+            margin: 5px 0; 
+            color: #6c757d; 
+            font-size: 14px;
+        }
+        @media (max-width: 600px) {
+            .container { 
+                margin: 10px; 
+                border-radius: 8px;
+            }
+            .header, .content, .footer { 
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔒 Password Successfully Updated</h1>
+            <p>Your account security has been enhanced</p>
+        </div>
+        
+        <div class="content">
+            <p>Hello <strong>{{ user_name|title }}</strong>,</p>
+            
+            <div class="security-notice">
+                <h3>🛡️ Security Update Confirmation</h3>
+                <p>Your password for <strong>{{ company_name }}</strong> has been successfully updated. This change helps keep your account secure and protected.</p>
+            </div>
+
+            <div class="details-table">
+                <h4>📋 Update Details</h4>
+                <table>
+                    <tr>
+                        <td>Account:</td>
+                        <td>{{ user_name }}</td>
+                    </tr>
+                    <tr>
+                        <td>Date & Time:</td>
+                        <td>{{ update_date }} at {{ update_time }}</td>
+                    </tr>
+                    {% if ip_address %}
+                    <tr>
+                        <td>IP Address:</td>
+                        <td>{{ ip_address }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if user_agent %}
+                    <tr>
+                        <td>Device:</td>
+                        <td>{{ user_agent }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+
+            <div class="warning-box">
+                <h3>⚠️ Did You Make This Change?</h3>
+                <p><strong>If this was you:</strong> No further action is required. You can continue using your account normally with your new password.</p>
+            </div>
+
+            <div class="alert-box">
+                <h3>🚨 If This Wasn't You - Take Action Immediately!</h3>
+                <p><strong>If you did NOT change your password:</strong></p>
+                <ul>
+                    <li>Someone may have unauthorized access to your account</li>
+                    <li>Contact our support team immediately using the button below</li>
+                    <li>Do not ignore this email - your account security may be compromised</li>
+                    <li>We will help you secure your account and investigate the unauthorized access</li>
+                </ul>
+                
+                <div style="text-align: center; margin: 20px 0;">
+                    <a href="mailto:{{ support_email }}?subject=URGENT: Unauthorized Password Change - {{ user_name }}&body=I did not authorize the password change that occurred on {{ update_date }} at {{ update_time }}. Please help me secure my account immediately." class="button">
+                        🆘 Report Unauthorized Access
+                    </a>
+                </div>
+            </div>
+
+            <div class="security-notice">
+                <h3>🔐 Security Tips</h3>
+                <ul>
+                    <li><strong>Use a strong, unique password</strong> for your {{ company_name }} account</li>
+                    <li><strong>Enable two-factor authentication</strong> if available</li>
+                    <li><strong>Never share your password</strong> with anyone</li>
+                    <li><strong>Monitor your account</strong> for any suspicious activity</li>
+                    <li><strong>Log out from shared devices</strong> after use</li>
+                </ul>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{{ login_url }}" class="button success-button">
+                    🔑 Sign In to Your Account
+                </a>
+            </div>
+
+            <p>If you have any questions about your account security, please don't hesitate to contact our support team at <a href="mailto:{{ support_email }}">{{ support_email }}</a>.</p>
+        </div>
+
+        <div class="footer">
+            <p><strong>{{ company_name }} Security Team</strong></p>
+            <p>Contact Support: <a href="mailto:{{ support_email }}">{{ support_email }}</a></p>
+            <p>This security notification was sent to ensure your account safety.</p>
+            <p><em>This is an automated security message. Please do not reply to this email.</em></p>
+        </div>
+    </div>
+</body>
+</html>

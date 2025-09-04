@@ -7,8 +7,8 @@ from core_helper.magic import MagicS3Client
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.upload_context import (
+    UploadContextActionResource,
     UploadContextActionSpec,
-    UploadContextActionParams,
 )
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
@@ -41,7 +41,7 @@ def deploy_spec():
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     """
-    validated_params = UploadContextActionParams(
+    validated_params = UploadContextActionSpec(
         **{
             "Account": "123456789012",
             "BucketName": "my-upload-bucket",
@@ -50,22 +50,16 @@ def deploy_spec():
         }
     )
 
-    action_spec = UploadContextActionSpec(
-        Name="upload-context", Spec=validated_params.model_dump()
-    )
+    action_resource = UploadContextActionResource(Name="upload-context", Spec=validated_params.model_dump())
 
-    return DeploySpec(actions=[action_spec])
+    return DeploySpec(actions=[action_resource])
 
 
-def test_upload_context_action(
-    task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session
-):
+def test_upload_context_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the upload context action successful execution."""
     try:
 
-        save_actions(
-            task_payload, deploy_spec.actions
-        )  # Fixed: use .actions not .action_specs
+        save_actions(task_payload, deploy_spec.actions)  # Fixed: use .actions not .actions
         save_state(
             task_payload,
             {
@@ -98,9 +92,7 @@ def test_upload_context_action(
 
         # Parse the response back into TaskPayload
         updated_payload = TaskPayload(**response)
-        assert (
-            updated_payload.flow_control == "success"
-        ), "Flow control should be success"
+        assert updated_payload.flow_control == "success", "Flow control should be success"
 
         # Load the saved state to verify completion
         state = load_state(updated_payload)
@@ -108,12 +100,8 @@ def test_upload_context_action(
 
         # Verify state tracking with namespace
         action_namespace = "upload-context"
-        assert (
-            state.get(f"{action_namespace}/status") == "success"
-        ), "Should have success status"
-        assert (
-            state.get(f"{action_namespace}/variable_count") == 6
-        ), "Should track correct number of context variables"
+        assert state.get(f"{action_namespace}/status") == "success", "Should have success status"
+        assert state.get(f"{action_namespace}/variable_count") == 6, "Should track correct number of context variables"
 
         # Verify uploaded files list
         uploaded_files = state.get(f"{action_namespace}/uploaded_files")
@@ -123,32 +111,20 @@ def test_upload_context_action(
         assert "uploads/context.json" in uploaded_files, "Should track JSON file"
 
         # Verify individual file tracking
-        assert (
-            state.get(f"{action_namespace}/yaml_file") == "uploads/context.yaml"
-        ), "Should track YAML file path"
-        assert (
-            state.get(f"{action_namespace}/json_file") == "uploads/context.json"
-        ), "Should track JSON file path"
-        assert (
-            state.get(f"{action_namespace}/bucket_name") == "my-upload-bucket"
-        ), "Should track bucket name"
-        assert (
-            state.get(f"{action_namespace}/prefix") == "uploads"
-        ), "Should track prefix"
+        assert state.get(f"{action_namespace}/yaml_file") == "uploads/context.yaml", "Should track YAML file path"
+        assert state.get(f"{action_namespace}/json_file") == "uploads/context.json", "Should track JSON file path"
+        assert state.get(f"{action_namespace}/bucket_name") == "my-upload-bucket", "Should track bucket name"
+        assert state.get(f"{action_namespace}/prefix") == "uploads", "Should track prefix"
 
         account = "123456789012"
         role_arn = util.get_provisioning_role_arn(account)
         s3_client = MagicS3Client.get_client(util.get_region(), role_arn)
 
         buffer = io.BytesIO()
-        s3_client.download_fileobj(
-            Bucket="my-upload-bucket", Key="uploads/context.yaml", Fileobj=buffer
-        )
+        s3_client.download_fileobj(Bucket="my-upload-bucket", Key="uploads/context.yaml", Fileobj=buffer)
         data = util.from_yaml(buffer.getvalue().decode("utf-8"))
 
-        assert (
-            data["pipeline"]["variable1"] == "value1"
-        ), "Should have correct variable1 value"
+        assert data["pipeline"]["variable1"] == "value1", "Should have correct variable1 value"
         assert data["component"]["variable6"] == {
             "key1": "value6a",
             "key2": "value6b",

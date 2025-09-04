@@ -5,7 +5,7 @@ from pydantic import Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import ActionSpec, DeploymentDetails, ActionParams
+from core_framework.models import ActionResource, DeploymentDetails, ActionSpec
 
 import core_helper.aws as aws
 
@@ -13,7 +13,7 @@ import core_framework as util
 from core_execute.actionlib.action import BaseAction
 
 
-class UnprotectELBActionParams(ActionParams):
+class UnprotectELBActionSpec(ActionSpec):
     """Parameters for the UnprotectELBAction.
 
     Contains all configuration needed to remove deletion protection from an
@@ -33,7 +33,7 @@ class UnprotectELBActionParams(ActionParams):
     --------
     Basic ELB unprotection configuration::
 
-        params = UnprotectELBActionParams(
+        params = UnprotectELBActionSpec(
             account="123456789012",
             region="us-east-1",
             load_balancer="arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-lb/1234567890"
@@ -47,7 +47,7 @@ class UnprotectELBActionParams(ActionParams):
     )
 
 
-class UnprotectELBActionSpec(ActionSpec):
+class UnprotectELBActionResource(ActionResource):
     """Generate the action definition for UnprotectELB.
 
     Provides a convenience wrapper for creating UnprotectELB actions
@@ -57,7 +57,7 @@ class UnprotectELBActionSpec(ActionSpec):
     --------
     Creating an ELB unprotection action spec with defaults::
 
-        spec = UnprotectELBActionSpec()
+        spec = UnprotectELBActionResource()
         # Results in action with name "unprotect-elb", kind "unprotect_elb"
         # and template-based default parameters
     """
@@ -65,37 +65,20 @@ class UnprotectELBActionSpec(ActionSpec):
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Validate and set default parameters for the UnprotectELBActionSpec.
 
-        Provides sensible defaults for action name, kind, scope, and
-        basic parameter structure using template variables.
+        if not isinstance(values, dict):
+            return values
 
-        Parameters
-        ----------
-        values : dict[str, Any]
-            The input values dictionary
+        values.pop("kind", None)
+        values.pop("Kind", None)
+        values["kind"] = "AWS::UnprotectELB"
 
-        Returns
-        -------
-        dict[str, Any]
-            The values dictionary with defaults applied
-        """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "unprotect-elb"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::UnprotectELB"
-        if not values.get(
-            "depends_on", values.get("DependsOn")
-        ):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "Account": "{{ deployment.account }}",
-                "Region": "{{ deployment.region }}",
-                "LoadBalancer": "{{ elb.arn }}",
-            }
+        spec = values.pop("spec", None) or values.pop("Spec", None)
+        if isinstance(spec, dict):
+            values["spec"] = spec
+        elif isinstance(spec, UnprotectELBActionSpec):
+            values["spec"] = spec.model_dump()
+
         return values
 
 
@@ -173,7 +156,7 @@ class UnprotectELBAction(BaseAction):
 
     def __init__(
         self,
-        definition: ActionSpec,
+        definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
     ):
@@ -181,7 +164,7 @@ class UnprotectELBAction(BaseAction):
 
         Parameters
         ----------
-        definition : ActionSpec
+        definition : ActionResource
             The action specification containing parameters and configuration
         context : dict[str, Any]
             Template rendering context with deployment variables
@@ -191,7 +174,7 @@ class UnprotectELBAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = UnprotectELBActionParams(**definition.params)
+        self.params = UnprotectELBActionSpec(**definition.spec)
 
     def _execute(self):
         """Execute the ELB unprotection operation.
@@ -221,9 +204,7 @@ class UnprotectELBAction(BaseAction):
         try:
             # Check if load balancer is "none" - skip operation
             if self.params.load_balancer.lower() == "none":
-                log.info(
-                    "Load balancer ARN is 'none' - skipping unprotection operation"
-                )
+                log.info("Load balancer ARN is 'none' - skipping unprotection operation")
                 self.set_state("status", "skipped")
                 self.set_state("load_balancer_arn", "none")
                 self.set_state("deletion_protection_disabled", False)
@@ -236,14 +217,10 @@ class UnprotectELBAction(BaseAction):
                 role=util.get_provisioning_role_arn(self.params.account),
             )
 
-            log.debug(
-                f"Removing deletion protection from load balancer: {self.params.load_balancer}"
-            )
+            log.debug(f"Removing deletion protection from load balancer: {self.params.load_balancer}")
 
             # Get current load balancer details for output
-            describe_response = elbv2_client.describe_load_balancers(
-                LoadBalancerArns=[self.params.load_balancer]
-            )
+            describe_response = elbv2_client.describe_load_balancers(LoadBalancerArns=[self.params.load_balancer])
 
             if not describe_response.get("LoadBalancers"):
                 raise Exception(f"Load balancer not found: {self.params.load_balancer}")
@@ -263,18 +240,14 @@ class UnprotectELBAction(BaseAction):
             self.set_state("load_balancer_name", lb_details.get("LoadBalancerName"))
             self.set_state("load_balancer_type", lb_details.get("Type"))
             self.set_state("load_balancer_scheme", lb_details.get("Scheme"))
-            self.set_state(
-                "load_balancer_state", lb_details.get("State", {}).get("Code")
-            )
+            self.set_state("load_balancer_state", lb_details.get("State", {}).get("Code"))
 
             success_message = f"Successfully removed deletion protection from load balancer: {self.params.load_balancer}"
             log.info(success_message)
             self.set_complete(success_message)
 
         except Exception as e:
-            error_message = (
-                f"Failed to remove deletion protection from load balancer: {str(e)}"
-            )
+            error_message = f"Failed to remove deletion protection from load balancer: {str(e)}"
             log.error(error_message)
             self.set_state("status", "error")
             self.set_state("error_message", error_message)
@@ -315,9 +288,7 @@ class UnprotectELBAction(BaseAction):
             )
 
             # Get current load balancer attributes
-            response = elbv2_client.describe_load_balancer_attributes(
-                LoadBalancerArn=self.params.load_balancer
-            )
+            response = elbv2_client.describe_load_balancer_attributes(LoadBalancerArn=self.params.load_balancer)
 
             # Check deletion protection status
             deletion_protection_enabled = False
@@ -327,9 +298,7 @@ class UnprotectELBAction(BaseAction):
                     break
 
             if deletion_protection_enabled:
-                error_message = (
-                    "Deletion protection is still enabled on the load balancer"
-                )
+                error_message = "Deletion protection is still enabled on the load balancer"
                 log.error(error_message)
                 self.set_failed(error_message)
             else:
@@ -338,9 +307,7 @@ class UnprotectELBAction(BaseAction):
                 self.set_complete(success_message)
 
         except Exception as e:
-            error_message = (
-                f"Failed to check load balancer deletion protection status: {str(e)}"
-            )
+            error_message = f"Failed to check load balancer deletion protection status: {str(e)}"
             log.error(error_message)
             self.set_failed(error_message)
 
@@ -365,9 +332,7 @@ class UnprotectELBAction(BaseAction):
                 log.debug("Skipping unexecute - load balancer ARN is 'none'")
                 return
 
-            deletion_protection_disabled = self.get_state(
-                "deletion_protection_disabled"
-            )
+            deletion_protection_disabled = self.get_state("deletion_protection_disabled")
             if not deletion_protection_disabled:
                 log.debug("Skipping unexecute - deletion protection was not disabled")
                 return
@@ -384,14 +349,10 @@ class UnprotectELBAction(BaseAction):
                 Attributes=[{"Key": "deletion_protection.enabled", "Value": "true"}],
             )
 
-            log.info(
-                f"Successfully re-enabled deletion protection for load balancer: {self.params.load_balancer}"
-            )
+            log.info(f"Successfully re-enabled deletion protection for load balancer: {self.params.load_balancer}")
 
         except Exception as e:
-            log.warning(
-                f"Failed to re-enable deletion protection during unexecute: {str(e)}"
-            )
+            log.warning(f"Failed to re-enable deletion protection during unexecute: {str(e)}")
             # Don't fail the unexecute operation for protection restoration issues
 
         log.trace("UnprotectELBAction._unexecute() complete")
@@ -406,9 +367,7 @@ class UnprotectELBAction(BaseAction):
         -----
         This is a no-op method as ELB operations cannot be cancelled.
         """
-        log.debug(
-            "Cancel requested for ELB unprotection - operation cannot be cancelled"
-        )
+        log.debug("Cancel requested for ELB unprotection - operation cannot be cancelled")
 
     def _resolve(self):
         """Resolve template variables and prepare parameters for execution.
@@ -438,19 +397,11 @@ class UnprotectELBAction(BaseAction):
 
         try:
             # Render template variables
-            self.params.account = self.renderer.render_string(
-                self.params.account, self.context
-            )
-            self.params.region = self.renderer.render_string(
-                self.params.region, self.context
-            )
-            self.params.load_balancer = self.renderer.render_string(
-                self.params.load_balancer, self.context
-            )
+            self.params.account = self.renderer.render_string(self.params.account, self.context)
+            self.params.region = self.renderer.render_string(self.params.region, self.context)
+            self.params.load_balancer = self.renderer.render_string(self.params.load_balancer, self.context)
 
-            log.debug(
-                f"Resolved ELB unprotection for load balancer: {self.params.load_balancer}"
-            )
+            log.debug(f"Resolved ELB unprotection for load balancer: {self.params.load_balancer}")
 
         except Exception as e:
             error_message = f"Failed to resolve template variables: {str(e)}"
@@ -460,9 +411,9 @@ class UnprotectELBAction(BaseAction):
         log.trace("UnprotectELBAction._resolve() complete")
 
     @classmethod
-    def generate_action_spec(cls, **kwargs) -> UnprotectELBActionSpec:
-        return UnprotectELBActionSpec(**kwargs)
+    def generate_action_resource(cls, **kwargs) -> UnprotectELBActionResource:
+        return UnprotectELBActionResource(**kwargs)
 
     @classmethod
-    def generate_action_parameters(cls, **kwargs) -> UnprotectELBActionParams:
-        return UnprotectELBActionParams(**kwargs)
+    def generate_action_parameters(cls, **kwargs) -> UnprotectELBActionSpec:
+        return UnprotectELBActionSpec(**kwargs)
