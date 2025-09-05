@@ -11,9 +11,13 @@ import core_helper.aws as aws
 
 
 class DeleteChangeSetActionSpec(ActionSpec):
-    """Parameters for the DeleteChangeSetAction
+    """Parameters for deleting a CloudFormation change set.
 
-    This class defines the parameters that can be used in the action.
+    Attributes:
+      account: AWS account ID to use.
+      region: AWS region of the stack.
+      stack_name: Name of the stack that owns the change set.
+      change_set_name: Name of the change set to delete.
     """
 
     stack_name: str = Field(
@@ -25,12 +29,12 @@ class DeleteChangeSetActionSpec(ActionSpec):
 
 
 class DeleteChangeSetActionResource(ActionResource):
-    """Generate the action definition"""
+    """Resource model for DeleteChangeSet (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -48,41 +52,11 @@ class DeleteChangeSetActionResource(ActionResource):
 
 
 class DeleteChangeSetAction(BaseAction):
-    """CloudFormation Change Set Deletion Action
+    """Delete a CloudFormation change set without modifying the stack.
 
-    This action deletes a CloudFormation change set without affecting the underlying stack.
-    It supports cross-account deployments via role assumption and handles
-    step function execution patterns with state persistence.
-
-    Kind: Use the value: ``AWS::DeleteChangeSet``
-
-    .. rubric: ActionResource:
-
-    .. tip:: s3:/<bucket>/artifacts/<deployment_details>/{task}.actions:
-
-        .. code-block:: yaml
-
-            - Name: action-aws-deletechangeset-name
-              Kind: "AWS::DeleteChangeSet"
-              Spec:
-                Account: "154798051514"
-                Region: "ap-southeast-1"
-                StackName: "my-stack"
-                ChangeSetName: "my-changeset"
-              Scope: "portfolio"
-
-    State Variables:
-        - ChangeSetDeletionStarted: Timestamp when deletion began
-        - ChangeSetName: Name of the change set being deleted
-        - StackName: Name of the target stack
-        - ChangeSetExists: Whether the change set existed before deletion
-        - DeletionResult: Result of the deletion operation
-
-    Output Variables:
-        - ChangeSetName: Name of the deleted change set
-        - StackName: Name of the target stack
-        - DeletionCompleted: Whether deletion was completed
-        - DeletionResult: Result of the deletion operation
+    - Supports cross-account deletion via role assumption
+    - Synchronous operation; no polling required
+    - Records inputs/results in action state and outputs
     """
 
     def __init__(
@@ -90,17 +64,22 @@ class DeleteChangeSetAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and validate parameters.
+
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context for templates.
+          deployment_details: Deployment metadata.
+          parent_action_name: Optional parent action name.
+        """
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         self.params = DeleteChangeSetActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render templates in account, region, stack_name, and change_set_name."""
         log.trace("Resolving DeleteChangeSetAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -111,13 +90,14 @@ class DeleteChangeSetAction(BaseAction):
         log.trace("DeleteChangeSetAction resolved")
 
     def _execute(self):
-        """
-        Execute the CloudFormation change set deletion operation.
+        """Delete the specified CloudFormation change set and set results.
 
-        This method deletes the specified CloudFormation change set and sets appropriate
-        state outputs for tracking. The operation is synchronous, so no _check() is needed.
+        Sets:
+          - State: ChangeSetExists, DeletionCompleted, DeletionResult, timestamps
+          - Outputs: ChangeSetName, StackName, Region, DeletionCompleted, DeletionResult
 
-        :raises: Sets action to failed if parameters are missing or CloudFormation operation fails
+        Raises:
+          Sets failed status when required parameters are missing or on unexpected AWS errors.
         """
         log.trace("Executing DeleteChangeSetAction")
 
@@ -305,25 +285,14 @@ class DeleteChangeSetAction(BaseAction):
         log.trace("DeleteChangeSetAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the change set deletion operation.
-
-        .. note::
-            Change set deletion is synchronous, so this method should not be called.
-        """
+        """Not applicable; change set deletion is synchronous."""
         log.trace("DeleteChangeSetAction check")
 
         # Change set deletion is synchronous, so this shouldn't be called
         self.set_failed("Internal error - _check() should not have been called for change set deletion")
 
     def _unexecute(self):
-        """
-        Rollback the change set deletion operation.
-
-        .. note::
-            Change set deletion cannot be rolled back. Once a change set is deleted,
-            it would need to be recreated from scratch.
-        """
+        """No rollback; change set deletion cannot be undone."""
         log.trace("Unexecuting DeleteChangeSetAction")
 
         log.info(
@@ -337,12 +306,7 @@ class DeleteChangeSetAction(BaseAction):
         log.trace("DeleteChangeSetAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the change set deletion operation.
-
-        .. note::
-            Change set deletion is synchronous and cannot be cancelled once initiated.
-        """
+        """No-op; deletion is synchronous and cannot be cancelled."""
         log.trace("Cancelling DeleteChangeSetAction")
 
         log.info("Change set deletion is synchronous and cannot be cancelled")
@@ -352,8 +316,10 @@ class DeleteChangeSetAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteChangeSetActionResource:
+        """Factory: create a typed DeleteChangeSetActionResource."""
         return DeleteChangeSetActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteChangeSetActionSpec:
+        """Factory: create a typed DeleteChangeSetActionSpec."""
         return DeleteChangeSetActionSpec(**kwargs)

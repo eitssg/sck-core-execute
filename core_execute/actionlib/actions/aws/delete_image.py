@@ -1,4 +1,8 @@
-"""Delete an image and its associated snapshots"""
+"""Delete an AMI and its associated snapshots.
+
+Finds the image by name, deregisters it, and deletes related EBS snapshots.
+Records progress and results in action state and outputs.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -16,15 +20,12 @@ from core_execute.actionlib.action import BaseAction
 
 
 class DeleteImageActionSpec(ActionSpec):
-    """
-    Parameters for the DeleteImageAction.
+    """Parameters for deleting an AMI and its snapshots.
 
-    :param account: The account to use for the action (required)
-    :type account: str
-    :param region: The region where the image is located (required)
-    :type region: str
-    :param image_name: The name of the image to delete (required)
-    :type image_name: str
+    Attributes:
+      account: AWS account ID for the action.
+      region: AWS region where the image resides.
+      image_name: Name of the image (AMI) to delete.
     """
 
     image_name: str = Field(
@@ -35,21 +36,12 @@ class DeleteImageActionSpec(ActionSpec):
 
 
 class DeleteImageActionResource(ActionResource):
-    """
-    Generate the action definition for DeleteImageAction.
-
-    This class provides default values and validation for DeleteImageAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
-    """
+    """Resource model for DeleteImageAction (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -67,44 +59,11 @@ class DeleteImageActionResource(ActionResource):
 
 
 class DeleteImageAction(BaseAction):
-    """
-    Delete an AMI image and its associated snapshots.
+    """Delete an AMI and its associated EBS snapshots.
 
-    This action will delete an AMI image and its associated EBS snapshots.
-    The action handles both existing and non-existing images gracefully.
-
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::DeleteImage``
-    :Spec.Account: The account where the image is located (required)
-    :Spec.Region: The region where the image is located (required)
-    :Spec.ImageName: The name of the image to delete (required)
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-deleteimage-name
-          Kind: "AWS::DeleteImage"
-          Spec:
-            Account: "154798051514"
-            Region: "ap-southeast-1"
-            ImageName: "my-image-name"
-          Scope: "build"
-
-    .. note::
-        The action deletes both the AMI and all associated EBS snapshots.
-
-    .. warning::
-        Image deletion is irreversible and will delete all associated snapshots.
+    - Treats missing images as success with a message
+    - Deregisters the AMI and deletes referenced snapshots
+    - Stores details, counts, and results in state/outputs
     """
 
     def __init__(
@@ -112,18 +71,23 @@ class DeleteImageAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and validate parameters.
+
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context for templates.
+          deployment_details: Deployment metadata for this run.
+          parent_action_name: Optional parent action name.
+        """
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = DeleteImageActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render template variables in account, region, and image_name."""
         log.trace("Resolving DeleteImageAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -133,13 +97,11 @@ class DeleteImageAction(BaseAction):
         log.trace("DeleteImageAction resolved")
 
     def _execute(self):
-        """
-        Execute the AMI image deletion operation.
+        """Delete the AMI and referenced snapshots; set state/outputs.
 
-        This method deletes the specified AMI image and its associated snapshots,
-        setting appropriate state outputs for tracking.
-
-        :raises: Sets action to failed if image name is missing or EC2 operation fails
+        Notes:
+          - Fails if ImageName is missing or EC2 calls fail unexpectedly.
+          - Snapshot deletion failures are recorded but do not fail the action.
         """
         log.trace("Executing DeleteImageAction")
 
@@ -376,12 +338,7 @@ class DeleteImageAction(BaseAction):
         log.trace("DeleteImageAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the image deletion operation.
-
-        .. note::
-            AMI deletion is synchronous, so this method should not be called.
-        """
+        """Not applicable; AMI deletion is synchronous."""
         log.trace("DeleteImageAction check")
 
         # AMI deletion is synchronous, so this shouldn't be called
@@ -390,12 +347,7 @@ class DeleteImageAction(BaseAction):
         log.trace("DeleteImageAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the AMI image deletion operation.
-
-        .. note::
-            AMI deletion cannot be undone. This method is a no-op.
-        """
+        """No rollback; AMI deletion cannot be undone."""
         log.trace("Unexecuting DeleteImageAction")
 
         # AMI deletion cannot be undone
@@ -413,12 +365,7 @@ class DeleteImageAction(BaseAction):
         log.trace("DeleteImageAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the AMI image deletion operation.
-
-        .. note::
-            AMI deletion is synchronous and cannot be cancelled once started.
-        """
+        """No-op; AMI deletion is synchronous and cannot be cancelled."""
         log.trace("Cancelling DeleteImageAction")
 
         # AMI deletion is synchronous and cannot be cancelled
@@ -428,8 +375,10 @@ class DeleteImageAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteImageActionResource:
+        """Factory: create a typed DeleteImageActionResource."""
         return DeleteImageActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteImageActionSpec:
+        """Factory: create typed DeleteImageActionSpec."""
         return DeleteImageActionSpec(**kwargs)

@@ -487,23 +487,23 @@ class ActionFactory:
             # Instantiate the action with detailed error handling.
             # Definition param attributes are validated to the action
             action = klass(definition, context, deployment_details, parent_action_name)
-            log.debug("Successfully created action: {}", definition.name)
+            log.debug("Successfully created action: {}", definition.action_name)
             return action
 
         except ValidationError as e:
             # Pydantic validation error - preserve all details
             error_details = {
-                "action_name": definition.name,
+                "action_name": definition.action_name,
                 "action_kind": definition.kind,
                 "validation_errors": e.errors(),
                 "input_data": definition.params,
                 "error_count": e.error_count(),
             }
-            log.error("Parameter validation failed for action '{}': {}", definition.name, e)
+            log.error("Parameter validation failed for action '{}': {}", definition.action_name, e)
             log.debug("Detailed validation errors: ", details=error_details)
 
             # Create a comprehensive error message
-            error_summary = f"Action '{definition.name}' parameter validation failed:\n"
+            error_summary = f"Action '{definition.action_name}' parameter validation failed:\n"
             for error in e.errors():
                 field_path = " -> ".join(str(loc) for loc in error["loc"])
                 error_summary += f"  Field '{field_path}': {error['msg']}\n"
@@ -513,14 +513,14 @@ class ActionFactory:
         except Exception as e:
             # Other initialization errors
             error_details = {
-                "action_name": definition.name,
+                "action_name": definition.action_name,
                 "action_kind": definition.kind,
                 "error_type": type(e).__name__,
                 "error_message": str(e),
-                "input_data": definition.params,
+                "input_data": definition.spec,
             }
-            log.error("Error initializing action '{}': {}", definition.name, e)
+            log.error("Error initializing action '{}': {}", definition.action_name, e)
             log.debug("Action initialization error details: ", details=error_details)
 
             # Preserve the original exception info
-            raise RuntimeError(f"Failed to initialize action '{definition.name}': {str(e)}") from e
+            raise RuntimeError(f"Failed to initialize action '{definition.action_name}': {str(e)}") from e

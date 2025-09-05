@@ -33,6 +33,8 @@ class SendEmailActionSpec(ActionSpec):
     """
 
     to_email: str = Field(..., description="Email recipient address", alias="ToEmail")
+    cc: Optional[str] = Field(None, description="CC email address", alias="CcEmail")
+    bcc: Optional[str] = Field(None, description="BCC email address", alias="BccEmail")
     subject: str = Field(..., description="Email subject", alias="Subject")
     template_type: str = Field(..., description="Type of email template", alias="TemplateType")
     template_data: Dict[str, Any] = Field(
@@ -67,9 +69,15 @@ class SendEmailActionResource(ActionResource):
 class SendEmailAction(BaseAction):
     """Send email using SMTP configuration with template rendering."""
 
-    def __init__(self, definition: ActionResource, context: dict[str, Any], deployment_details: DeploymentDetails):
+    def __init__(
+        self,
+        definition: ActionResource,
+        context: dict[str, Any],
+        deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
+    ):
         """Initialize SendEmailAction with validated parameters."""
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.spec = SendEmailActionSpec(**definition.spec)
@@ -85,13 +93,6 @@ class SendEmailAction(BaseAction):
         # ✅ Track if this action has been executed this Step Function run
         self.executed_this_run = False
 
-    def is_rerunnable(self):
-        """Check if the action can be re-run after completion or failure.
-
-        Email actions can be rerun via INIT, but only once per Step Function execution.
-        """
-        return True
-
     def can_initialize(self) -> bool:
         """Check if action can be reinitialized for rerun.
 
@@ -99,28 +100,32 @@ class SendEmailAction(BaseAction):
         """
         return True
 
-    def initialize(self):
+    def initialize(self) -> bool:
         """Initialize/reset action for rerun.
 
         Resets the action completely, clearing all previous state and allowing
         it to be executed fresh in the new Step Function run.
+
+        Returns:
+            bool: True if initialization was successful, False otherwise.
+
         """
         log.debug("Initializing SendEmailAction {} for rerun", self.name)
 
         # Call parent initialize to clear status and outputs
         super().initialize()
 
-        # Clear email-specific state
-        self.template_html = None
-        self.template_txt = None
-        self.executed_this_run = False
+        status = self.get_status()
 
-        # Clear template resolution state if it exists
-        template_resolved_key = f"{self.state_namespace}/template_resolved"
-        if template_resolved_key in self.context:
-            del self.context[template_resolved_key]
+        if self.is_failed():
+            log.debug("Action {} was in a failed state ({}), resetting to pending", self.name, status)
+            self.set_pending("Initialized")
+        else:  # pending or complete or running.  If it was running, we need to run 'check' to update status
+            log.debug("Action {} is in state ({}), leaving status unchanged", self.name, status)
 
-        log.info("SendEmailAction {} initialized for rerun", self.name)
+        log.debug("SendEmailAction {} initialized", self.name)
+
+        return True
 
     def can_execute(self) -> bool:
         """Check if action can execute.
@@ -317,6 +322,10 @@ class SendEmailAction(BaseAction):
             msg["Subject"] = subject
             msg["From"] = from_email
             msg["To"] = to_email
+            if self.spec.cc:
+                msg["Cc"] = self.spec.cc
+            if self.spec.bcc:
+                msg["Bcc"] = self.spec.bcc
 
             # Add content parts (only add parts that have content)
             if text_content:
@@ -358,7 +367,7 @@ class SendEmailAction(BaseAction):
 
     def _check(self):
         """Check email sending status (not needed for synchronous email sending)."""
-        pass
+        self.set_complete("Email sending is synchronous and assumed complete")
 
     def _cancel(self):
         """Cancel email sending operation (not applicable for synchronous sending)."""
@@ -366,7 +375,6 @@ class SendEmailAction(BaseAction):
 
     def _unexecute(self):
         """Rollback email sending (not possible to unsend email)."""
-        log.info("Cannot rollback email sending - email has been sent")
         self.set_complete("Email sending cannot be rolled back")
 
     @classmethod

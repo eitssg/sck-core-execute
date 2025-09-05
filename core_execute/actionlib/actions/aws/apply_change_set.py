@@ -1,3 +1,9 @@
+"""Apply a CloudFormation change set and monitor the stack update.
+
+Creates a CFN client, validates the change set, executes it, and tracks progress.
+Captures stack outputs and affected resources in state/outputs.
+"""
+
 from typing import Any
 from pydantic import Field, model_validator
 from botocore.exceptions import ClientError
@@ -11,9 +17,13 @@ import core_helper.aws as aws
 
 
 class ApplyChangeSetActionSpec(ActionSpec):
-    """Parameters for the ApplyChangeSetAction
+    """Parameters for applying a CloudFormation change set.
 
-    This class defines the parameters that can be used in the action.
+    Attributes:
+      account: AWS account ID used for the action.
+      region: AWS region of the stack.
+      stack_name: Target stack name.
+      change_set_name: Name of the change set to execute.
     """
 
     stack_name: str = Field(
@@ -26,12 +36,12 @@ class ApplyChangeSetActionSpec(ActionSpec):
 
 
 class ApplyChangeSetActionResource(ActionResource):
-    """Generate the action definition"""
+    """Resource model for ApplyChangeSetAction (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -49,45 +59,18 @@ class ApplyChangeSetActionResource(ActionResource):
 
 
 class ApplyChangeSetAction(BaseAction):
-    """CloudFormation Change Set Application Action
+    """Apply a CloudFormation change set to a stack.
 
-    This action applies a CloudFormation change set to execute the changes on a stack.
-    It supports cross-account deployments via role assumption and handles
-    step function execution patterns with state persistence.
+    - Supports cross-account execution via role assumption
+    - Persists identifiers, status, and results in state/outputs
 
-    Kind: Use the value: ``AWS::ApplyChangeSet``
+    State (subset):
+      ChangeSetApplicationStarted, ChangeSetName, StackName, StackId,
+      StackStatus, ApplicationResult
 
-    .. rubric: ActionResource:
-
-    .. tip:: s3:/<bucket>/artifacts/<deployment_details>/{task}.actions:
-
-        .. code-block:: yaml
-
-            - Name: action-aws-applychangeset-name
-              Kind: "AWS::ApplyChangeSet"
-              Spec:
-                Account: "154798051514"
-                Region: "ap-southeast-1"
-                StackName: "my-stack"
-                ChangeSetName: "my-changeset"
-              Scope: "portfolio"
-
-    State Variables:
-        - ChangeSetApplicationStarted: Timestamp when application began
-        - ChangeSetName: Name of the applied change set
-        - StackName: Name of the target stack
-        - StackStatus: Current status of the stack
-        - StackId: ID of the target stack
-        - ApplicationResult: Result of the change set application
-
-    Output Variables:
-        - StackArn: ARN of the updated stack
-        - StackId: ID of the updated stack
-        - StackStatus: Final status of the stack
-        - ResourcesCreated: List of resources that were created
-        - ResourcesUpdated: List of resources that were updated
-        - ResourcesDeleted: List of resources that were deleted
-        - StackOutputs: Stack outputs after application
+    Outputs (subset):
+      StackArn, StackId, StackStatus, ResourcesCreated, ResourcesUpdated,
+      ResourcesDeleted, StackOutputs
     """
 
     def __init__(
@@ -95,17 +78,15 @@ class ApplyChangeSetAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and validate parameters."""
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         self.params = ApplyChangeSetActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render templates for account, region, stack_name, and change_set_name."""
         log.trace("Resolving ApplyChangeSetAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -116,13 +97,9 @@ class ApplyChangeSetAction(BaseAction):
         log.trace("ApplyChangeSetAction resolved")
 
     def _execute(self):
-        """
-        Execute the CloudFormation change set application operation.
+        """Execute the specified change set and set initial state/outputs.
 
-        This method applies the specified CloudFormation change set and sets appropriate
-        state outputs for tracking.
-
-        :raises: Sets action to failed if parameters are missing or CloudFormation operation fails
+        Sets failed status when parameters are missing or CFN operations fail.
         """
         log.trace("Executing ApplyChangeSetAction")
 
@@ -277,12 +254,7 @@ class ApplyChangeSetAction(BaseAction):
         log.trace("ApplyChangeSetAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the change set application operation.
-
-        This method monitors the CloudFormation stack update progress and sets
-        appropriate state based on the current status.
-        """
+        """Monitor stack status after executing the change set and finalize results."""
         log.trace("Checking ApplyChangeSetAction")
 
         stack_id = self.get_state("StackId")
@@ -404,12 +376,7 @@ class ApplyChangeSetAction(BaseAction):
         log.trace("ApplyChangeSetAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the change set application operation.
-
-        This method attempts to rollback the stack to its previous state by canceling
-        the update or rolling back completed changes.
-        """
+        """Best-effort rollback: cancel update or mark manual intervention required."""
         log.trace("Unexecuting ApplyChangeSetAction")
 
         stack_id = self.get_state("StackId")
@@ -460,11 +427,7 @@ class ApplyChangeSetAction(BaseAction):
                 log.info("Stack update cancellation initiated for {}", self.params.stack_name)
 
             elif stack_status in ["UPDATE_COMPLETE", "CREATE_COMPLETE"]:
-                # Stack update completed, attempt rollback
-                log.info("Initiating stack rollback: {}", self.params.stack_name)
-
-                # Note: CloudFormation doesn't have a direct rollback API for completed updates
-                # This would typically require creating and applying a reverse change set
+                # Stack update completed, attempt rollback (manual)
                 log.warning("Stack rollback for completed updates requires manual intervention or reverse change set")
 
                 self.set_state("RollbackResult", "MANUAL_INTERVENTION_REQUIRED")
@@ -511,11 +474,7 @@ class ApplyChangeSetAction(BaseAction):
         log.trace("ApplyChangeSetAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the change set application operation.
-
-        This method attempts to cancel an in-progress change set application.
-        """
+        """Cancel an in-progress change set application if possible."""
         log.trace("Cancelling ApplyChangeSetAction")
 
         stack_status = self.get_state("StackStatus")
@@ -531,15 +490,15 @@ class ApplyChangeSetAction(BaseAction):
         log.trace("ApplyChangeSetAction cancellation completed")
 
     def _get_stack_resources(self, cfn_client, stack_id):
-        """
-        Get detailed information about stack resources that were created, updated, or deleted.
+        """Return resources created, updated, or deleted during the operation.
 
         Args:
-            cfn_client: CloudFormation client
-            stack_id: ID of the stack
+          cfn_client: CloudFormation client.
+          stack_id: ID or ARN of the stack.
 
         Returns:
-            tuple: (resources_created, resources_updated, resources_deleted)
+          Tuple (resources_created, resources_updated, resources_deleted),
+          where each item is a list of resource info dicts.
         """
         resources_created = []
         resources_updated = []
@@ -577,8 +536,10 @@ class ApplyChangeSetAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> ApplyChangeSetActionResource:
+        """Factory: create a typed ApplyChangeSetActionResource."""
         return ApplyChangeSetActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> ApplyChangeSetActionSpec:
+        """Factory: create typed ApplyChangeSetActionSpec."""
         return ApplyChangeSetActionSpec(**kwargs)

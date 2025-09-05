@@ -1,4 +1,4 @@
-"""Empty an S3 bucket action for Core Execute automation platform."""
+"""Empty an S3 bucket by deleting all objects and versions (batched)."""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -16,17 +16,12 @@ from core_execute.actionlib.action import BaseAction
 
 
 class EmptyBucketActionSpec(ActionSpec):
-    """
-    Parameters for the EmptyBucketAction.
+    """Parameters for the EmptyBucket action.
 
-    Attributes
-    ----------
-    account : str
-        The AWS account ID where the bucket is located.
-    region : str
-        The AWS region where the bucket is located.
-    bucket_name : str
-        The name of the S3 bucket to empty.
+    Attributes:
+      account: AWS account ID where the bucket resides.
+      region: AWS region of the bucket.
+      bucket_name: Name of the S3 bucket to empty.
     """
 
     bucket_name: str = Field(
@@ -37,16 +32,12 @@ class EmptyBucketActionSpec(ActionSpec):
 
 
 class EmptyBucketActionResource(ActionResource):
-    """
-    Action specification for the EmptyBucket action.
-
-    Provides validation and default values for EmptyBucket action definitions.
-    """
+    """Resource model for EmptyBucket (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and set kind to 'AWS::EmptyBucket'."""
         if not isinstance(values, dict):
             return values
 
@@ -64,42 +55,10 @@ class EmptyBucketActionResource(ActionResource):
 
 
 class EmptyBucketAction(BaseAction):
-    """
-    Empty an S3 bucket action implementation.
+    """Delete all objects and versions from an S3 bucket in batches.
 
-    This action will empty an S3 bucket by deleting all objects and object versions.
-    The action processes deletions in batches of 5000 objects to avoid blocking
-    the runner loop for extended periods.
-
-    Attributes
-    ----------
-    params : EmptyBucketActionSpec
-        Validated parameters for the action.
-
-    Parameters
-    ----------
-    Kind : str
-        Use the value: ``AWS::EmptyBucket``
-    Spec.Account : str
-        The AWS account where the bucket is located
-    Spec.Region : str
-        The AWS region where the bucket is located
-    Spec.BucketName : str
-        The name of the bucket to empty (required)
-
-    Examples
-    --------
-    ActionResource YAML configuration:
-
-    .. code-block:: yaml
-
-        - Name: action-aws-emptybucket-name
-          Kind: "AWS::EmptyBucket"
-          Spec:
-            Account: "154798051514"
-            Region: "ap-southeast-1"
-            BucketName: "my-bucket-name"
-          Scope: "build"
+    Runs in chunks (up to 5000 versions per iteration) to avoid blocking the runner.
+    Progress is tracked in state and updated across _execute/_check calls.
     """
 
     def __init__(
@@ -107,34 +66,27 @@ class EmptyBucketAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        """
-        Initialize the EmptyBucketAction.
+        """Initialize the action and validate parameters.
 
-        :param definition: The action specification definition.
-        :type definition: ActionResource
-        :param context: Execution context for variable resolution.
-        :type context: dict[str, Any]
-        :param deployment_details: Details about the current deployment.
-        :type deployment_details: DeploymentDetails
-        :raises ValidationError: If action parameters are invalid.
+        Args:
+          definition: Action resource containing metadata and spec.
+          context: Rendering context for template variables.
+          deployment_details: Deployment metadata (portfolio/app/branch/build).
+          parent_action_name: Optional parent action name.
         """
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = EmptyBucketActionSpec(**definition.spec)
 
     def _execute(self):
-        """
-        Execute the bucket emptying operation.
-
-        Initiates the process of deleting all objects in the specified bucket.
-        Sets the action status to running and calls the internal empty bucket method.
-        """
+        """Start or continue bucket emptying and set the action status."""
         log.trace("EmptyBucketAction._execute()")
 
-        if self.params.bucket_name:  # Fixed: Use snake_case attribute
-            self.set_running("Deleting all objects in bucket '{}'".format(self.params.bucket_name))
+        if self.params.bucket_name:
+            self.set_running(f"Deleting all objects in bucket '{self.params.bucket_name}'")
             self.__empty_bucket()
         else:
             self.set_complete("No bucket specified")
@@ -142,12 +94,7 @@ class EmptyBucketAction(BaseAction):
         log.trace("EmptyBucketAction._execute() complete")
 
     def _check(self):
-        """
-        Check the status of the bucket emptying operation.
-
-        Continues the bucket emptying process, typically called in subsequent
-        iterations to process remaining objects in batches.
-        """
+        """Continue deleting objects in the next batch (idempotent)."""
         log.trace("EmptyBucketAction._check()")
 
         self.__empty_bucket()
@@ -155,30 +102,15 @@ class EmptyBucketAction(BaseAction):
         log.trace("EmptyBucketAction._check() complete")
 
     def _unexecute(self):
-        """
-        Reverse the bucket emptying operation.
-
-        Note: This operation cannot be reversed as deleted objects cannot be restored.
-        This method is provided for interface compliance but performs no action.
-        """
+        """No rollback; deleted objects cannot be restored."""
         pass
 
     def _cancel(self):
-        """
-        Cancel the bucket emptying operation.
-
-        Note: Object deletions that have already occurred cannot be undone.
-        This method is provided for interface compliance but performs no action.
-        """
+        """No-op; deletions already performed cannot be cancelled."""
         pass
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        Uses the renderer to substitute variables in the account, region,
-        and bucket_name parameters using the current execution context.
-        """
+        """Render template variables for account, region, and bucket_name."""
         log.trace("EmptyBucketAction._resolve()")
 
         self.params.region = self.renderer.render_string(self.params.region, self.context)
@@ -188,14 +120,14 @@ class EmptyBucketAction(BaseAction):
         log.trace("EmptyBucketAction._resolve() complete")
 
     def __empty_bucket(self):
-        """
-        Internal method to perform the actual bucket emptying operation.
+        """Delete objects/versions in batches and update state/outputs.
 
-        Connects to S3 using the provisioning role and deletes objects in batches
-        of 5000 to avoid blocking the runner loop. Handles both regular objects
-        and versioned objects. Saves progress to state and outputs operation details.
+        - Uses the provisioning role for S3 access
+        - Deletes up to 5000 object versions per iteration
+        - Marks completion when no items remain
 
-        :raises ClientError: If S3 operations fail (except for non-existent buckets).
+        Raises:
+          ClientError: For S3 failures other than a non-existent bucket.
         """
         log.trace("EmptyBucketAction.__empty_bucket()")
 
@@ -235,7 +167,7 @@ class EmptyBucketAction(BaseAction):
                 self.set_output("status", "success")
                 self.set_output("message", f"Bucket '{self.params.bucket_name}' is now empty")
 
-                self.set_complete("No objects remain in bucket '{}'".format(self.params.bucket_name))
+                self.set_complete(f"No objects remain in bucket '{self.params.bucket_name}'")
             else:
                 # Objects were deleted, update state and continue
                 batch_deleted = sum(len(item["Deleted"]) for item in delete_response)
@@ -300,7 +232,7 @@ class EmptyBucketAction(BaseAction):
                     f"Bucket '{self.params.bucket_name}' does not exist, treating as success",
                 )
 
-                self.set_complete("Bucket '{}' does not exist, treating as success".format(self.params.bucket_name))
+                self.set_complete(f"Bucket '{self.params.bucket_name}' does not exist, treating as success")
             else:
                 # Set error state and outputs
                 error_time = util.get_current_timestamp()
@@ -326,8 +258,10 @@ class EmptyBucketAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> EmptyBucketActionResource:
+        """Factory: create a typed EmptyBucketActionResource."""
         return EmptyBucketActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> EmptyBucketActionSpec:
+        """Factory: create typed EmptyBucketActionSpec."""
         return EmptyBucketActionSpec(**kwargs)

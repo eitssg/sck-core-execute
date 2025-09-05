@@ -1,4 +1,4 @@
-"""Delete an ECR repository"""
+"""Delete an ECR repository (handles non-existent repositories gracefully)."""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -16,15 +16,12 @@ from core_execute.actionlib.action import BaseAction
 
 
 class DeleteEcrRepositoryActionSpec(ActionSpec):
-    """
-    Parameters for the DeleteEcrRepositoryAction.
+    """Parameters for deleting an ECR repository.
 
-    :param account: The account to use for the action (required)
-    :type account: str
-    :param region: The region where the ECR repository is located (required)
-    :type region: str
-    :param repository_name: The name of the ECR repository to delete (required)
-    :type repository_name: str
+    Attributes:
+      account: AWS account ID used for the action.
+      region: AWS region where the repository resides.
+      repository_name: Name of the ECR repository to delete.
     """
 
     repository_name: str = Field(
@@ -35,21 +32,12 @@ class DeleteEcrRepositoryActionSpec(ActionSpec):
 
 
 class DeleteEcrRepositoryActionResource(ActionResource):
-    """
-    Generate the action definition for DeleteEcrRepositoryAction.
-
-    This class provides default values and validation for DeleteEcrRepositoryAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
-    """
+    """Resource model for DeleteEcrRepository (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -67,44 +55,9 @@ class DeleteEcrRepositoryActionResource(ActionResource):
 
 
 class DeleteEcrRepositoryAction(BaseAction):
-    """
-    Delete an ECR repository.
+    """Delete an ECR repository and all images it contains.
 
-    This action will delete an ECR repository including all images within it.
-    The action handles both existing and non-existing repositories gracefully.
-
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::DeleteEcrRepository``
-    :Spec.Account: The account where the ECR repository is located (required)
-    :Spec.Region: The region where the ECR repository is located (required)
-    :Spec.RepositoryName: The name of the ECR repository to delete (required)
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-deleteecrrepository-name
-          Kind: "AWS::DeleteEcrRepository"
-          Spec:
-            Account: "154798051514"
-            Region: "ap-southeast-1"
-            RepositoryName: "my-ecr-repository"
-          Scope: "build"
-
-    .. note::
-        The action uses ``force=True`` to delete repositories containing images.
-
-    .. warning::
-        Repository deletion is irreversible and will delete all contained images.
+    Treats missing repositories as success. Records progress and results in state/outputs.
     """
 
     def __init__(
@@ -112,18 +65,23 @@ class DeleteEcrRepositoryAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and validate parameters.
+
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context for templates.
+          deployment_details: Deployment metadata.
+          parent_action_name: Optional parent action name.
+        """
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = DeleteEcrRepositoryActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render template variables in account, region, and repository_name."""
         log.trace("Resolving DeleteEcrRepositoryAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -133,13 +91,9 @@ class DeleteEcrRepositoryAction(BaseAction):
         log.trace("DeleteEcrRepositoryAction resolved")
 
     def _execute(self):
-        """
-        Execute the ECR repository deletion operation.
+        """Delete the ECR repository and set state/outputs.
 
-        This method deletes the specified ECR repository and sets appropriate
-        state outputs for tracking.
-
-        :raises: Sets action to failed if repository name is missing or ECR operation fails
+        Sets failed status for missing parameters or unexpected ECR errors.
         """
         log.trace("Executing DeleteEcrRepositoryAction")
 
@@ -314,12 +268,7 @@ class DeleteEcrRepositoryAction(BaseAction):
         log.trace("DeleteEcrRepositoryAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the ECR repository deletion operation.
-
-        .. note::
-            ECR repository deletion is synchronous, so this method should not be called.
-        """
+        """Not applicable; ECR repository deletion is synchronous."""
         log.trace("DeleteEcrRepositoryAction check")
 
         # ECR repository deletion is synchronous, so this shouldn't be called
@@ -328,15 +277,9 @@ class DeleteEcrRepositoryAction(BaseAction):
         log.trace("DeleteEcrRepositoryAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the ECR repository deletion operation.
-
-        .. note::
-            ECR repository deletion cannot be undone. This method is a no-op.
-        """
+        """No rollback; repository deletions are irreversible."""
         log.trace("Unexecuting DeleteEcrRepositoryAction")
 
-        # ECR repository deletion cannot be undone
         log.warning(
             "ECR repository deletion cannot be rolled back - repository '{}' remains deleted",
             self.params.repository_name,
@@ -350,23 +293,18 @@ class DeleteEcrRepositoryAction(BaseAction):
         log.trace("DeleteEcrRepositoryAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the ECR repository deletion operation.
-
-        .. note::
-            ECR repository deletion is synchronous and cannot be cancelled once started.
-        """
+        """No-op; deletion is synchronous and cannot be cancelled."""
         log.trace("Cancelling DeleteEcrRepositoryAction")
 
-        # ECR repository deletion is synchronous and cannot be cancelled
         self.set_complete("ECR repository deletion cannot be cancelled")
 
         log.trace("DeleteEcrRepositoryAction cancellation completed")
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteEcrRepositoryActionResource:
+        """Factory: create a typed DeleteEcrRepositoryActionResource."""
         return DeleteEcrRepositoryActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteEcrRepositoryActionSpec:
-        return DeleteEcrRepositoryActionSpec(**kwargs)
+        """Factory: create typed DeleteEcrRepositoryActionSpec."""

@@ -9,7 +9,7 @@ import core_helper.aws as aws
 
 from core_framework.models import TaskPayload
 
-from .actionlib.helper import Helper, FlowControl
+from .actionlib.helper import Helper
 
 from .execute import (
     run_state_machine,
@@ -46,7 +46,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
         ...     "task": "my-task",
         ...     "actions": {...},
         ...     "state": {...},
-        ...     "flow_control": FlowControl.EXECUTE.value,
+        ...     "flow_control": execute,
         ... }
         >>> result = handler(event, lambda_context)
         >>> print(f"Execution result: {result['flow_control']}")
@@ -61,6 +61,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
     try:
         # Task payload is a model object should have been created with TaskPayload.model_dump()
         task_payload = TaskPayload(**event)
+
         log.set_correlation_id(task_payload.correlation_id)
 
         log.setup(task_payload.identity)
@@ -76,44 +77,42 @@ def handler(event: dict, context: Any | None = None) -> dict:
         # Load state - this should have been a document created from "get_facts" for Jinja2 rendering
         log.debug("Loading state for task: {}", task_payload.task)
         context_state = load_state(task_payload)
-        log.debug(
-            "Loaded state with {} keys",
-            len(context_state.keys()) if context_state else 0,
-        )
+
+        run_count = int(context_state.get("system/run_count", 0))
+        run_count += 1
+        context_state["system/run_count"] = run_count
+
+        log.debug("Loaded state with {} keys", len(context_state.keys()))
 
         # Create action helper with loaded actions and state
         action_helper = Helper(actions, context_state, task_payload)
 
         # Execute state machine - designed for Step Functions
         # Instead of a tight loop, do limited iterations
-        max_iterations = 10  # Prevent runaway loops
+        #
+        # # Prevent runaway loops.  Will iterate once for each action if all
+        # are dependent on each other plus a few extra
+
         iteration = 0
-        flow_control = FlowControl(task_payload.flow_control)
-        while flow_control == FlowControl.EXECUTE and not timeout_imminent(context) and iteration < max_iterations:
+
+        # Tell the state machine to start executing if not already set
+        if not task_payload.flow_control or task_payload.flow_control == "init":
+            task_payload.flow_control = "execute"
+
+        while task_payload.flow_control == "execute" and not timeout_imminent(context):
 
             iteration += 1
-            log.debug("State machine iteration {} (max {})", iteration, max_iterations)
+            log.debug("State machine iteration {}", iteration)
 
-            flow_control = run_state_machine(action_helper, context)
-            if isinstance(flow_control, str):
-                flow_control = FlowControl(flow_control)
+            task_payload.flow_control = run_state_machine(action_helper)
 
             # Pause briefly to allow other processes to run
-            time.sleep(0.5)
-
-        if flow_control == FlowControl.EXECUTE:
-            # Check if we hit the iteration limit
-            if iteration >= max_iterations:
-                log.warning(
-                    "Reached maximum iterations ({}), returning 'execute' for Step Functions retry",
-                    max_iterations,
-                )
+            # Jobs may be running in other threads.  Yield to them and loop back to check up on the status
 
             if timeout_imminent(context):
                 log.warning("Execution stopped due to timeout, Step Functions will retry")
 
-        # Update the task payload with the final flow control state
-        task_payload.flow_control = flow_control.value
+            time.sleep(3)
 
         # Save state back to S3
         log.debug("Saving state for task: {}", task_payload.task)
@@ -123,6 +122,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
         log.debug("Execution completed after {} loops", iteration)
 
         result = task_payload.model_dump()
+
         log.trace("Handler result: ", details=result)
 
         return result
@@ -156,7 +156,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
         log.error("Error in handler execution", details=error_details)
         log.error("Original event: ", details=event)
 
-        return {"FlowControl": FlowControl.FAILURE.value}
+        return {"FlowControl": "failure"}
 
 
 def invoke_execute_handler(task_payload: TaskPayload) -> None:

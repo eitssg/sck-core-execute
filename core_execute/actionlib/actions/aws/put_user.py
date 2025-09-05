@@ -1,4 +1,4 @@
-"""Create or update IAM users in an AWS account"""
+"""Create or update IAM users in an AWS account."""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -15,47 +15,37 @@ from core_execute.actionlib.action import BaseAction
 
 
 class PutUserActionSpec(ActionSpec):
-    """
-    Parameters for the PutUserAction.
+    """Parameters for creating/updating IAM users.
 
-    :param account: The AWS account ID where users will be created/updated (required)
-    :type account: str
-    :param region: The AWS region for IAM operations (required)
-    :type region: str
-    :param user_names: The list of users to create/update (required)
-    :type user_names: list[str] | str
-    :param roles: The list of roles to assign to the users (optional)
-    :type roles: list[str] | str
+    Attributes:
+      account: AWS account ID where users will be managed.
+      region: AWS region for IAM operations.
+      user_names: List of user names, or a Jinja2 string that renders to a list.
+      roles: List of role names (or Jinja2 string) users can assume.
     """
 
     user_names: list[str] | str = Field(
         ...,
         alias="UserNames",
-        description="The list of users to create/update or a jinja2 pattern to create a list of users (required)",
+        description="The list of users to create/update or a Jinja2 pattern that renders to a list",
     )
     roles: list[str] | str = Field(
         default_factory=list,
         alias="Roles",
-        description="The list of roles to assign to the users or a jinja2 pattern to create a list of roles (optional)",
+        description="Roles to allow users to assume (list or Jinja2 pattern)",
     )
 
 
 class PutUserActionResource(ActionResource):
-    """
-    Generate the action definition for PutUserAction.
+    """Resource model for PutUserAction.
 
-    This class provides default values and validation for PutUserAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
+    Normalizes inputs and forces kind to 'AWS::PutUser'.
     """
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -73,47 +63,11 @@ class PutUserActionResource(ActionResource):
 
 
 class PutUserAction(BaseAction):
-    """
-    Create or update IAM users in an AWS account.
+    """Create or update IAM users and attach inline assume-role policies.
 
-    This action will create new IAM users or update existing ones in an AWS account.
-    For each user, it will create an inline policy that allows assuming the specified roles.
-    If a user already exists, only the role assignments will be updated.
-
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::PutUser``
-    :Spec.Account: The account where the users are located (required)
-    :Spec.Region: The region for the IAM operations (required)
-    :Spec.UserNames: The list of user names to create/update (required)
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-putuser-name  # FIXED
-          Kind: "AWS::PutUser"
-          Spec:
-            Account: "154798051514"
-            Region: "us-east-1"
-            UserNames: ["john.smith", "jane.doe"]
-            Roles: ["admin", "developer"]
-          Scope: "build"
-
-    .. note::
-        If users already exist, only their role assignments will be updated.
-
-    .. warning::
-        Users created by this action will have permissions to assume the specified roles.
-        Ensure role permissions are appropriate for the users being created.
+    - Creates users that do not exist; skips existing users
+    - Attaches/updates an inline policy allowing sts:AssumeRole to specified roles
+    - Records results and final policies in action state/outputs
     """
 
     def __init__(
@@ -121,18 +75,23 @@ class PutUserAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize action and validate parameters.
+
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context (variables used by templates).
+          deployment_details: Portfolio/app/branch/build metadata.
+          parent_action_name: Optional parent action name.
+        """
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the parameters
         self.params = PutUserActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render template variables in parameters (account, region, users, roles)."""
         log.trace("Resolving PutUserAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -179,14 +138,13 @@ class PutUserAction(BaseAction):
         log.trace("PutUserAction resolved")
 
     def _execute(self):
-        """
-        Execute the user creation/update operation.
+        """Create/update IAM users and attach inline policies.
 
-        This method creates new IAM users or updates existing ones with the specified roles.
-        For each user, it will create/update an inline policy for role assumptions.
-        IAM user operations are typically fast and don't require long-running monitoring.
-
-        :raises: Sets action to failed if user creation/update fails
+        Steps:
+          1) Validate inputs
+          2) Create users if missing
+          3) Attach or update inline policy to allow sts:AssumeRole on roles
+          4) Record results, final policies, and completion status
         """
         log.trace("Executing PutUserAction")
 
@@ -364,11 +322,7 @@ class PutUserAction(BaseAction):
         log.trace("PutUserAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the user creation/update operation.
-
-        IAM user operations are typically immediate, so this method confirms completion.
-        """
+        """Confirm the operation is complete (IAM user puts are immediate)."""
         log.trace("Checking PutUserAction")
 
         # IAM user put is immediate, so if we get here, it's already complete
@@ -377,13 +331,7 @@ class PutUserAction(BaseAction):
         log.trace("PutUserAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the user creation/update operation.
-
-        .. note::
-            User creation cannot be automatically rolled back. Created users and their
-            policies remain in place. Manual cleanup may be required.
-        """
+        """No rollback for user creation/update; report completion."""
         log.trace("Unexecuting PutUserAction")
 
         # User put cannot be undone
@@ -393,12 +341,7 @@ class PutUserAction(BaseAction):
         log.trace("PutUserAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the user creation/update operation.
-
-        .. note::
-            User creation/update operations are immediate and cannot be cancelled once started.
-        """
+        """No-op; user operations are immediate and cannot be cancelled."""
         log.trace("Cancelling PutUserAction")
 
         # User put is immediate and cannot be cancelled
@@ -407,15 +350,17 @@ class PutUserAction(BaseAction):
         log.trace("PutUserAction cancellation completed")
 
     def _check_user_exists(self, iam_client, user_name: str) -> bool:
-        """
-        Check if a user exists in IAM.
+        """Return True if the IAM user exists.
 
-        :param iam_client: IAM client
-        :type iam_client: boto3.client
-        :param user_name: Name of the user to check
-        :type user_name: str
-        :return: True if user exists, False otherwise
-        :rtype: bool
+        Args:
+          iam_client: Boto3 IAM client.
+          user_name: User name to check.
+
+        Returns:
+          True if user exists, else False.
+
+        Raises:
+          ClientError: For non-NotFound API errors.
         """
         try:
             iam_client.get_user(UserName=user_name)
@@ -428,20 +373,20 @@ class PutUserAction(BaseAction):
                 raise
 
     def _attach_inline_policy_to_user(self, iam_client, user_name: str, roles: list[str]) -> tuple[str, dict]:
-        """
-        Create and attach an inline policy to a user that allows assuming specified roles.
-        If the policy already exists, replace only the sts:AssumeRole resources with the new ones,
-        preserving any other policy statements.
+        """Create or update the user's inline assume-role policy.
 
-        :param iam_client: IAM client
-        :type iam_client: boto3.client
-        :param user_name: Name of the user
-        :type user_name: str
-        :param roles: List of role names to allow assumption
-        :type roles: list[str]
-        :return: Tuple of (policy_name, policy_document)
-        :rtype: tuple[str, dict]
-        :raises ClientError: If policy attachment fails
+        Replaces only the sts:AssumeRole resources, preserving other statements.
+
+        Args:
+          iam_client: Boto3 IAM client.
+          user_name: Target user name.
+          roles: Roles (names or ARNs) to allow assuming.
+
+        Returns:
+          Tuple of (policy_name, policy_document).
+
+        Raises:
+          ClientError: If the policy update fails.
         """
 
         # Create policy name
@@ -530,17 +475,15 @@ class PutUserAction(BaseAction):
             )
             raise
 
-    def _replace_assume_role_resources(self, existing_policy: dict, new_role_arns: set) -> dict:
-        """
-        Replace the resources in sts:AssumeRole statements with new role ARNs,
-        while preserving all other policy statements.
+    def _replace_assume_role_resources(self, existing_policy: dict, new_role_arms: set) -> dict:
+        """Replace resources in sts:AssumeRole statements, keep other statements.
 
-        :param existing_policy: The existing IAM policy document
-        :type existing_policy: dict
-        :param new_role_arns: Set of new role ARNs to use
-        :type new_role_arns: set
-        :return: Updated policy document
-        :rtype: dict
+        Args:
+          existing_policy: Current IAM policy document.
+          new_role_arms: Set of role ARNs to use.
+
+        Returns:
+          Updated IAM policy document.
         """
         # Start with a copy of the existing policy
         updated_policy = {
@@ -590,13 +533,13 @@ class PutUserAction(BaseAction):
         return updated_policy
 
     def _create_policy_with_role_arns(self, role_arns: set) -> dict:
-        """
-        Create a policy document with the specified role ARNs.
+        """Build a minimal policy that allows sts:AssumeRole on given ARNs.
 
-        :param role_arns: Set of role ARNs to include in the policy
-        :type role_arns: set
-        :return: IAM policy document
-        :rtype: dict
+        Args:
+          role_arns: Set of role ARNs.
+
+        Returns:
+          IAM policy document.
         """
         if not role_arns:
             # Return empty policy if no roles
@@ -617,13 +560,13 @@ class PutUserAction(BaseAction):
         return policy_document
 
     def _create_inline_policy_document(self, roles: list[str]) -> dict:
-        """
-        Create an inline policy document that allows assuming the specified roles.
+        """Build an inline policy that allows assuming the given role names.
 
-        :param roles: List of role names to allow assumption
-        :type roles: list[str]
-        :return: IAM policy document
-        :rtype: dict
+        Args:
+          roles: Role names (converted to ARNs using params.account).
+
+        Returns:
+          IAM policy document.
         """
         # Convert role names to ARNs
         role_arns = set()
@@ -635,8 +578,10 @@ class PutUserAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> PutUserActionResource:
+        """Factory: create a typed PutUserActionResource."""
         return PutUserActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> PutUserActionSpec:
+        """Factory: create typed PutUserActionSpec."""
         return PutUserActionSpec(**kwargs)

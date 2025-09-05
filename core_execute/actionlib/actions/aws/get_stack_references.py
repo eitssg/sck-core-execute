@@ -1,4 +1,8 @@
-"""Get the references to a CloudFormation stack output export action for Core Execute automation platform."""
+"""Find CloudFormation stacks that reference an export from a target stack.
+
+Builds the export name as "<stack_name>:<output_name>" and uses
+CloudFormation ListImports to discover importing stacks.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -14,20 +18,13 @@ from core_execute.actionlib.action import BaseAction
 
 
 class GetStackReferencesActionSpec(ActionSpec):
-    """
-    Parameters for the GetStackReferencesAction.
+    """Parameters for the GetStackReferences action.
 
-    Attributes
-    ----------
-    account : str
-        The AWS account ID where the CloudFormation stack is located.
-    region : str
-        The AWS region where the CloudFormation stack is located.
-    stack_name : str
-        The name of the CloudFormation stack to check for references.
-    output_name : str
-        The name of the output export to check for references.
-        Defaults to 'DefaultExport' if not specified.
+    Attributes:
+      account: AWS account ID where the stack resides.
+      region: AWS region of the stack.
+      stack_name: Name of the CloudFormation stack to inspect.
+      output_name: Output export name to check (default: "DefaultExport").
     """
 
     stack_name: str = Field(
@@ -38,21 +35,20 @@ class GetStackReferencesActionSpec(ActionSpec):
     output_name: str = Field(
         default="DefaultExport",
         alias="OutputName",
-        description="The name of the output to check for references (optional) defaults to 'DefaultExport'",
+        description="The output export name to check (default: 'DefaultExport')",
     )
 
 
 class GetStackReferencesActionResource(ActionResource):
-    """
-    Action specification for the GetStackReferences action.
+    """Resource model for GetStackReferences.
 
-    Provides validation and default values for GetStackReferences action definitions.
+    Normalizes inputs and forces kind to 'AWS::GetStackReferences'.
     """
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -70,61 +66,10 @@ class GetStackReferencesActionResource(ActionResource):
 
 
 class GetStackReferencesAction(BaseAction):
-    """
-    Get the references to a CloudFormation stack output export.
+    """List stacks that import a specific CloudFormation export.
 
-    This action checks which other CloudFormation stacks are importing/referencing
-    a specific output export from the target stack. It uses the CloudFormation
-    list_imports API to find all stacks that import the specified export.
-
-    The export name is constructed as ``{stack_name}:{output_name}`` following
-    CloudFormation export naming conventions.
-
-    Attributes
-    ----------
-    params : GetStackReferencesActionSpec
-        Validated parameters for the action.
-
-    Parameters
-    ----------
-    Kind : str
-        Use the value: ``AWS::GetStackReferences``
-    Spec.Account : str
-        The AWS account where the stack is located
-    Spec.Region : str
-        The AWS region where the stack is located
-    Spec.StackName : str
-        The name of the stack to check for references (required)
-    Spec.OutputName : str
-        The name of the output to check for references (optional, defaults to 'DefaultExport')
-
-    Examples
-    --------
-    ActionResource YAML configuration:
-
-    .. code-block:: yaml
-
-        - Name: action-aws-getstackreferences-name
-          Kind: "AWS::GetStackReferences"
-          Spec:
-            Account: "154798051514"
-            StackName: "my-stack-name"
-            Region: "ap-southeast-1"
-            OutputName: "DefaultExport"
-          Scope: "build"
-
-    Notes
-    -----
-    The action will complete successfully even if:
-
-    - The export doesn't exist (treated as no references)
-    - The export exists but isn't imported by any stacks
-    - The stack itself doesn't exist
-
-    Only genuine CloudFormation API errors will cause the action to fail.
-
-    The references information is stored in the action outputs and can be used
-    by subsequent actions to make decisions about stack deletion or updates.
+    Constructs "<stack_name>:<output_name>" and calls ListImports. Results and
+    summary fields are stored in action state and outputs.
     """
 
     def __init__(
@@ -132,32 +77,27 @@ class GetStackReferencesAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        """
-        Initialize the GetStackReferencesAction.
+        """Initialize the action and validate parameters.
 
-        :param definition: The action specification definition.
-        :type definition: ActionResource
-        :param context: Execution context for variable resolution.
-        :type context: dict[str, Any]
-        :param deployment_details: Details about the current deployment.
-        :type deployment_details: DeploymentDetails
-        :raises ValidationError: If action parameters are invalid.
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context for templates.
+          deployment_details: Deployment metadata.
+          parent_action_name: Optional parent action name.
         """
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = GetStackReferencesActionSpec(**definition.spec)
 
     def _execute(self):
-        """
-        Execute the stack references check operation.
+        """Call CloudFormation ListImports and record referencing stacks.
 
-        Connects to CloudFormation using the provisioning role and checks
-        which stacks are importing the specified output export. Stores
-        comprehensive information about the references found.
-
-        :raises ClientError: If CloudFormation operations fail (except for expected cases).
+        Notes:
+          - Missing export is treated as "no references" (success).
+          - Existing export with zero imports is also success.
         """
         log.trace("GetStackReferencesAction._execute()")
 
@@ -183,7 +123,7 @@ class GetStackReferencesAction(BaseAction):
         try:
             response = cfn_client.list_imports(ExportName=output_export_name)
 
-            # No error thrown - stack is being referenced
+            # No error thrown - export exists; may or may not be referenced
             completion_time = util.get_current_timestamp()
             imports = response.get("Imports", [])
             num_references = len(imports)
@@ -231,7 +171,7 @@ class GetStackReferencesAction(BaseAction):
             error_message = e.response["Error"]["Message"]
 
             if "does not exist" in error_message:
-                # Export doesn't exist - treat as unreferenced stack
+                # Export doesn't exist - treat as unreferenced
                 self.set_state("completion_time", completion_time)
                 self.set_state("status", "completed_export_not_found")
                 self.set_state("num_references", 0)
@@ -251,10 +191,10 @@ class GetStackReferencesAction(BaseAction):
                 self.set_output("status", "success")
                 self.set_output(
                     "message",
-                    f"Export '{output_export_name}' does not exist, treating as no references",
+                    f"Export '{output_export_name}' does not exist; treating as no references",
                 )
 
-                self.set_complete(f"Export '{output_export_name}' does not exist, treating stack as unreferenced")
+                self.set_complete(f"Export '{output_export_name}' does not exist; treating as unreferenced")
 
             elif "not imported" in error_message:
                 # Export exists but isn't imported by any stacks
@@ -291,7 +231,7 @@ class GetStackReferencesAction(BaseAction):
                 self.set_complete(f"Export '{output_export_name}' is not referenced by any stacks")
 
             else:
-                # Other error - set error state
+                # Other error - set error state and re-raise
                 self.set_state("error_time", completion_time)
                 self.set_state("status", "error")
                 self.set_state("error_message", error_message)
@@ -321,12 +261,7 @@ class GetStackReferencesAction(BaseAction):
         log.trace("GetStackReferencesAction._execute() complete")
 
     def _check(self):
-        """
-        Check the status of the stack references operation.
-
-        This method should not be called for GetStackReferences actions as the
-        operation completes immediately. If called, it indicates an internal error.
-        """
+        """Not applicable; operation completes immediately."""
         log.trace("GetStackReferencesAction._check()")
 
         self.set_failed("Internal error - _check() should not have been called")
@@ -334,30 +269,15 @@ class GetStackReferencesAction(BaseAction):
         log.trace("GetStackReferencesAction._check() complete")
 
     def _unexecute(self):
-        """
-        Reverse the stack references operation.
-
-        This operation cannot be reversed as it only reads data.
-        This method is provided for interface compliance but performs no action.
-        """
+        """No rollback; this action is read-only."""
         pass
 
     def _cancel(self):
-        """
-        Cancel the stack references operation.
-
-        This operation cannot be cancelled as it completes immediately.
-        This method is provided for interface compliance but performs no action.
-        """
+        """No-op; action completes immediately and cannot be cancelled."""
         pass
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        Uses the renderer to substitute variables in the account, region,
-        stack_name, and output_name parameters using the current execution context.
-        """
+        """Render templates in account, region, stack_name, and output_name."""
         log.trace("GetStackReferencesAction._resolve()")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -369,8 +289,10 @@ class GetStackReferencesAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> GetStackReferencesActionResource:
+        """Factory: create a typed GetStackReferencesActionResource."""
         return GetStackReferencesActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> GetStackReferencesActionSpec:
+        """Factory: create typed GetStackReferencesActionSpec."""
         return GetStackReferencesActionSpec(**kwargs)

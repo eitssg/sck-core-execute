@@ -1,4 +1,8 @@
-"""Copy an AMI from one region to another with encryption"""
+"""Copy an AMI from one region to another with encryption.
+
+Finds the source AMI by name, copies it with KMS encryption, then waits
+until the new AMI is available to tag the AMI and its snapshots.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -15,21 +19,15 @@ from core_execute.actionlib.action import BaseAction
 
 
 class CopyImageActionSpec(ActionSpec):
-    """
-    Parameters for the CopyImageAction.
+    """Parameters for copying an AMI with KMS encryption.
 
-    :param account: The account to use for the action (required)
-    :type account: str
-    :param destination_image_name: The name of the destination image (required)
-    :type destination_image_name: str
-    :param image_name: The name of the source image (required)
-    :type image_name: str
-    :param kms_key_arn: The KMS key ARN to use for encryption (required)
-    :type kms_key_arn: str
-    :param region: The region to copy the image to (required)
-    :type region: str
-    :param tags: The tags to apply to the image (optional)
-    :type tags: dict[str, str] | None
+    Attributes:
+      account: AWS account ID to use for role assumption.
+      region: Destination AWS region for the copied AMI.
+      image_name: Name of the source AMI to copy.
+      destination_image_name: Name for the new (copied) AMI.
+      kms_key_arn: KMS key ARN to encrypt the copied AMI.
+      tags: Optional tags to apply to the copied AMI and its snapshots.
     """
 
     destination_image_name: str = Field(
@@ -55,21 +53,12 @@ class CopyImageActionSpec(ActionSpec):
 
 
 class CopyImageActionResource(ActionResource):
-    """
-    Generate the action definition for CopyImageAction.
-
-    This class provides default values and validation for CopyImageAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
-    """
+    """Resource model for CopyImageAction (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -87,52 +76,15 @@ class CopyImageActionResource(ActionResource):
 
 
 class CopyImageAction(BaseAction):
-    """
-    Copy AMI from one region to another with encryption.
+    """Copy an AMI to another region with KMS encryption and apply tags.
 
-    This action will copy an AMI from one region to another with KMS encryption.
-    The action will wait for the copy to complete before returning.
+    - _execute: finds the source AMI by name and starts the copy
+    - _check: waits for the copied AMI to be available and tags AMI/snapshots
 
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::CopyImage`` (not AWS::KMS::CopyImage)
-    :Spec.Account: The account where the destination region is located
-    :Spec.Region: The region to copy the image to
-    :Spec.ImageName: The name of the source image (required)
-    :Spec.DestinationImageName: The name for the copied image (required)
-    :Spec.KmsKeyArn: The KMS Key ARN to use for encryption (required)
-    :Spec.Tags: Optional tags to apply to the copied image
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-copyimage-name
-          Kind: "AWS::CopyImage"
-          Spec:
-            Account: "123456789012"
-            Region: "ap-southeast-1"
-            ImageName: "My-Image-Name"
-            DestinationImageName: "My-Encrypted-Image-Copy"
-            KmsKeyArn: "arn:aws:kms:ap-southeast-1:123456789012:key/your-kms-key-id"
-            Tags:
-              Environment: "production"
-              Owner: "ops-team"
-          Scope: "build"
-
-    .. note::
-        The action will automatically add a "DeliveredBy" tag if deployment_details.delivered_by is available.
-
-    .. warning::
-        The source image must exist in the current region before copying.
+    Args:
+      definition: Action resource with metadata/spec.
+      context: Rendering context for templates.
+      deployment_details: Deployment metadata for this run.
     """
 
     def __init__(
@@ -140,8 +92,9 @@ class CopyImageAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = CopyImageActionSpec(**definition.spec)
@@ -153,13 +106,10 @@ class CopyImageAction(BaseAction):
         self.tags = aws.transform_tag_hash(tags)
 
     def _execute(self):
-        """
-        Execute the image copy operation.
+        """Start the AMI copy and set initial state/outputs.
 
-        This method finds the source image by name and copies it to the destination
-        with KMS encryption enabled.
-
-        :raises: Sets action to failed if source image is not found or EC2 operations fail
+        Fails if required parameters are missing, the source AMI is not found,
+        or EC2 client operations fail.
         """
         log.trace("Executing CopyImageAction")
 
@@ -256,13 +206,10 @@ class CopyImageAction(BaseAction):
         log.trace("CopyImageAction completed")
 
     def _check(self):
-        """
-        Check the status of the image copy operation.
+        """Poll the copied AMI until available, then tag AMI and snapshots.
 
-        This method waits for the image copy to complete and applies tags
-        to both the image and its snapshots when available.
-
-        :raises: Sets action to failed if image is not found, in error state, or EC2 operations fail
+        Fails if the image cannot be found, is in an error state,
+        or if EC2 operations fail.
         """
         log.trace("Checking CopyImageAction")
 
@@ -374,27 +321,15 @@ class CopyImageAction(BaseAction):
         log.trace("CopyImageAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the image copy operation.
-
-        .. note::
-            Currently not implemented. The copied image will remain.
-        """
+        """No rollback; the copied image remains."""
+        pass
 
     def _cancel(self):
-        """
-        Cancel the image copy operation.
-
-        .. note::
-            Currently not implemented. Running copy operations cannot be cancelled.
-        """
+        """No-op; running AMI copy operations cannot be cancelled."""
+        pass
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render templates for account, region, names, and KMS key."""
         log.trace("Resolving CopyImageAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -406,17 +341,13 @@ class CopyImageAction(BaseAction):
         log.trace("CopyImageAction resolved")
 
     def __get_image_snapshots(self, describe_images_response: dict) -> list[str]:
-        """
-        Extract snapshot IDs from the describe_images response.
+        """Return EBS snapshot IDs referenced by the described image.
 
-        :param describe_images_response: Response from EC2 describe_images call
-        :type describe_images_response: dict
-        :return: List of snapshot IDs associated with the image
-        :rtype: list[str]
+        Args:
+          describe_images_response: Response from EC2 describe_images.
 
-        .. note::
-            Not all images have snapshots (e.g., instance store-backed AMIs).
-            This method safely handles missing or malformed BlockDeviceMappings.
+        Returns:
+          List of snapshot IDs associated with the image (may be empty).
         """
         snapshots = []
 
@@ -469,8 +400,9 @@ class CopyImageAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CopyImageActionResource:
+        """Factory: create a typed CopyImageActionResource."""
         return CopyImageActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CopyImageActionSpec:
-        return CopyImageActionSpec(**kwargs)
+        """Factory: create typed CopyImageActionSpec."""

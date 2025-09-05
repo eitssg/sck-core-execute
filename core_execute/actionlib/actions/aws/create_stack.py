@@ -1,4 +1,8 @@
-"""CloudFormation stack creation and management action."""
+"""CloudFormation stack creation and management action.
+
+Creates or updates a CloudFormation stack (via change sets), tracks progress,
+captures outputs/metadata, and exposes them via action state/outputs.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -19,7 +23,20 @@ CAPABILITITES = ["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM"]
 
 
 class CreateStackActionSpec(ActionSpec):
-    """Parameters for CloudFormation stack creation/update."""
+    """Parameters for CloudFormation stack creation/update.
+
+    Attributes:
+      account: AWS account ID used for the operation.
+      region: AWS region where the stack is managed.
+      stack_name: CloudFormation stack name.
+      template_url: S3 URL of the CloudFormation template.
+      capabilities: List of capabilities to acknowledge (defaults to IAM capabilities).
+      parameters: Key/value parameters passed to the template.
+      on_failure: Behavior on create failure (DELETE, DO_NOTHING, ROLLBACK).
+      timeout_in_minutes: Operation timeout in minutes.
+      tags: Optional key/value tags to apply to the stack.
+      stack_policy: Optional stack policy (dict) to apply during operations.
+    """
 
     stack_name: str = Field(
         ...,
@@ -64,7 +81,7 @@ class CreateStackActionSpec(ActionSpec):
 
     @property
     def stack_policy_json(self):
-        """Convert stack policy to JSON string."""
+        """Return the stack policy as a JSON string (or None if not set)."""
         if self.stack_policy is None:
             return None
         return util.to_json(self.stack_policy)
@@ -72,7 +89,7 @@ class CreateStackActionSpec(ActionSpec):
     @model_validator(mode="before")
     @classmethod
     def validate_model_before(cls, values: Any) -> dict[str, Any]:
-        """Handle legacy 'template' field mapping to 'template_url'."""
+        """Map legacy 'template'/'Template' fields to 'TemplateUrl' for compatibility."""
         if isinstance(values, dict):
             if not any(key in values for key in ["TemplateUrl", "template_url"]):
                 template = values.pop("template") or values.pop("Template")
@@ -83,12 +100,15 @@ class CreateStackActionSpec(ActionSpec):
 
 
 class CreateStackActionResource(ActionResource):
-    """ActionResource wrapper for CreateStackAction with defaults."""
+    """ActionResource wrapper for CreateStackAction with defaults.
+
+    Normalizes 'kind' to 'AWS::CreateStack' and preserves/normalizes 'spec'.
+    """
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec structure."""
         if not isinstance(values, dict):
             return values
 
@@ -106,27 +126,26 @@ class CreateStackActionResource(ActionResource):
 
 
 class CreateStackAction(BaseAction):
-    """
-    CloudFormation stack creation and update action.
+    """CloudFormation stack creation and update action.
 
     Creates new CloudFormation stacks or updates existing ones using change sets.
     Automatically detects stack existence and chooses appropriate operation.
 
     Args:
-        definition: Action specification with CloudFormation parameters
-        context: Jinja2 rendering context for variable substitution
-        deployment_details: Client/portfolio/app/branch/build information
+      definition: Action specification with CloudFormation parameters.
+      context: Jinja2 rendering context for variable substitution.
+      deployment_details: Client/portfolio/app/branch/build information.
 
     Outputs:
-        StackId: CloudFormation stack ID
-        StackName: Stack name
-        StackOperation: CREATE, UPDATE, or NO_UPDATE
-        StackStatus: Current CloudFormation stack status
-        {OutputKey}: All CloudFormation stack outputs
+      StackId: CloudFormation stack ID.
+      StackName: Stack name.
+      StackOperation: CREATE, UPDATE, or NO_UPDATE.
+      StackStatus: Current CloudFormation stack status.
+      {OutputKey}: All CloudFormation stack outputs.
 
     State Keys:
-        StackName, TemplateUrl, Region, Account, StackId, StackExists,
-        StackOperation, StackStatus, StackOutputCount, DriftDetectionId
+      StackName, TemplateUrl, Region, Account, StackId, StackExists,
+      StackOperation, StackStatus, StackOutputCount, DriftDetectionId.
     """
 
     def __init__(
@@ -134,9 +153,10 @@ class CreateStackAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
         """Initialize CreateStackAction with validated parameters."""
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = CreateStackActionSpec(**definition.spec)
@@ -145,12 +165,7 @@ class CreateStackAction(BaseAction):
             self.params.tags["DeliveredBy"] = deployment_details.delivered_by
 
     def can_initialize(self) -> bool:
-        """
-        Check if CreateStackAction can be reinitialized.
-
-        CloudFormation actions can generally be reinitialized unless
-        they're in a critical deployment state.
-        """
+        """Return True if the action can be reinitialized (no CFN operation in progress)."""
         # Check if we're in middle of a critical operation
         stack_status = self.get_state("StackStatus")
         if stack_status in ["DELETE_IN_PROGRESS", "CREATE_IN_PROGRESS", "UPDATE_IN_PROGRESS"]:
@@ -162,12 +177,12 @@ class CreateStackAction(BaseAction):
 
         return True
 
-    def initialize(self):
-        """
-        Initialize CreateStackAction for rerun.
+    def initialize(self) -> bool:
+        """Reset stack-related state to allow a clean rerun without changing configuration.
 
-        Clears stack-specific state while preserving configuration.
-        This allows the action to rediscover stack state during execution.
+        Returns:
+            bool: True if initialization was successful, False otherwise.
+
         """
         log.info("Initializing CreateStackAction {} for rerun", self.name)
 
@@ -221,12 +236,10 @@ class CreateStackAction(BaseAction):
 
         log.info("CreateStackAction {} reinitialized successfully", self.name)
 
-    def can_execute(self) -> bool:
-        """
-        Check if CreateStackAction can execute.
+        return True
 
-        Validates that required parameters are available and AWS credentials work.
-        """
+    def can_execute(self) -> bool:
+        """Validate required params and AWS connectivity prior to execution."""
         # Basic parameter validation
         if not self.params.stack_name:
             log.error("Cannot execute - StackName is required")
@@ -248,7 +261,7 @@ class CreateStackAction(BaseAction):
             return False
 
     def _resolve(self):
-        """Resolve Jinja2 template variables in action parameters."""
+        """Render template variables and coerce parameter types."""
         log.trace("Resolving CreateStackAction")
 
         self.params.region = self.renderer.render_string(self.params.region, self.context)
@@ -281,7 +294,7 @@ class CreateStackAction(BaseAction):
         log.trace("Resolved CreateStackAction")
 
     def _execute(self):
-        """Execute CloudFormation stack creation or update operation."""
+        """Create a new stack or update an existing one based on current state."""
         log.trace("Executing CreateStackAction")
 
         # Validate required parameters
@@ -374,7 +387,7 @@ class CreateStackAction(BaseAction):
         log.trace("CreateStackAction execution completed")
 
     def __create_stack(self, cfn_client):
-        """Create new CloudFormation stack with validation and error handling."""
+        """Create a new CloudFormation stack after validating the template."""
         log.trace("Creating new stack '{}'", self.params.stack_name)
 
         try:
@@ -458,7 +471,13 @@ class CreateStackAction(BaseAction):
         log.trace("Stack creation initiated")
 
     def __update_stack(self, cfn_client: Any, stack_id: str, describe_stack_response: dict):
-        """Update existing CloudFormation stack using change sets for safety."""
+        """Update an existing CloudFormation stack using a change set.
+
+        Args:
+          cfn_client: boto3 CloudFormation client.
+          stack_id: Stack ID or ARN.
+          describe_stack_response: Result of describe_stacks for the target stack.
+        """
         try:
             log.trace("Updating existing stack '{}'", self.params.stack_name)
 
@@ -674,7 +693,7 @@ class CreateStackAction(BaseAction):
         log.trace("CreateStackAction check completed")
 
     def _unexecute(self):
-        """Delete the CloudFormation stack for rollback."""
+        """Initiate deletion of the stack as a best-effort rollback."""
         log.trace("Unexecuting CreateStackAction")
 
         stack_id = self.get_state("StackId")
@@ -708,7 +727,7 @@ class CreateStackAction(BaseAction):
             self.set_failed(f"Unexpected error deleting stack '{stack_id}': {e}")
 
     def _cancel(self):
-        """Cancel the current CloudFormation stack operation."""
+        """Cancel an in-progress CloudFormation stack update if possible."""
         log.trace("Cancelling CreateStackAction")
 
         stack_id = self.get_state("StackId")
@@ -739,7 +758,13 @@ class CreateStackAction(BaseAction):
             self.set_complete("Stack operation cancellation failed")
 
     def _capture_stack_events(self, cfn_client, stack_id: str, failed: bool = False):
-        """Capture CloudFormation stack events for troubleshooting."""
+        """Capture recent CloudFormation stack events for troubleshooting.
+
+        Args:
+          cfn_client: boto3 CloudFormation client.
+          stack_id: Stack ID or ARN.
+          failed: If True, store only recent failed events.
+        """
         try:
             events_response = cfn_client.describe_stack_events(StackName=stack_id)
             events = events_response.get("StackEvents", [])
@@ -790,7 +815,11 @@ class CreateStackAction(BaseAction):
             log.warning("Failed to capture stack events for '{}': {}", stack_id, e)
 
     def __save_stack_outputs(self, describe_stack_response: dict):
-        """Save CloudFormation stack outputs and metadata to action outputs."""
+        """Persist CloudFormation stack outputs and metadata to action state/outputs.
+
+        Args:
+          describe_stack_response: Response dict from describe_stacks.
+        """
         try:
             stack_info = describe_stack_response["Stacks"][0]
 
@@ -836,7 +865,7 @@ class CreateStackAction(BaseAction):
             log.warning("Error saving stack outputs: {}", e)
 
     def _capture_resource_summary(self):
-        """Capture summary of stack resources for monitoring."""
+        """Capture a simple count of resources and types present in the stack."""
         try:
             cfn_client = aws.cfn_client(
                 region=self.params.region,
@@ -866,7 +895,7 @@ class CreateStackAction(BaseAction):
             log.warning("Failed to capture resource summary: {}", e)
 
     def _check_stack_drift(self, cfn_client, stack_id: str):
-        """Initiate stack drift detection for monitoring."""
+        """Kick off CloudFormation stack drift detection (best-effort)."""
         try:
             # Initiate drift detection
             drift_response = cfn_client.detect_stack_drift(StackName=stack_id)
@@ -881,10 +910,10 @@ class CreateStackAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CreateStackActionResource:
-        """Generate ActionResource for CreateStackAction."""
+        """Factory: create a typed CreateStackActionResource."""
         return CreateStackActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CreateStackActionSpec:
-        """Generate ActionSpec for CreateStackAction."""
+        """Factory: create a typed CreateStackActionSpec."""
         return CreateStackActionSpec(**kwargs)

@@ -1,4 +1,7 @@
-"""Create CloudFront invalidation action to clear the cache"""
+"""Create a CloudFront invalidation to clear cached content.
+
+Starts an invalidation for a distribution and exposes details in state/outputs.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -13,17 +16,13 @@ from core_execute.actionlib.action import BaseAction
 
 
 class CreateCloudFrontInvalidationActionSpec(ActionSpec):
-    """
-    Parameters for the CreateCloudFrontInvalidationAction.
+    """Parameters for creating a CloudFront invalidation.
 
-    :param account: The account to use for the action (required)
-    :type account: str
-    :param region: The region where CloudFront is located (required)
-    :type region: str
-    :param distribution_id: The CloudFront distribution ID to invalidate (required)
-    :type distribution_id: str
-    :param paths: The paths to invalidate (optional). Defaults to ['*']
-    :type paths: list[str]
+    Args:
+      account: AWS account ID used for the action.
+      region: AWS region used for API calls (CloudFront is global).
+      distribution_id: CloudFront distribution ID to invalidate.
+      paths: Paths to invalidate. Defaults to ['*'].
     """
 
     distribution_id: str = Field(
@@ -39,21 +38,12 @@ class CreateCloudFrontInvalidationActionSpec(ActionSpec):
 
 
 class CreateCloudFrontInvalidationActionResource(ActionResource):
-    """
-    Generate the action definition for CreateCloudFrontInvalidationAction.
-
-    This class provides default values and validation for CreateCloudFrontInvalidationAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
-    """
+    """Resource model for CreateCloudFrontInvalidation (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -71,52 +61,15 @@ class CreateCloudFrontInvalidationActionResource(ActionResource):
 
 
 class CreateCloudFrontInvalidationAction(BaseAction):
-    """
-    Create a CloudFront invalidation to clear cache.
+    """Create a CloudFront invalidation to clear cached content.
 
-    This action creates a CloudFront invalidation request to clear cached content.
-    The action completes immediately after triggering the invalidation without waiting
-    for completion.
+    Completes after requesting the invalidation; does not wait for completion.
 
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::CreateCloudFrontInvalidation``
-    :Spec.Account: The account where CloudFront is located (required)
-    :Spec.Region: The region where CloudFront is located (required)
-    :Spec.DistributionId: The ID of the CloudFront distribution to invalidate (required)
-    :Spec.Paths: List of paths to invalidate (optional, defaults to ['*'])
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-createcloudfrontinvalidation-name
-          Kind: "AWS::CreateCloudFrontInvalidation"
-          Spec:
-            Account: "123456789012"
-            Region: "us-east-1"
-            DistributionId: "E1234567890"
-            Paths:
-              - "/index.html"
-              - "/images/*"
-              - "/css/*"
-          Scope: "build"
-
-    .. note::
-        CloudFront invalidations are asynchronous. This action only triggers the
-        invalidation and does not wait for completion.
-
-    .. warning::
-        CloudFront charges for invalidations beyond the monthly free tier.
-        Using "/*" will invalidate all content.
+    Args:
+      definition: The action specification containing configuration.
+      context: Jinja2 rendering context for template variables.
+      deployment_details: Deployment metadata for this run.
+      parent_action_name: Optional parent action name.
     """
 
     def __init__(
@@ -124,18 +77,15 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action definition parameters
         self.params = CreateCloudFrontInvalidationActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render templates for region, account, distribution_id, and paths."""
         log.trace("Resolving CreateCloudFrontInvalidationAction")
 
         self.params.region = self.renderer.render_string(self.params.region, self.context)
@@ -151,13 +101,10 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         log.trace("CreateCloudFrontInvalidationAction resolved")
 
     def _execute(self):
-        """
-        Execute the CloudFront invalidation operation.
+        """Create the invalidation and set state/outputs.
 
-        This method creates a CloudFront invalidation request for the specified
-        distribution and paths. It sets appropriate state outputs for tracking.
-
-        :raises: Sets action to failed if distribution ID is missing or CloudFront operation fails
+        Raises:
+          Sets failed status if DistributionId is missing or CloudFront calls fail.
         """
         log.trace("Executing CreateCloudFrontInvalidationAction")
 
@@ -233,13 +180,7 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         log.trace("CreateCloudFrontInvalidationAction completed")
 
     def _check(self):
-        """
-        Check the status of the CloudFront invalidation.
-
-        .. note::
-            This action completes immediately after creating the invalidation.
-            Status checking is not typically needed but can be implemented if required.
-        """
+        """Optionally check the invalidation status and update state/outputs."""
         # Get the invalidation ID from state
         invalidation_id = self.get_state("InvalidationId")
         if not invalidation_id:
@@ -281,31 +222,21 @@ class CreateCloudFrontInvalidationAction(BaseAction):
             self.set_running(f"Invalidation status: {status}")
 
     def _unexecute(self):
-        """
-        Rollback the CloudFront invalidation operation.
-
-        .. note::
-            CloudFront invalidations cannot be cancelled or undone once created.
-            This method is a no-op.
-        """
+        """No rollback; CloudFront invalidations cannot be undone."""
         log.trace("CreateCloudFrontInvalidationAction unexecute - no action required")
         self.set_complete("Invalidation cannot be undone")
 
     def _cancel(self):
-        """
-        Cancel the CloudFront invalidation operation.
-
-        .. note::
-            CloudFront invalidations cannot be cancelled once created.
-            This method is a no-op.
-        """
+        """No-op; CloudFront invalidations cannot be cancelled once created."""
         log.trace("CreateCloudFrontInvalidationAction cancel - no action required")
         self.set_complete("Invalidation cannot be cancelled")
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CreateCloudFrontInvalidationActionResource:
+        """Factory: create a typed CreateCloudFrontInvalidationActionResource."""
         return CreateCloudFrontInvalidationActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CreateCloudFrontInvalidationActionSpec:
+        """Factory: create typed CreateCloudFrontInvalidationActionSpec."""
         return CreateCloudFrontInvalidationActionSpec(**kwargs)

@@ -1,4 +1,8 @@
-"""Get the outputs of a CloudFormation stack action for Core Execute automation platform."""
+"""Retrieve CloudFormation stack outputs and expose them to later actions.
+
+Connects with the provisioning role, fetches outputs for a stack, and stores
+each key/value in action outputs for template/rendering use downstream.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -14,17 +18,12 @@ from core_execute.actionlib.action import BaseAction
 
 
 class GetStackOutputsActionSpec(ActionSpec):
-    """
-    Parameters for the GetStackOutputsAction.
+    """Parameters for retrieving CloudFormation stack outputs.
 
-    Attributes
-    ----------
-    account : str
-        The AWS account ID where the CloudFormation stack is located.
-    region : str
-        The AWS region where the CloudFormation stack is located.
-    stack_name : str
-        The name of the CloudFormation stack to retrieve outputs from.
+    Attributes:
+      account: AWS account ID of the stack.
+      region: AWS region of the stack.
+      stack_name: Name of the CloudFormation stack.
     """
 
     stack_name: str = Field(
@@ -35,16 +34,12 @@ class GetStackOutputsActionSpec(ActionSpec):
 
 
 class GetStackOutputsActionResource(ActionResource):
-    """
-    Action specification for the GetStackOutputs action.
-
-    Provides validation and default values for GetStackOutputs action definitions.
-    """
+    """Resource model for GetStackOutputs (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -62,53 +57,10 @@ class GetStackOutputsActionResource(ActionResource):
 
 
 class GetStackOutputsAction(BaseAction):
-    """
-    Retrieve the outputs of a CloudFormation stack.
+    """Fetch outputs from a CloudFormation stack and publish them as action outputs.
 
-    This action retrieves the outputs of a CloudFormation stack and makes them
-    available in the action context for use by subsequent actions or Jinja2
-    template rendering.
-
-    The outputs are stored using the ``set_output()`` method and can be accessed
-    using the ``get_output()`` method or through Jinja2 template variables.
-
-    Attributes
-    ----------
-    params : GetStackOutputsActionSpec
-        Validated parameters for the action.
-
-    Parameters
-    ----------
-    Kind : str
-        Use the value: ``AWS::GetStackOutputs``
-    Spec.Account : str
-        The AWS account where the stack is located
-    Spec.Region : str
-        The AWS region where the stack is located
-    Spec.StackName : str
-        The name of the stack to get outputs from (required)
-
-    Examples
-    --------
-    ActionResource YAML configuration:
-
-    .. code-block:: yaml
-
-        - Name: action-aws-getstackoutputs-name
-          Kind: "AWS::GetStackOutputs"
-          Spec:
-            Account: "154798051514"
-            StackName: "my-applications-stack"
-            Region: "ap-southeast-1"
-          Scope: "build"
-
-    Notes
-    -----
-    If the specified stack does not exist, the action will complete successfully
-    with a warning, but no outputs will be available.
-
-    The stack outputs are stored in the action context and can be referenced
-    in subsequent actions using Jinja2 template syntax.
+    Also records stack metadata (ID, status, times). Missing stacks are treated
+    as success with a warning and zero outputs.
     """
 
     def __init__(
@@ -116,32 +68,26 @@ class GetStackOutputsAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        """
-        Initialize the GetStackOutputsAction.
+        """Initialize the action and validate parameters.
 
-        :param definition: The action specification definition.
-        :type definition: ActionResource
-        :param context: Execution context for variable resolution.
-        :type context: dict[str, Any]
-        :param deployment_details: Details about the current deployment.
-        :type deployment_details: DeploymentDetails
-        :raises ValidationError: If action parameters are invalid.
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context for variables.
+          deployment_details: Deployment metadata.
+          parent_action_name: Optional parent action name.
         """
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = GetStackOutputsActionSpec(**definition.spec)
 
     def _execute(self):
-        """
-        Execute the stack outputs retrieval operation.
+        """Describe the stack, save outputs to action outputs, and record state.
 
-        Connects to CloudFormation using the provisioning role and retrieves
-        the outputs from the specified stack. Stores each output as an action
-        output for use by subsequent actions.
-
-        :raises ClientError: If CloudFormation operations fail (except for non-existent stacks).
+        Raises:
+          ClientError: On CloudFormation errors other than 'stack does not exist'.
         """
         log.trace("GetStackOutputsAction._execute()")
 
@@ -251,12 +197,7 @@ class GetStackOutputsAction(BaseAction):
         log.trace("GetStackOutputsAction._execute() complete")
 
     def _check(self):
-        """
-        Check the status of the stack outputs operation.
-
-        This method should not be called for GetStackOutputs actions as the
-        operation completes immediately. If called, it indicates an internal error.
-        """
+        """Not applicable; operation completes immediately."""
         log.trace("GetStackOutputsAction._check()")
 
         self.set_failed("Internal error - _check() should not have been called")
@@ -264,30 +205,15 @@ class GetStackOutputsAction(BaseAction):
         log.trace("GetStackOutputsAction._check() complete")
 
     def _unexecute(self):
-        """
-        Reverse the stack outputs operation.
-
-        This operation cannot be reversed as it only reads data.
-        This method is provided for interface compliance but performs no action.
-        """
+        """No-op; this action is read-only."""
         pass
 
     def _cancel(self):
-        """
-        Cancel the stack outputs operation.
-
-        This operation cannot be cancelled as it completes immediately.
-        This method is provided for interface compliance but performs no action.
-        """
+        """No-op; action completes immediately and cannot be cancelled."""
         pass
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        Uses the renderer to substitute variables in the account, region,
-        and stack_name parameters using the current execution context.
-        """
+        """Render account, region, and stack_name from the context."""
         log.trace("GetStackOutputsAction._resolve()")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -297,16 +223,13 @@ class GetStackOutputsAction(BaseAction):
         log.trace("GetStackOutputsAction._resolve() complete")
 
     def __save_stack_outputs(self, describe_stack_response):
-        """
-        Extract and save stack outputs from the CloudFormation response.
+        """Extract outputs from describe_stacks response and save them.
 
-        Iterates through the stack outputs in the describe_stacks response
-        and stores each output key-value pair using the set_output method.
+        Args:
+          describe_stack_response: Dict returned by CloudFormation describe_stacks.
 
-        :param describe_stack_response: Response from CloudFormation describe_stacks API call.
-        :type describe_stack_response: dict
-        :return: Number of outputs saved.
-        :rtype: int
+        Returns:
+          The number of outputs saved.
         """
         log.trace("GetStackOutputsAction.__save_stack_outputs()")
 
@@ -335,8 +258,10 @@ class GetStackOutputsAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> GetStackOutputsActionResource:
+        """Factory: create a typed GetStackOutputsActionResource."""
         return GetStackOutputsActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> GetStackOutputsActionSpec:
+        """Factory: create typed GetStackOutputsActionSpec."""
         return GetStackOutputsActionSpec(**kwargs)

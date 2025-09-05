@@ -1,4 +1,7 @@
-"""Delete a CloudFormation stack"""
+"""Delete a CloudFormation stack and track progress.
+
+Starts deletion, monitors status, records failures, and exposes results in state/outputs.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -15,17 +18,13 @@ from core_execute.actionlib.action import BaseAction
 
 
 class DeleteStackActionSpec(ActionSpec):
-    """
-    Parameters for the DeleteStackAction.
+    """Parameters for deleting a CloudFormation stack.
 
-    :param account: The account to use for the action (required)
-    :type account: str
-    :param region: The region where the stack is located (required)
-    :type region: str
-    :param stack_name: The name of the stack to delete (required)
-    :type stack_name: str
-    :param success_statuses: Stack statuses that indicate success (optional)
-    :type success_statuses: list[str]
+    Attributes:
+      account: AWS account ID for the stack.
+      region: AWS region where the stack resides.
+      stack_name: Name or ARN of the stack to delete.
+      success_statuses: Stack statuses that should be treated as success (skip delete).
     """
 
     stack_name: str = Field(
@@ -41,21 +40,12 @@ class DeleteStackActionSpec(ActionSpec):
 
 
 class DeleteStackActionResource(ActionResource):
-    """
-    Generate the action definition for DeleteStackAction.
-
-    This class provides default values and validation for DeleteStackAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
-    """
+    """Resource model for DeleteStack (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -73,47 +63,10 @@ class DeleteStackActionResource(ActionResource):
 
 
 class DeleteStackAction(BaseAction):
-    """
-    Delete a CloudFormation stack.
+    """Delete a CloudFormation stack and monitor until completion.
 
-    This action will delete a CloudFormation stack and monitor the deletion process
-    until completion. The action handles various stack states and tracks any resources
-    that fail to delete.
-
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::DeleteStack``
-    :Spec.Account: The account where the stack is located (required)
-    :Spec.Region: The region where the stack is located (required)
-    :Spec.StackName: The name of the stack to delete (required)
-    :Spec.SuccessStatuses: Stack statuses that indicate success (optional)
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-deletestack-name
-          Kind: "AWS::DeleteStack"
-          Spec:
-            Account: "154798051514"
-            Region: "ap-southeast-1"
-            StackName: "my-application-stack-name"
-            SuccessStatuses: ["UPDATE_COMPLETE", "CREATE_COMPLETE"]
-          Scope: "build"
-
-    .. note::
-        Stack deletion can take several hours depending on resources involved.
-
-    .. warning::
-        Some resources may fail to delete due to dependencies or protection settings.
+    Handles common edge cases (already deleted, in progress, failed) and
+    records failed resources and recent events for troubleshooting.
     """
 
     def __init__(
@@ -121,18 +74,16 @@ class DeleteStackAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and validate parameters."""
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate and set the parameters
         self.params = DeleteStackActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render template variables in account, region, and stack_name."""
         log.trace("Resolving DeleteStackAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -142,12 +93,7 @@ class DeleteStackAction(BaseAction):
         log.trace("DeleteStackAction resolved")
 
     def can_initialize(self) -> bool:
-        """
-        Check if DeleteStackAction can be reinitialized for teardown reruns.
-
-        Delete actions can generally be reinitialized unless they're in
-        the middle of a deletion operation.
-        """
+        """Return True if the action can be reinitialized (no deletion in progress)."""
         stack_status = self.get_state("CurrentStackStatus") or self.get_state("InitialStackStatus")
         if stack_status and "DELETE_IN_PROGRESS" in stack_status:
             log.warning("Cannot reinitialize DeleteStackAction - stack deletion in progress: {}", stack_status)
@@ -155,12 +101,13 @@ class DeleteStackAction(BaseAction):
 
         return True
 
-    def initialize(self):
-        """
-        Initialize DeleteStackAction for teardown rerun.
+    def initialize(self) -> bool:
+        """Clear deletion-specific state so teardown can rerun safely.
 
-        Clears deletion-specific state while preserving configuration.
-        Allows the action to rediscover stack state during execution.
+
+        Returns:
+            bool: True if initialization was successful, False otherwise.
+
         """
         log.info("Initializing DeleteStackAction {} for teardown rerun", self.name)
 
@@ -194,12 +141,10 @@ class DeleteStackAction(BaseAction):
 
         log.info("DeleteStackAction {} reinitialized for teardown", self.name)
 
-    def can_execute(self) -> bool:
-        """
-        Check if DeleteStackAction can execute in teardown pipeline.
+        return True
 
-        Enhanced validation for CD pipeline robustness.
-        """
+    def can_execute(self) -> bool:
+        """Validate parameters and test AWS connectivity before execution."""
         # Basic parameter validation
         if not self.params.stack_name:
             log.error("Cannot execute teardown - StackName is required")
@@ -221,15 +166,7 @@ class DeleteStackAction(BaseAction):
             return False
 
     def _execute(self):
-        """
-        Execute the stack deletion operation with enhanced teardown logic.
-
-        This method initiates the deletion of the CloudFormation stack and sets up
-        monitoring for the deletion process.
-
-        Enhanced for CD pipeline teardown with better error handling and
-        parallel-friendly state management.
-        """
+        """Initiate deletion and set initial state; handle common statuses."""
         log.trace("Executing DeleteStackAction")
 
         # Validate required parameters
@@ -383,12 +320,7 @@ class DeleteStackAction(BaseAction):
         log.trace("DeleteStackAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the stack deletion operation.
-
-        This method monitors the progress of the stack deletion and handles
-        various completion and error scenarios.
-        """
+        """Monitor deletion progress and update state/outputs accordingly."""
         log.trace("Checking DeleteStackAction")
 
         # Obtain a CloudFormation client
@@ -505,12 +437,7 @@ class DeleteStackAction(BaseAction):
         log.trace("DeleteStackAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the stack deletion operation.
-
-        .. note::
-            Stack deletion cannot be undone. This method is a no-op.
-        """
+        """No rollback; stack deletion cannot be undone."""
         log.trace("Unexecuting DeleteStackAction")
 
         # Stack deletion cannot be undone
@@ -527,12 +454,7 @@ class DeleteStackAction(BaseAction):
         log.trace("DeleteStackAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the stack deletion operation.
-
-        .. note::
-            Stack deletion operations in progress cannot be cancelled through CloudFormation.
-        """
+        """No-op; CloudFormation cannot cancel a deletion in progress."""
         log.trace("Cancelling DeleteStackAction")
 
         # Stack deletion cannot be cancelled once started
@@ -541,13 +463,23 @@ class DeleteStackAction(BaseAction):
         log.trace("DeleteStackAction cancellation completed")
 
     def _get_stack_status(self, cfn_client) -> dict[str, Any]:
-        """
-        Get the current status of the CloudFormation stack.
+        """Return current stack status and metadata.
 
-        :param cfn_client: CloudFormation client
-        :type cfn_client: boto3.client
-        :return: Dictionary with stack information
-        :rtype: dict[str, Any]
+        Args:
+          cfn_client: boto3 CloudFormation client.
+
+        Returns:
+          Dict with keys:
+            - exists: bool
+            - status: str (if exists)
+            - stack_id: str (if exists)
+            - creation_time: datetime | None
+            - last_updated_time: datetime | None
+            - stack_name: str (if exists)
+
+        Raises:
+          ClientError: For unexpected CloudFormation errors.
+          Exception: For other unexpected errors.
         """
         try:
             response = cfn_client.describe_stacks(StackName=self.params.stack_name)
@@ -583,11 +515,10 @@ class DeleteStackAction(BaseAction):
             raise
 
     def _track_stack_events(self, cfn_client):
-        """
-        Track and store recent stack events for debugging purposes.
+        """Collect and store recent stack events for debugging.
 
-        :param cfn_client: CloudFormation client
-        :type cfn_client: boto3.client
+        Args:
+          cfn_client: boto3 CloudFormation client.
         """
         try:
             stack_id = self.get_state("StackId")
@@ -616,13 +547,13 @@ class DeleteStackAction(BaseAction):
             log.warning("Failed to retrieve stack events: {}", e)
 
     def _get_failed_resources(self, cfn_client) -> list[dict[str, Any]]:
-        """
-        Get list of resources that failed to delete.
+        """Return a list of resources that failed to delete.
 
-        :param cfn_client: CloudFormation client
-        :type cfn_client: boto3.client
-        :return: List of failed resources
-        :rtype: list[dict[str, Any]]
+        Args:
+          cfn_client: boto3 CloudFormation client.
+
+        Returns:
+          List of dicts with failed resource details.
         """
         failed_resources = []
 
@@ -657,8 +588,10 @@ class DeleteStackAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteStackActionResource:
+        """Factory: create a typed DeleteStackActionResource."""
         return DeleteStackActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteStackActionSpec:
+        """Factory: create typed DeleteStackActionSpec."""
         return DeleteStackActionSpec(**kwargs)

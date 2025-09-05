@@ -1,4 +1,4 @@
-"""Record an event in the database action for Core Execute automation platform."""
+"""Record an event in the Core Execute database and log it."""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -14,69 +14,55 @@ from core_db.event.actions import EventActions
 
 
 class PutEventActionSpec(ActionSpec):
-    """
-    Parameters for the PutEventAction.
+    """Parameters for PutEventAction.
 
-    Attributes
-    ----------
-    type : str
-        The type of event to put. Valid values: STATUS, DEBUG, INFO, WARN, ERROR.
-        Defaults to 'STATUS'.
-    status : str
-        The status of the event (required).
-    message : str
-        The message to associate with the event. Defaults to empty string.
-    identity : str, optional
-        The identity of the event. Defaults to None.
+    Attributes:
+      type: Event type (STATUS, DEBUG, INFO, WARN, ERROR). Default: STATUS.
+      status: Event status string (required).
+      message: Optional message for the event. Default: "".
+      identity: Optional event identity string.
     """
 
     type: str = Field(
         "STATUS",
         alias="Type",
-        description="The type of event to put (required) defaults to 'STATUS'",
+        description="The type of event to put (STATUS, DEBUG, INFO, WARN, ERROR)",
     )
     status: str = Field(
         ...,
         alias="Status",
-        description="The status of the event (required)",
+        description="The status of the event",
     )
     message: str = Field(
         "",
         alias="Message",
-        description="The message to associate with the event (optional) defaults to ''",
+        description="The message associated with the event",
     )
     identity: str = Field(
         None,
         alias="Identity",
-        description="The identity of the event (optional)",
+        description="The identity of the event",
     )
 
     @model_validator(mode="before")
     @classmethod
     def validatre_model_before(cls, values: Any) -> dict[str, Any]:
+        """Provide default account/region to satisfy the base model."""
         if isinstance(values, dict):
-
-            # These are requried keys in the superclass.  But, for this
-            # Action, we'll just put 'non-required' in there
             if not any(key in values for key in ["account", "Account"]):
                 values["Account"] = "not-required"
             if not any(key in values for key in ["region", "Region"]):
                 values["Region"] = "not-required"
-
         return values
 
 
 class PutEventActionResource(ActionResource):
-    """
-    Action specification for the PutEvent action.
-
-    Provides validation and default values for PutEvent action definitions.
-    """
+    """Resource model for PutEvent (forces kind and normalizes spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -94,86 +80,24 @@ class PutEventActionResource(ActionResource):
 
 
 class PutEventAction(BaseAction):
-    """
-    Record an event in the database.
-
-    This action records an event in the database and outputs a log message
-    based on the event type. The event will be associated with the deployment
-    details and the identity of the event.
-
-    The action supports different event types that determine both the logging
-    level and the database record type.
-
-    Attributes
-    ----------
-    params : PutEventActionSpec
-        Validated parameters for the action.
-
-    Parameters
-    ----------
-    Kind : str
-        Use the value: ``AWS::PutEvent``
-    Spec.Type : str
-        The type of event to put. Valid values: STATUS, DEBUG, INFO, WARN, ERROR.
-        Defaults to 'STATUS'.
-    Spec.Status : str
-        The status of the event (required).
-    Spec.Message : str
-        The message to associate with the event. Defaults to empty string.
-    Spec.Identity : str, optional
-        The identity of the event. Defaults to None.
-
-    Examples
-    --------
-    ActionResource YAML configuration:
-
-    .. code-block:: yaml
-
-        - Name: action-aws-putevent-name
-          Kind: "AWS::PutEvent"
-          Spec:
-            Type: "STATUS"
-            Status: "DEPLOY_SUCCESS"
-            Message: "The deployment was successful"
-            Identity: "prn:stack-portfolio:my-stack-app:my-stack-dev-branch:ver.10"
-          Scope: "build"
-
-    Notes
-    -----
-    Event types map to specific logging levels:
-
-    - STATUS: Uses log.status() with status and message
-    - DEBUG: Uses log.debug() with message
-    - INFO: Uses log.info() with message
-    - WARN: Uses log.warn() with message
-    - ERROR: Uses log.error() with message
-
-    The event is always recorded in the database regardless of the logging level.
-
-    Raises
-    ------
-    ValueError
-        If an invalid event type is provided.
-    """
+    """Record an event in the DB and log at the appropriate level."""
 
     def __init__(
         self,
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        """
-        Initialize the PutEventAction.
+        """Initialize the action and validate parameters.
 
-        :param definition: The action specification definition.
-        :type definition: ActionResource
-        :param context: Execution context for variable resolution.
-        :type context: dict[str, Any]
-        :param deployment_details: Details about the current deployment.
-        :type deployment_details: DeploymentDetails
-        :raises ValidationError: If action parameters are invalid.
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context for templates.
+          deployment_details: Deployment metadata (scope used as item_type).
+          parent_action_name: Optional parent action name.
         """
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = PutEventActionSpec(**definition.spec)
@@ -181,14 +105,7 @@ class PutEventAction(BaseAction):
         self.item_type = deployment_details.scope
 
     def _execute(self):
-        """
-        Execute the event recording operation.
-
-        Records the event in both the logging system and database.
-        Sets appropriate completion or failure state based on the outcome.
-
-        :raises ValueError: If an invalid event type is provided.
-        """
+        """Write the event to the DB and log using the selected type."""
         log.trace("PutEventAction._execute()")
 
         # Create a unique timestamp label for this event instance
@@ -219,7 +136,7 @@ class PutEventAction(BaseAction):
                 log.error(self.params.message, identity=self.params.identity)
             else:
                 log.fatal("Invalid event type: {}", t)
-                raise ValueError(f"Invalid event type: {t}.  Must be one of: STATUS, DEBUG, INFO, WARN, ERROR")
+                raise ValueError("Invalid event type. Must be one of: STATUS, DEBUG, INFO, WARN, ERROR")
 
             event = EventActions.create(
                 self.params.identity,
@@ -267,12 +184,7 @@ class PutEventAction(BaseAction):
         log.trace("PutEventAction._execute() complete")
 
     def _check(self):
-        """
-        Check the status of the event recording operation.
-
-        This method should not be called for PutEvent actions as the
-        operation completes immediately. If called, it indicates an internal error.
-        """
+        """Not applicable; event recording is immediate."""
         log.trace("PutEventAction._check()")
 
         self.set_failed("Internal error - _check() should not have been called")
@@ -280,30 +192,15 @@ class PutEventAction(BaseAction):
         log.trace("PutEventAction._check() complete")
 
     def _unexecute(self):
-        """
-        Reverse the event recording operation.
-
-        This operation cannot be reversed as events are permanent records.
-        This method is provided for interface compliance but performs no action.
-        """
+        """No rollback; events are permanent records."""
         pass
 
     def _cancel(self):
-        """
-        Cancel the event recording operation.
-
-        This operation cannot be cancelled as it completes immediately.
-        This method is provided for interface compliance but performs no action.
-        """
+        """No-op; action completes immediately and cannot be cancelled."""
         pass
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        Uses the renderer to substitute variables in the type, status, message,
-        and identity parameters using the current execution context.
-        """
+        """Render template variables in type, status, message, and identity."""
         log.trace("PutEventAction._resolve()")
 
         self.params.type = self.renderer.render_string(self.params.type, self.context)
@@ -315,8 +212,10 @@ class PutEventAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> PutEventActionResource:
+        """Factory: create a typed PutEventActionResource."""
         return PutEventActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> PutEventActionSpec:
+        """Factory: create typed PutEventActionSpec."""
         return PutEventActionSpec(**kwargs)

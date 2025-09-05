@@ -1,24 +1,7 @@
-"""Modify an RDS database instance.
+"""Modify an Amazon RDS DB instance and track completion.
 
-This module defines the ModifyDbInstanceAction which is responsible for calling
-the boto3 RDS client's modify_db_instance() method to make modifications to an RDS
-instance. The action waits until the modifications are completed as indicated by
-the RDS API before setting its state to complete.
-
-:Example:
-
-   .. code-block:: yaml
-
-      - Name: action-aws-rds-modifydbinstance-name
-        Kind: "AWS::RDS::ModifyDbInstance"
-        Spec:
-          Account: "123456789012"
-          Region: "ap-southeast-1"
-          ApiParams:
-            DBInstanceIdentifier: "My-RDS-Instance-Id"
-            DBInstanceClass: db.m7g.4xlarge
-            ApplyImmediately: True
-        Scope: "build"
+This action calls modify_db_instance on the RDS client, updates state/outputs with
+the response, and continues checking until no PendingModifiedValues remain.
 """
 
 from typing import Any
@@ -35,42 +18,27 @@ from core_execute.actionlib.action import BaseAction
 
 
 class ModifyDbInstanceActionSpec(ActionSpec):
-    """Parameters for the ModifyDbInstanceAction.
+    """Parameters for modifying an RDS DB instance.
 
-    :param account: The account to use for the action.
-    :type account: str
-    :param region: The AWS region of the RDS instance.
-    :type region: str
-    :param api_params: The parameters to pass to the modify_db_instance API call.
-           See AWS documentation for available options.
-    :type api_params: dict[str, Any]
+    Attributes:
+      account: AWS account ID used to assume the provisioning role.
+      region: AWS region of the target DB instance.
+      api_params: Arguments passed to boto3 RDS modify_db_instance.
     """
 
     api_params: dict[str, Any] = Field(
         ...,
         alias="ApiParams",
-        description=(
-            "The parameters to pass to the modify_db_instance call (required). "
-            "Refer to the AWS documentation for supported options."
-        ),
+        description=("Parameters to pass to modify_db_instance (required). " "Refer to AWS docs for supported options."),
     )
 
 
 class ModifyDbInstanceActionResource(ActionResource):
-    """Generate the action definition for modifying an RDS database instance.
-
-    This specification validates and sets defaults for the action parameters.
-    """
+    """Resource definition and defaults for 'AWS::RDS::ModifyDbInstance'."""
 
     @model_validator(mode="before")
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Validate the parameters for the ModifyDbInstanceActionResource.
-
-        :param values: Incoming parameter values.
-        :type values: dict[str, Any]
-        :return: The validated values.
-        :rtype: dict[str, Any]
-        """
+        """Normalize/seed defaults for resource name/kind/scope/spec."""
         if not (values.get("name") or values.get("Name")):
             values["name"] = "action-aws-rds-modifydbinstance-name"
         if not (values.get("kind") or values.get("Kind")):
@@ -89,18 +57,10 @@ class ModifyDbInstanceActionResource(ActionResource):
 
 
 class ModifyDbInstanceAction(BaseAction):
-    """Modify an RDS database instance.
+    """Modify an RDS DB instance and wait until changes are applied.
 
-    This action modifies an RDS database instance by calling the boto3 RDS client's
-    modify_db_instance() method. It then checks whether the modifications are complete
-    based on the 'PendingModifiedValues' returned in the response.
-
-    :param definition: The action specification containing parameters.
-    :type definition: ActionResource
-    :param context: The execution context used for template rendering.
-    :type context: dict[str, Any]
-    :param deployment_details: The deployment details for the action.
-    :type deployment_details: DeploymentDetails
+    Calls modify_db_instance, records response metadata, and marks complete
+    when PendingModifiedValues is empty; otherwise continues checking.
     """
 
     def __init__(
@@ -108,21 +68,22 @@ class ModifyDbInstanceAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
+
         # Validate and load action parameters
         self.params = ModifyDbInstanceActionSpec(**definition.spec)
 
     def _execute(self):
-        """
-        Execute the RDS modify_db_instance operation.
+        """Invoke modify_db_instance and record initial results.
 
-        This method obtains an RDS client using the provided region and account's provisioning role.
-        It calls the modify_db_instance() API with the provided ApiParams. If there are no pending
-        modifications reported in the response, the action is marked complete. Otherwise, it continues
-        running until modifications complete, storing state information about the change.
+        Sets:
+          - Outputs: ModifiedInstance, AppliedApiParams, ResponseMetadata, PendingModifiedValues (if any)
+          - Status: running if changes pending; complete if none
 
-        :raises ClientError: If there is an error calling the modify_db_instance API.
+        Raises:
+          ClientError: If the API call fails for non-trivial reasons.
         """
         # Obtain an RDS client
         rds_client = aws.rds_client(
@@ -146,7 +107,7 @@ class ModifyDbInstanceAction(BaseAction):
                 self.set_complete("All modifications complete")
             else:
                 self.set_output("PendingModifiedValues", pending_modified_values)
-                self.set_running("Waiting for modifications to complete: {}".format(pending_modified_values))
+                self.set_running(f"Waiting for modifications to complete: {pending_modified_values}")
         except ClientError as e:
             error_message = e.response.get("Error", {}).get("Message", "")
             if "No modifications" in error_message:
@@ -156,13 +117,12 @@ class ModifyDbInstanceAction(BaseAction):
                 raise
 
     def _check(self):
-        """
-        Check the status of the modifications on the RDS instance.
+        """Poll describe_db_instances to determine if changes have completed.
 
-        This method calls describe_db_instances() with the DBInstanceIdentifier and
-        checks if there are any pending modified values. If not, the action is marked complete.
+        Marks complete when PendingModifiedValues is empty; otherwise remains running.
 
-        :raises ClientError: If there is an error calling the describe_db_instances() API.
+        Raises:
+          ClientError: If describe_db_instances fails.
         """
         rds_client = aws.rds_client(
             region=self.params.region,
@@ -176,43 +136,28 @@ class ModifyDbInstanceAction(BaseAction):
         if not pending_modified_values:
             self.set_complete("All modifications complete")
         else:
-            self.set_running("Waiting for modifications to complete: {}".format(pending_modified_values))
+            self.set_running(f"Waiting for modifications to complete: {pending_modified_values}")
 
     def _unexecute(self):
-        """
-        Reverse the modifications to the RDS instance if possible.
-
-        Note:
-            Reversing modifications to an RDS instance is generally not supported.
-            This method is implemented as a placeholder.
-        """
+        """No rollback support; reversing RDS modifications is not supported."""
         self.set_complete("Unexecute not supported for RDS modifications")
 
     def _cancel(self):
-        """
-        Cancel the RDS modify action.
-
-        Note:
-            Cancelling the modification process is not implemented as RDS modifications
-            are typically in progress and cannot be "cancelled" midway.
-        """
+        """No-op; RDS modifications cannot be cancelled mid-flight."""
         self.set_complete("Cancel not supported for RDS modifications")
 
     def _resolve(self):
-        """
-        Resolve template variables in the action parameters.
-
-        This method uses the Jinja2 renderer to resolve any template strings or objects in the
-        account, region, and api_params fields.
-        """
+        """Render templates for account, region, and api_params."""
         self.params.account = self.renderer.render_string(self.params.account, self.context)
         self.params.region = self.renderer.render_string(self.params.region, self.context)
         self.params.api_params = self.renderer.render_object(self.params.api_params, self.context)
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> ModifyDbInstanceActionResource:
+        """Factory: create a typed ModifyDbInstanceActionResource."""
         return ModifyDbInstanceActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> ModifyDbInstanceActionSpec:
+        """Factory: create typed ModifyDbInstanceActionSpec."""
         return ModifyDbInstanceActionSpec(**kwargs)

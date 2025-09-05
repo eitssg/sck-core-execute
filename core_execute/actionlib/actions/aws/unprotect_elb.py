@@ -1,4 +1,7 @@
-"""Remove ELB deletion protection so it can be deleted"""
+"""Remove ELB deletion protection so the load balancer can be deleted.
+
+Disables the deletion_protection.enabled attribute on an existing ALB/NLB.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -14,30 +17,12 @@ from core_execute.actionlib.action import BaseAction
 
 
 class UnprotectELBActionSpec(ActionSpec):
-    """Parameters for the UnprotectELBAction.
+    """Parameters for the UnprotectELB action.
 
-    Contains all configuration needed to remove deletion protection from an
-    AWS Elastic Load Balancer (ELB) in the specified account and region.
-
-    Attributes
-    ----------
-    account : str
-        The AWS account ID where the load balancer is located
-    region : str
-        The AWS region where the load balancer is located
-    load_balancer : str
-        The ARN of the load balancer to unprotect
-        Can be "none" to skip the operation
-
-    Examples
-    --------
-    Basic ELB unprotection configuration::
-
-        params = UnprotectELBActionSpec(
-            account="123456789012",
-            region="us-east-1",
-            load_balancer="arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-lb/1234567890"
-        )
+    Attributes:
+      account: AWS account ID where the load balancer resides.
+      region: AWS region of the load balancer.
+      load_balancer: ARN of the target load balancer (use "none" to skip).
     """
 
     load_balancer: str = Field(
@@ -48,24 +33,19 @@ class UnprotectELBActionSpec(ActionSpec):
 
 
 class UnprotectELBActionResource(ActionResource):
-    """Generate the action definition for UnprotectELB.
+    """Resource model for UnprotectELB.
 
-    Provides a convenience wrapper for creating UnprotectELB actions
-    with sensible defaults for common ELB unprotection use cases.
-
-    Examples
-    --------
-    Creating an ELB unprotection action spec with defaults::
-
-        spec = UnprotectELBActionResource()
-        # Results in action with name "unprotect-elb", kind "unprotect_elb"
-        # and template-based default parameters
+    Normalizes inputs and forces kind to 'AWS::UnprotectELB'.
     """
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Normalize incoming values and enforce canonical kind/spec.
 
+        - Forces kind to 'AWS::UnprotectELB'
+        - Accepts spec as dict or UnprotectELBActionSpec
+        """
         if not isinstance(values, dict):
             return values
 
@@ -83,75 +63,9 @@ class UnprotectELBActionResource(ActionResource):
 
 
 class UnprotectELBAction(BaseAction):
-    """Remove deletion protection from an AWS Elastic Load Balancer.
+    """Disable deletion protection on an AWS Elastic Load Balancer.
 
-    This action disables deletion protection on an existing ELB, allowing it to be
-    deleted. The action is commonly used before stack deletion or ELB replacement
-    operations where deletion protection needs to be temporarily disabled.
-
-    **Key Features:**
-
-    - Remove deletion protection from Application Load Balancers (ALB)
-    - Remove deletion protection from Network Load Balancers (NLB)
-    - Support for template variables in load balancer ARNs
-    - Graceful handling of "none" values to skip operation
-    - Comprehensive error handling and state tracking
-
-    **Use Cases:**
-
-    - Prepare ELBs for deletion during stack teardown
-    - Temporary removal of protection for maintenance operations
-    - Automated cleanup workflows
-    - Infrastructure replacement scenarios
-
-    **Action Parameters:**
-
-    :param Account: AWS account ID where the load balancer is located
-    :type Account: str
-    :param Region: AWS region where the load balancer is located
-    :type Region: str
-    :param LoadBalancer: ARN of the load balancer to unprotect (or "none" to skip)
-    :type LoadBalancer: str
-
-    **Examples:**
-
-    Simple ELB unprotection:
-
-    .. code-block:: yaml
-
-        - name: unprotect-app-lb
-          kind: AWS::UnprotectELB
-          params:
-            Account: "{{ deployment.account }}"
-            Region: "{{ deployment.region }}"
-            LoadBalancer: "{{ outputs.app_load_balancer.arn }}"
-
-    Conditional unprotection with fallback:
-
-    .. code-block:: yaml
-
-        - name: unprotect-elb-if-exists
-          kind: AWS::UnprotectELB
-          params:
-            Account: "{{ deployment.account }}"
-            Region: "{{ deployment.region }}"
-            LoadBalancer: "{{ outputs.load_balancer.arn | default('none') }}"
-
-    **Security Considerations:**
-
-    - Requires appropriate ELB modification permissions
-    - Only removes deletion protection, does not delete the load balancer
-    - Protection can be re-enabled after the operation if needed
-    - Operation is logged for audit purposes
-
-    **State Tracking:**
-
-    This action tracks execution state:
-
-    - ``load_balancer_arn`` - The ARN of the load balancer that was unprotected
-    - ``status`` - Success/error/skipped status of the operation
-    - ``deletion_protection_disabled`` - Boolean indicating if protection was removed
-    - ``error_message`` - Details of any errors encountered
+    Commonly used before stack teardown or ELB replacement so the LB can be deleted.
     """
 
     def __init__(
@@ -159,45 +73,29 @@ class UnprotectELBAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        """Initialize the UnprotectELBAction.
+        """Initialize action and validate parameters.
 
-        Parameters
-        ----------
-        definition : ActionResource
-            The action specification containing parameters and configuration
-        context : dict[str, Any]
-            Template rendering context with deployment variables
-        deployment_details : DeploymentDetails
-            Deployment context and metadata
+        Args:
+          definition: Action resource with metadata and spec.
+          context: Rendering context with deployment variables.
+          deployment_details: Deployment metadata.
+          parent_action_name: Optional parent action name.
         """
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = UnprotectELBActionSpec(**definition.spec)
 
     def _execute(self):
-        """Execute the ELB unprotection operation.
+        """Disable deletion protection on the specified load balancer.
 
-        Removes deletion protection from the specified load balancer by calling
-        the modify_load_balancer_attributes API with deletion_protection.enabled=false.
-
-        The execution process:
-
-        1. Checks if load balancer ARN is "none" and skips if so
-        2. Creates ELBv2 client with appropriate IAM role
-        3. Calls modify_load_balancer_attributes to disable deletion protection
-        4. Records operation results in action state
-
-        Raises
-        ------
-        Exception
-            If ELB API call fails or load balancer doesn't exist
-
-        Notes
-        -----
-        This method implements the core functionality and should not be
-        called directly. Use the action execution framework instead.
+        Steps:
+          1) Skip if LoadBalancer is "none"
+          2) Describe LB (for metadata/state)
+          3) Set deletion_protection.enabled = false
+          4) Record operation details in action state
         """
         log.trace("UnprotectELBAction._execute()")
 
@@ -257,21 +155,7 @@ class UnprotectELBAction(BaseAction):
         log.trace("UnprotectELBAction._execute() complete")
 
     def _check(self):
-        """Check operation - verify deletion protection status.
-
-        Checks the current deletion protection status of the load balancer
-        to verify that protection has been successfully removed.
-
-        Raises
-        ------
-        Exception
-            If load balancer status check fails
-
-        Notes
-        -----
-        This method verifies the operation result and should not be
-        called directly. Use the action execution framework instead.
-        """
+        """Verify that deletion protection is disabled on the load balancer."""
         log.trace("UnprotectELBAction._check()")
 
         try:
@@ -314,16 +198,7 @@ class UnprotectELBAction(BaseAction):
         log.trace("UnprotectELBAction._check() complete")
 
     def _unexecute(self):
-        """Unexecute operation - re-enable deletion protection.
-
-        Re-enables deletion protection on the load balancer, reversing
-        the unprotection operation performed during execution.
-
-        Notes
-        -----
-        This operation restores the original protection state.
-        If the load balancer no longer exists, the operation is skipped.
-        """
+        """Re-enable deletion protection (best effort)."""
         log.trace("UnprotectELBAction._unexecute()")
 
         try:
@@ -358,41 +233,11 @@ class UnprotectELBAction(BaseAction):
         log.trace("UnprotectELBAction._unexecute() complete")
 
     def _cancel(self):
-        """Cancel operation - not applicable for ELB unprotection.
-
-        ELB attribute modification operations are atomic and complete quickly.
-        Cancellation is not supported for this action type.
-
-        Notes
-        -----
-        This is a no-op method as ELB operations cannot be cancelled.
-        """
+        """No-op; ELB attribute modification cannot be cancelled."""
         log.debug("Cancel requested for ELB unprotection - operation cannot be cancelled")
 
     def _resolve(self):
-        """Resolve template variables and prepare parameters for execution.
-
-        Renders all template variables in the action parameters using the
-        provided context. This includes account ID, region, and load balancer ARN.
-
-        **Template Variables Available:**
-
-        - ``deployment.*`` - Deployment context (account, region, environment)
-        - ``app.*`` - Application information (name, version, config)
-        - ``outputs.*`` - Outputs from previous actions or stack operations
-        - ``elb.*`` - ELB-specific context (arn, name, dns_name)
-        - ``env.*`` - Environment variables
-
-        Raises
-        ------
-        Exception
-            If template rendering fails or parameter validation errors occur
-
-        Notes
-        -----
-        This method prepares data for execution and should not be
-        called directly. Use the action execution framework instead.
-        """
+        """Render templates and prepare parameters for execution."""
         log.trace("UnprotectELBAction._resolve()")
 
         try:
@@ -412,8 +257,10 @@ class UnprotectELBAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> UnprotectELBActionResource:
+        """Factory: create a typed UnprotectELBActionResource."""
         return UnprotectELBActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> UnprotectELBActionSpec:
+        """Factory: create typed UnprotectELBActionSpec."""
         return UnprotectELBActionSpec(**kwargs)

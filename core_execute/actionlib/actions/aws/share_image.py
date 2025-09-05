@@ -1,4 +1,7 @@
-"""Share an AMI image with other AWS accounts by granting launch permissions"""
+"""Share an AMI with other AWS accounts by granting launch permissions.
+
+Locates an AMI by name and updates its launch permissions for target accounts.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator, field_validator
@@ -14,38 +17,15 @@ from core_execute.actionlib.action import BaseAction
 
 
 class ShareImageActionSpec(ActionSpec):
-    """Parameters for the ShareImageAction.
+    """Parameters for sharing an AMI image.
 
-    Contains all configuration needed to share an AMI image with other AWS accounts
-    by granting launch permissions to specified target accounts.
-
-    Attributes
-    ----------
-    account : str
-        The AWS account ID where the source AMI image is located
-    region : str
-        The AWS region where the source AMI image is located
-    image_name : str
-        The name of the AMI image to share (used to locate the image)
-    accounts_to_share : list[str]
-        List of AWS account IDs to grant launch permissions to
-    siblings : list[str]
-        List of AWS account IDs that are permitted as sharing targets
-        Used for validation to ensure sharing is only done to approved accounts
-    tags : dict[str, str], optional
-        Additional tags to apply to the image (default: empty dict)
-
-    Examples
-    --------
-    Basic image sharing configuration::
-
-        params = ShareImageActionSpec(
-            account="123456789012",
-            region="us-east-1",
-            image_name="my-application-v1.0.0",
-            accounts_to_share=["234567890123", "345678901234"],
-            siblings=["234567890123", "345678901234", "456789012345"]
-        )
+    Attributes:
+      account: AWS account ID where the source AMI resides.
+      region: AWS region of the source AMI.
+      image_name: AMI name used to locate the image.
+      accounts_to_share: Target AWS account IDs to grant permissions.
+      siblings: Approved account IDs allowed as sharing targets.
+      tags: Extra tags applied during processing (optional).
     """
 
     image_name: str = Field(..., alias="ImageName", description="The name of the AMI image to share")
@@ -68,22 +48,16 @@ class ShareImageActionSpec(ActionSpec):
     @field_validator("accounts_to_share")
     @classmethod
     def validate_accounts_to_share(cls, v: list[str]) -> list[str]:
-        """Validate that accounts_to_share contains valid AWS account IDs.
+        """Validate target account IDs.
 
-        Parameters
-        ----------
-        v : list[str]
-            List of account IDs to validate
+        Args:
+          v: List of AWS account IDs.
 
-        Returns
-        -------
-        list[str]
-            The validated list of account IDs
+        Returns:
+          The validated list.
 
-        Raises
-        ------
-        ValueError
-            If the list is empty or contains invalid account IDs
+        Raises:
+          ValueError: If empty or any ID is not exactly 12 digits.
         """
         if not v:
             raise ValueError("At least one account must be specified to share with")
@@ -97,22 +71,16 @@ class ShareImageActionSpec(ActionSpec):
     @field_validator("siblings")
     @classmethod
     def validate_siblings(cls, v: list[str]) -> list[str]:
-        """Validate that siblings contains valid AWS account IDs.
+        """Validate approved sibling account IDs.
 
-        Parameters
-        ----------
-        v : list[str]
-            List of sibling account IDs to validate
+        Args:
+          v: List of sibling AWS account IDs.
 
-        Returns
-        -------
-        list[str]
-            The validated list of sibling account IDs
+        Returns:
+          The validated list.
 
-        Raises
-        ------
-        ValueError
-            If the list contains invalid account IDs
+        Raises:
+          ValueError: If any ID is not exactly 12 digits.
         """
         for account_id in v:
             if not account_id.isdigit() or len(account_id) != 12:
@@ -122,17 +90,13 @@ class ShareImageActionSpec(ActionSpec):
 
     @model_validator(mode="after")
     def validate_sharing_permissions(self) -> "ShareImageActionSpec":
-        """Validate that all accounts_to_share are in the siblings list.
+        """Ensure all targets are in the approved siblings list.
 
-        Returns
-        -------
-        ShareImageActionSpec
-            The validated model instance
+        Returns:
+          Self.
 
-        Raises
-        ------
-        ValueError
-            If any target account is not in the siblings list
+        Raises:
+          ValueError: If any target is not approved.
         """
         for target_account in self.accounts_to_share:
             if target_account not in self.siblings:
@@ -145,24 +109,19 @@ class ShareImageActionSpec(ActionSpec):
 
 
 class ShareImageActionResource(ActionResource):
-    """Generate the action definition for ShareImage.
+    """Resource model for ShareImage.
 
-    Provides a convenience wrapper for creating ShareImage actions
-    with sensible defaults for common AMI sharing use cases.
-
-    Examples
-    --------
-    Creating an image sharing action spec with defaults::
-
-        spec = ShareImageActionResource()
-        # Results in action with name "share-image", kind "share_image"
-        # and template-based default parameters
+    Normalizes inputs and forces kind to 'AWS::ShareImage'.
     """
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Normalize incoming values and enforce canonical kind/spec.
 
+        - Forces kind to 'AWS::ShareImage'
+        - Accepts spec as dict or ShareImageActionSpec
+        """
         if not isinstance(values, dict):
             return values
 
@@ -180,93 +139,9 @@ class ShareImageActionResource(ActionResource):
 
 
 class ShareImageAction(BaseAction):
-    """Share an AMI image with other AWS accounts by granting launch permissions.
+    """Grant launch permissions on an AMI to other AWS accounts.
 
-    This action modifies the launch permissions of an existing AMI image to allow
-    specified AWS accounts to launch EC2 instances from the image. The action
-    validates that target accounts are in the approved siblings list before sharing.
-
-    **Key Features:**
-
-    - Locate AMI by name and grant launch permissions to target accounts
-    - Validate sharing targets against approved siblings list
-    - Support for template variables in image names and account references
-    - Comprehensive error handling for missing images and permission issues
-    - State tracking for sharing operations and results
-
-    **Use Cases:**
-
-    - Share application AMIs across development, staging, and production accounts
-    - Distribute base images to multiple business units or teams
-    - Enable cross-account deployments with custom AMI images
-    - Implement controlled AMI distribution workflows
-
-    **Action Parameters:**
-
-    :param Account: AWS account ID where the source AMI image is located
-    :type Account: str
-    :param Region: AWS region where the source AMI image is located
-    :type Region: str
-    :param ImageName: Name of the AMI image to share
-    :type ImageName: str
-    :param AccountsToShare: List of AWS account IDs to grant launch permissions to
-    :type AccountsToShare: list[str]
-    :param Siblings: List of AWS account IDs permitted as sharing targets
-    :type Siblings: list[str]
-    :param Tags: Additional tags to apply to the image
-    :type Tags: dict[str, str]
-
-    **Examples:**
-
-    Simple AMI sharing to development accounts:
-
-    .. code-block:: yaml
-
-        - name: share-app-image
-          kind: share_image
-          params:
-            Account: "{{ deployment.account }}"
-            Region: "{{ deployment.region }}"
-            ImageName: "{{ app.name }}-{{ branch.name }}-{{ build.version }}"
-            AccountsToShare:
-              - "123456789012"  # Development account
-              - "234567890123"  # Staging account
-            Siblings:
-              - "123456789012"
-              - "234567890123"
-              - "345678901234"  # Production account
-
-    Cross-region image sharing:
-
-    .. code-block:: yaml
-
-        - name: share-base-image
-          kind: share_image
-          params:
-            Account: "{{ deployment.account }}"
-            Region: "us-east-1"
-            ImageName: "company-base-image-v2.1.0"
-            AccountsToShare: "{{ sharing.target_accounts }}"
-            Siblings: "{{ sharing.approved_accounts }}"
-            Tags:
-              SharedBy: "{{ deployment.identity }}"
-              SharedAt: "{{ deployment.timestamp }}"
-
-    **Security Considerations:**
-
-    - Only accounts in the Siblings list can be targets for sharing
-    - Image sharing grants launch permissions but not modification rights
-    - Original account retains full control over the source AMI
-    - Sharing can be revoked by modifying launch permissions
-
-    **State Tracking:**
-
-    This action tracks execution state:
-
-    - ``image_id`` - The AMI ID that was shared
-    - ``shared_accounts`` - List of accounts that received permissions
-    - ``status`` - Success/error status of the sharing operation
-    - ``error_message`` - Details of any errors encountered
+    Validates target accounts against the approved siblings list before sharing.
     """
 
     def __init__(
@@ -274,19 +149,17 @@ class ShareImageAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        """Initialize the ShareImageAction.
+        """Initialize the action and validate parameters.
 
-        Parameters
-        ----------
-        definition : ActionResource
-            The action specification containing parameters and configuration
-        context : dict[str, Any]
-            Template rendering context with deployment variables
-        deployment_details : DeploymentDetails
-            Deployment context and metadata
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context with deployment variables.
+          deployment_details: Deployment metadata for tracking.
+          parent_action_name: Optional parent action name.
         """
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = ShareImageActionSpec(**definition.spec)
@@ -296,29 +169,16 @@ class ShareImageAction(BaseAction):
             self.params.tags["DeliveredBy"] = deployment_details.delivered_by
 
     def _execute(self):
-        """Execute the AMI image sharing operation.
+        """Share the AMI by updating launch permissions.
 
-        Locates the specified AMI image by name and modifies its launch permissions
-        to grant access to the specified target accounts. Validates that all target
-        accounts are in the approved siblings list before sharing.
+        Steps:
+          1) Describe AMI by name
+          2) Validate target accounts against siblings
+          3) Modify image attribute (LaunchPermission Add)
+          4) Record results in action state
 
-        The execution process:
-
-        1. Creates EC2 client with appropriate IAM role
-        2. Locates AMI image by name using describe_images API
-        3. Validates target accounts against siblings list
-        4. Modifies image launch permissions to add target accounts
-        5. Records sharing results in action state
-
-        Raises
-        ------
-        Exception
-            If AMI lookup fails, validation fails, or permission modification fails
-
-        Notes
-        -----
-        This method implements the core functionality and should not be
-        called directly. Use the action execution framework instead.
+        Raises:
+          Exception: On lookup, validation, or permission errors.
         """
         log.trace("ShareImageAction._execute()")
 
@@ -382,31 +242,13 @@ class ShareImageAction(BaseAction):
         log.trace("ShareImageAction._execute() complete")
 
     def _check(self):
-        """Check operation - not applicable for AMI sharing.
-
-        AMI sharing is an atomic operation that either succeeds or fails.
-        There is no meaningful check operation for launch permission modifications.
-
-        Raises
-        ------
-        RuntimeError
-            Always raises as check operation is not supported
-        """
+        """No check step for AMI sharing; mark as not supported."""
         log.trace("ShareImageAction._check()")
         self.set_failed("Check operation not supported for AMI image sharing")
         log.trace("ShareImageAction._check() complete")
 
     def _unexecute(self):
-        """Unexecute operation - revoke launch permissions.
-
-        Removes the launch permissions that were granted during execution,
-        effectively unsharing the AMI from the target accounts.
-
-        Notes
-        -----
-        This operation attempts to revoke previously granted permissions.
-        If the image no longer exists, the operation is considered successful.
-        """
+        """Revoke launch permissions granted during execution (best effort)."""
         log.trace("ShareImageAction._unexecute()")
 
         try:
@@ -439,43 +281,11 @@ class ShareImageAction(BaseAction):
         log.trace("ShareImageAction._unexecute() complete")
 
     def _cancel(self):
-        """Cancel operation - not applicable for AMI sharing.
-
-        AMI sharing operations are atomic and complete quickly.
-        Cancellation is not supported for this action type.
-
-        Notes
-        -----
-        This is a no-op method as AMI sharing operations cannot be cancelled.
-        """
+        """No-op; AMI sharing is atomic and cannot be cancelled."""
         log.debug("Cancel requested for AMI sharing - operation cannot be cancelled")
 
     def _resolve(self):
-        """Resolve template variables and prepare parameters for execution.
-
-        Renders all template variables in the action parameters using the
-        provided context. This includes account IDs, region, image name,
-        and any other templated values.
-
-        **Template Variables Available:**
-
-        - ``deployment.*`` - Deployment context (account, region, environment)
-        - ``app.*`` - Application information (name, version, config)
-        - ``branch.*`` - Branch details (name, type, commit)
-        - ``build.*`` - Build information (version, number, artifacts)
-        - ``env.*`` - Environment variables
-        - Action outputs from dependencies
-
-        Raises
-        ------
-        Exception
-            If template rendering fails or parameter validation errors occur
-
-        Notes
-        -----
-        This method prepares data for execution and should not be
-        called directly. Use the action execution framework instead.
-        """
+        """Render templates and prepare parameters for execution."""
         log.trace("ShareImageAction._resolve()")
 
         try:
@@ -517,8 +327,9 @@ class ShareImageAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> ShareImageActionResource:
+        """Factory: create a typed ShareImageActionResource."""
         return ShareImageActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> ShareImageActionSpec:
-        return ShareImageActionSpec(**kwargs)
+        """Factory: create typed ShareImageActionSpec."""

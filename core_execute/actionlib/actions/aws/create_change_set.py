@@ -1,3 +1,10 @@
+"""Create and manage a CloudFormation change set.
+
+- _execute: creates the change set and records identifiers
+- _check: polls for status, captures changes, and finalizes results
+- _unexecute: deletes the change set (best-effort rollback)
+"""
+
 from typing import Any
 from pydantic import Field, model_validator
 from botocore.exceptions import ClientError
@@ -11,9 +18,17 @@ import core_helper.aws as aws
 
 
 class CreateChangeSetActionSpec(ActionSpec):
-    """Parameters for the CreateChangeSetAction
+    """Parameters for creating a CloudFormation change set.
 
-    This class defines the parameters that can be used in the action.
+    Attributes:
+      account: AWS account ID used for the action.
+      region: AWS region of the stack.
+      stack_name: Target stack name.
+      template_url: S3 URL of the CloudFormation template.
+      change_set_name: Name for the change set.
+      capabilities: Optional CloudFormation capabilities.
+      parameters: Template parameter key/value pairs.
+      tags: Optional key/value tags to apply.
     """
 
     stack_name: str = Field(
@@ -50,6 +65,7 @@ class CreateChangeSetActionSpec(ActionSpec):
     @model_validator(mode="before")
     @classmethod
     def validate_model_before(cls, values: Any) -> dict[str, Any]:
+        """Map legacy 'template'/'Template' keys to 'TemplateUrl' for compatibility."""
         if isinstance(values, dict):
             if not any(key in values for key in ["TemplateUrl", "template_url"]):
                 template = values.pop("template") or values.pop("Template")
@@ -60,12 +76,12 @@ class CreateChangeSetActionSpec(ActionSpec):
 
 
 class CreateChangeSetActionResource(ActionResource):
-    """Generate the action definition"""
+    """Resource model for CreateChangeSetAction (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and set canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -83,50 +99,18 @@ class CreateChangeSetActionResource(ActionResource):
 
 
 class CreateChangeSetAction(BaseAction):
-    """CloudFormation Change Set Creation Action
+    """Create a CloudFormation change set for a stack.
 
-    This action creates a CloudFormation change set for an existing stack.
-    It supports cross-account deployments via role assumption and handles
-    step function execution patterns with state persistence.
+    Behavior:
+      - Supports cross-account via role assumption
+      - Records identifiers, status, and changes to state/outputs
+      - Idempotent if creation already started (uses saved ARN)
 
-    Kind: Use the value: ``AWS::CreateChangeSet``
+    State keys (subset):
+      ChangeSetName, ChangeSetArn, ChangeSetId, ChangeSetStatus, StackId, StackExists
 
-    .. rubric: ActionResource:
-
-    .. tip:: s3:/<bucket>/artifacts/<deployment_details>/{task}.actions:
-
-        .. code-block:: yaml
-
-            - Name: action-aws-createchangeset-name
-              Kind: "AWS::CreateChangeSet"
-              Spec:
-                Account: "154798051514"
-                Region: "ap-southeast-1"
-                StackName: "my-stack"
-                TemplateUrl: "s3://<bucket>/portfolio/template.yaml"
-                ChangeSetName: "my-changeset"
-                StackParameters:
-                  Environment: "production"
-                  InstanceType: "t3.micro"
-                Tags:
-                  Environment: "production"
-                  Owner: "DevOps"
-              Scope: "portfolio"
-
-    State Variables:
-        - ChangeSetCreationStarted: Timestamp when creation began
-        - ChangeSetName: Name of the created change set
-        - ChangeSetArn: ARN of the created change set
-        - ChangeSetStatus: Current status of the change set
-        - ChangeSetId: ID of the change set
-        - StackId: ID of the target stack
-
-    Output Variables:
-        - ChangeSetArn: ARN of the successfully created change set
-        - ChangeSetId: ID of the change set
-        - StackId: ID of the target stack
-        - Changes: List of changes in the change set
-        - ChangesCount: Number of changes in the change set
+    Outputs (subset):
+      ChangeSetArn, ChangeSetId, StackId, Changes, ChangesCount
     """
 
     def __init__(
@@ -134,17 +118,15 @@ class CreateChangeSetAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and validate parameters."""
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         self.params = CreateChangeSetActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render templates for account, region, names, parameters, and tags."""
         log.trace("Resolving CreateChangeSetAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -176,13 +158,9 @@ class CreateChangeSetAction(BaseAction):
         log.trace("CreateChangeSetAction resolved")
 
     def _execute(self):
-        """
-        Execute the CloudFormation change set creation operation.
+        """Create the change set and set initial state/outputs.
 
-        This method creates the specified CloudFormation change set and sets appropriate
-        state outputs for tracking.
-
-        :raises: Sets action to failed if parameters are missing or CloudFormation operation fails
+        Sets failed status for missing parameters or CloudFormation client/operation errors.
         """
         log.trace("Executing CreateChangeSetAction")
 
@@ -290,7 +268,7 @@ class CreateChangeSetAction(BaseAction):
                 "ChangeSetName": self.params.change_set_name,
                 "TemplateURL": self.params.template_url,
                 "ChangeSetType": change_set_type,
-                "Capabilities": [  # Assumed capabilities as specified
+                "Capabilities": [
                     "CAPABILITY_IAM",
                     "CAPABILITY_NAMED_IAM",
                     "CAPABILITY_AUTO_EXPAND",
@@ -360,12 +338,7 @@ class CreateChangeSetAction(BaseAction):
         log.trace("CreateChangeSetAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the change set creation operation.
-
-        This method monitors the CloudFormation change set creation progress and sets
-        appropriate state based on the current status.
-        """
+        """Check the change set status and update state/outputs accordingly."""
         log.trace("Checking CreateChangeSetAction")
 
         change_set_arn = self.get_state("ChangeSetArn")
@@ -460,11 +433,7 @@ class CreateChangeSetAction(BaseAction):
         log.trace("CreateChangeSetAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the change set creation operation.
-
-        This method deletes the created change set to reverse the creation operation.
-        """
+        """Delete the created change set (best-effort rollback)."""
         log.trace("Unexecuting CreateChangeSetAction")
 
         change_set_arn = self.get_state("ChangeSetArn")
@@ -524,11 +493,7 @@ class CreateChangeSetAction(BaseAction):
         log.trace("CreateChangeSetAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the change set creation operation.
-
-        This method attempts to cancel an in-progress change set creation by deleting it.
-        """
+        """Cancel an in-progress change set creation by deleting it if possible."""
         log.trace("Cancelling CreateChangeSetAction")
 
         change_set_status = self.get_state("ChangeSetStatus")
@@ -545,8 +510,10 @@ class CreateChangeSetAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CreateChangeSetActionResource:
+        """Factory: create a typed CreateChangeSetActionResource."""
         return CreateChangeSetActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CreateChangeSetActionSpec:
+        """Factory: create typed CreateChangeSetActionSpec."""
         return CreateChangeSetActionSpec(**kwargs)

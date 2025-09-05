@@ -1,4 +1,7 @@
-"""Delete ENIs attached to a security group"""
+"""Delete ENIs attached to a security group.
+
+Detaches in-use ENIs (except AWS hyperplane-managed) and deletes available ENIs.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -19,15 +22,12 @@ ENI_OWNER_HYPERPLANE = "amazon-aws"
 
 
 class DeleteSecurityGroupEnisActionSpec(ActionSpec):
-    """
-    Parameters for the DeleteSecurityGroupEnisAction.
+    """Parameters for deleting ENIs attached to a security group.
 
-    :param account: The account to use for the action (required)
-    :type account: str
-    :param region: The region where the security group is located (required)
-    :type region: str
-    :param security_group_id: The ID of the security group to delete ENIs from (required)
-    :type security_group_id: str
+    Attributes:
+      account: AWS account ID used for the action.
+      region: AWS region of the security group.
+      security_group_id: ID of the security group whose ENIs will be removed.
     """
 
     security_group_id: str = Field(
@@ -38,21 +38,15 @@ class DeleteSecurityGroupEnisActionSpec(ActionSpec):
 
 
 class DeleteSecurityGroupEnisActionResource(ActionResource):
-    """
-    Generate the action definition for DeleteSecurityGroupEnisAction.
+    """Resource model for DeleteSecurityGroupEnis.
 
-    This class provides default values and validation for DeleteSecurityGroupEnisAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
+    Normalizes inputs and forces kind to 'AWS::DeleteSecurityGroupEnis'.
     """
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -70,45 +64,11 @@ class DeleteSecurityGroupEnisActionResource(ActionResource):
 
 
 class DeleteSecurityGroupEnisAction(BaseAction):
-    """
-    Delete ENIs attached to a security group.
+    """Detach and delete ENIs attached to a security group.
 
-    This action will delete ENIs attached to a security group. The action will
-    detach in-use ENIs and delete available ENIs, handling hyperplane-managed
-    ENIs appropriately.
-
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::DeleteSecurityGroupEnis``
-    :Spec.Account: The account where the security group is located (required)
-    :Spec.Region: The region where the security group is located (required)
-    :Spec.SecurityGroupId: The ID of the security group to delete ENIs from (required)
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-deletesecuritygroupenis-name
-          Kind: "AWS::DeleteSecurityGroupEnis"
-          Spec:
-            Account: "154798051514"
-            Region: "ap-southeast-1"
-            SecurityGroupId: "sg-1234567890abcdef0"
-          Scope: "build"
-
-    .. note::
-        The action handles hyperplane-managed ENIs by waiting for AWS to detach them.
-
-    .. warning::
-        ENI deletion is irreversible and may affect running instances.
+    - Detaches in-use ENIs (non-hyperplane) and deletes available ENIs
+    - Treats missing security group as success
+    - Tracks progress across _execute and _check
     """
 
     def __init__(
@@ -116,18 +76,16 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize action and validate parameters."""
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate and set the parameters
         self.params = DeleteSecurityGroupEnisActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render template variables in account, region, and security_group_id."""
         log.trace("Resolving DeleteSecurityGroupEnisAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -137,13 +95,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         log.trace("DeleteSecurityGroupEnisAction resolved")
 
     def _execute(self):
-        """
-        Execute the ENI deletion operation.
-
-        This method initiates the deletion of ENIs attached to the specified security group.
-
-        :raises: Sets action to failed if security group ID is missing or EC2 operation fails
-        """
+        """Start or continue ENI deletion and set initial state."""
         log.trace("Executing DeleteSecurityGroupEnisAction")
 
         # Validate required parameters
@@ -170,12 +122,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         log.trace("DeleteSecurityGroupEnisAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the ENI deletion operation.
-
-        This method continues the ENI deletion process by checking for remaining ENIs
-        and processing them accordingly.
-        """
+        """Continue ENI deletion in subsequent batches."""
         log.trace("Checking DeleteSecurityGroupEnisAction")
 
         self._detach_enis()
@@ -183,12 +130,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         log.trace("DeleteSecurityGroupEnisAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the ENI deletion operation.
-
-        .. note::
-            ENI deletion cannot be undone. This method is a no-op.
-        """
+        """No rollback; ENI deletion is irreversible."""
         log.trace("Unexecuting DeleteSecurityGroupEnisAction")
 
         # ENI deletion cannot be undone
@@ -205,12 +147,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         log.trace("DeleteSecurityGroupEnisAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the ENI deletion operation.
-
-        .. note::
-            ENI deletion operations in progress cannot be cancelled.
-        """
+        """No-op; deletion operations cannot be cancelled."""
         log.trace("Cancelling DeleteSecurityGroupEnisAction")
 
         # ENI operations cannot be cancelled once started
@@ -219,11 +156,11 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         log.trace("DeleteSecurityGroupEnisAction cancellation completed")
 
     def _detach_enis(self):
-        """
-        Detach and delete ENIs attached to the security group.
+        """Find, detach, and delete ENIs for the target security group.
 
-        This method handles the core logic of finding, detaching, and deleting ENIs
-        while properly handling different ENI states and error conditions.
+        - Skips hyperplane-managed ENIs
+        - Detaches in-use ENIs then deletes when available
+        - Updates state/outputs with progress and results
         """
         log.trace("Processing ENIs for security group '{}'", self.params.security_group_id)
 
@@ -548,8 +485,9 @@ class DeleteSecurityGroupEnisAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteSecurityGroupEnisActionResource:
+        """Factory: create a typed DeleteSecurityGroupEnisActionResource."""
         return DeleteSecurityGroupEnisActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteSecurityGroupEnisActionSpec:
-        return DeleteSecurityGroupEnisActionSpec(**kwargs)
+        """Factory: create typed DeleteSecurityGroupEnisActionSpec."""

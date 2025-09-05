@@ -5,6 +5,7 @@ import traceback
 import sys
 import os
 import enum
+
 import core_logging as log
 
 from core_framework.models import (
@@ -16,25 +17,26 @@ from core_framework.models import (
 
 from core_renderer import Jinja2Renderer
 
+from core_framework.constants import SCOPE_BUILD, SCOPE_COMPONENT
 from core_framework.status import RELEASE_IN_PROGRESS
 
 from core_db.dbhelper import update_status, update_item
 
+from .hooks import ActionHook, HookFactory, HookResource
 
-ACT_NAME = "Name"
-ACT_KIND = "Kind"
-ACT_CONDITION = "Condition"
-ACT_BEFORE = "Before"
-ACT_AFTER = "After"
-ACT_LIFECYCLE_HOOKS = "LifecycleHooks"
-ACT_SAVE_OUTPUTS = "SaveOutputs"
-ACT_DEPENDS_ON = "DependsOn"
-ACT_STATUS_HOOOK = "StatusHook"
+# ACT_NAME = "Name"
+# ACT_KIND = "Kind"
+# ACT_CONDITION = "Condition"
+# ACT_BEFORE = "Before"
+# ACT_AFTER = "After"
+# ACT_LIFECYCLE_HOOKS = "LifecycleHooks"
+# ACT_SAVE_OUTPUTS = "SaveOutputs"
+# ACT_DEPENDS_ON = "DependsOn"
+# ACT_STATUS_HOOOK = "StatusHook"
 
 STATUS_CODE = "StatusCode"
 STATUS_REASON = "StatusReason"
 
-LC_TYPE_STATUS = "status"
 LC_HOOK_PENDING = "Pending"
 LC_HOOK_FAILED = "Failed"
 LC_HOOK_RUNNING = "Running"
@@ -56,6 +58,8 @@ class StatusCode(str, enum.Enum):
     RUNNING = "running"
     COMPLETE = "complete"
     FAILED = "failed"
+    SKIPPED = "skipped"
+    BLOCKED = "blocked"
 
 
 class BaseAction(object):
@@ -117,7 +121,7 @@ class BaseAction(object):
     after: list[str]
     """List of action names that must complete before this action can run"""
 
-    lifecycle_hooks: list[dict[str, Any]]
+    lifecycle_hooks: list[HookResource]
     """Status notification hooks for action state changes"""
 
     deployment_details: DeploymentDetails
@@ -125,6 +129,8 @@ class BaseAction(object):
 
     renderer: Jinja2Renderer
     """Template renderer using the action's context for variable substitution"""
+
+    spec: Optional[ActionSpec] = None
 
     def _execute(self):
         """Execute the main action logic.
@@ -192,7 +198,7 @@ class BaseAction(object):
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
         parent_action_name: str | None = None,
-    ):
+    ) -> None:
         """Initialize a new BaseAction instance.
 
         Sets up the action with configuration from the ActionResource, initializes
@@ -215,6 +221,10 @@ class BaseAction(object):
         self.context = context
         self.deployment_details = deployment_details
         self.parent_action_name = parent_action_name
+        self.condition = definition.condition or "true"
+        self.before = definition.before or []
+        self.after = definition.after or []
+        self.lifecycle_hooks = definition.lifecycle_hooks or []
 
         # Handle metadata-based vs legacy name-based configuration
         self._resolve_action_identity()
@@ -222,8 +232,7 @@ class BaseAction(object):
         log.debug("Action name is: {}", self.name)
         log.debug("Action output namespace is: {}", self.output_namespace)
         log.debug("Action state namespace is: {}", self.state_namespace)
-        if parent_action_name:
-            log.debug("Action parent namespace: {}", parent_action_name)
+        log.debug("Action parent namespace: {}", parent_action_name or "")
         log.debug("Action context is: ", details=self.context)
 
     def _resolve_action_identity(self):
@@ -389,23 +398,13 @@ class BaseAction(object):
             if not self.definition.metadata.namespace:
                 self.definition.metadata.namespace = namespace
 
-    def is_rerunnable(self) -> bool:
-        """Check to see if the task is re-runnable after complete or failure.
-
-        In order for this to work, you must override this in your own action
-
-        Returns:
-            True if the action can be re-run
-        """
-        return False
-
-    def is_init(self) -> bool:
+    def is_pending(self) -> bool:
         """Check if the action is in the initial pending state.
 
         Returns:
             True if the action has not started execution
         """
-        return self.__get_status_code() == StatusCode.PENDING.value
+        return self.__get_status_code() == StatusCode.PENDING
 
     def is_failed(self) -> bool:
         """Check if the action is in the failed state.
@@ -413,7 +412,7 @@ class BaseAction(object):
         Returns:
             True if the action encountered an error during execution
         """
-        return self.__get_status_code() == StatusCode.FAILED.value
+        return self.__get_status_code() == StatusCode.FAILED
 
     def is_running(self) -> bool:
         """Check if the action is currently executing.
@@ -421,7 +420,7 @@ class BaseAction(object):
         Returns:
             True if the action is currently running
         """
-        return self.__get_status_code() == StatusCode.RUNNING.value
+        return self.__get_status_code() == StatusCode.RUNNING
 
     def is_complete(self) -> bool:
         """Check if the action completed successfully.
@@ -429,7 +428,30 @@ class BaseAction(object):
         Returns:
             True if the action finished execution without errors
         """
-        return self.__get_status_code() == StatusCode.COMPLETE.value
+        return self.__get_status_code() == StatusCode.COMPLETE
+
+    def set_pending(self, reason: str | None = None):
+        """Set the action status to pending with the specified reason.
+
+        Updates the action state to pending, executes lifecycle hooks, and logs
+        the status change. Ignores duplicate state updates with the same reason.
+
+        Args:
+            reason: Description of why the action is pending
+        """
+        log.trace("Setting action to pending - {}", reason)
+
+        if reason is None:
+            reason = "Action is pending."
+
+        # Ignore duplicate state updates
+        if self.is_pending() and self.__get_status_reason() == reason:
+            log.trace("Action is already pending - {}", reason)
+            return
+
+        self.set_status(StatusCode.PENDING, reason)
+
+        log.debug("Action is pending - {}", reason)
 
     def set_failed(self, reason: str):
         """Set the action status to failed with the specified reason.
@@ -451,11 +473,11 @@ class BaseAction(object):
         log.debug("Action has failed - {}", reason)
 
         # Execute lifecycle hooks
-        self.__execute_lifecycle_hooks(LC_HOOK_FAILED, reason)
-
-        # Update the context with the new state
-        self.__set_context(self.name, STATUS_CODE, StatusCode.FAILED.value)
-        self.__set_context(self.name, STATUS_REASON, reason)
+        if self._execute_lifecycle_hooks(LC_HOOK_FAILED, reason):
+            # Update the context with the new state
+            self.set_status(StatusCode.FAILED, reason)
+        else:
+            log.error("Failed to execute lifecycle hooks for action failure - {}", reason)
 
         log.trace("Action set to failed - {}", reason)
 
@@ -479,11 +501,10 @@ class BaseAction(object):
         log.debug(reason or "Action is running")
 
         # Execute lifecycle hooks
-        self.__execute_lifecycle_hooks(LC_HOOK_RUNNING, reason)
+        self._execute_lifecycle_hooks(LC_HOOK_RUNNING, reason)
 
         # Update the context with the new state
-        self.__set_context(self.name, STATUS_CODE, StatusCode.RUNNING.value)
-        self.__set_context(self.name, STATUS_REASON, reason)
+        self.set_status(StatusCode.RUNNING, reason)
 
         log.trace("Action set to running - {}", reason)
 
@@ -510,13 +531,40 @@ class BaseAction(object):
         log.debug("Action is complete - {}", reason)
 
         # Execute lifecycle hooks
-        self.__execute_lifecycle_hooks(LC_HOOK_COMPLETE, reason)
+        self._execute_lifecycle_hooks(LC_HOOK_COMPLETE, reason)
 
         # Update the context with the new state
-        self.__set_context(self.name, STATUS_CODE, StatusCode.COMPLETE.value)
-        self.__set_context(self.name, STATUS_REASON, reason)
+        self.set_status(StatusCode.COMPLETE, reason)
 
         log.trace("Action set to complete - {}", reason)
+
+    def set_status(self, status: StatusCode, reason: str | None = None) -> None:
+        """Set the action status to the specified code and reason.
+
+        Updates the action state to the given status code, executes lifecycle
+        hooks if applicable, and logs the status change. Ignores duplicate
+        state updates with the same reason.
+
+        Args:
+            status: New status code (PENDING, RUNNING, COMPLETE, FAILED)
+            reason: Description of the status change
+        """
+        log.trace("Setting action status to {} - {}", status, reason)
+
+        if reason is None:
+            reason = f"Action status set to {status}."
+
+        # Ignore duplicate state updates
+        if self.__get_status_code() == status and self.__get_status_reason() == reason:
+            log.trace("Action is already {} - {}", status, reason)
+            return
+
+        # Log the state change
+        log.debug("Action status set to {} - {}", status, reason)
+
+        # Update the context with the new state
+        self.__set_context(self.name, STATUS_CODE, status.value)
+        self.__set_context(self.name, STATUS_REASON, reason)
 
     def set_skipped(self, reason: str):
         """Set the action status to skipped with the specified reason.
@@ -537,9 +585,7 @@ class BaseAction(object):
         # Log the state change
         log.debug("Action has been skipped - {}", reason)
 
-        # Update the context with the new state
-        self.__set_context(self.name, STATUS_CODE, StatusCode.COMPLETE.value)
-        self.__set_context(self.name, STATUS_REASON, reason)
+        self.set_status(StatusCode.COMPLETE, reason)
 
         log.trace("Action set to skipped - {}", reason)
 
@@ -601,6 +647,14 @@ class BaseAction(object):
         """
         log.trace("Setting state '{}' = '{}'", name, value)
         self.__set_context(self.state_namespace, name, value)
+
+    def get_status(self) -> StatusCode:
+        """Get the current action status code.
+
+        Returns:
+            Current status code (PENDING, RUNNING, COMPLETE, FAILED)
+        """
+        return self.__get_status_code()
 
     def get_state(self, name: str, default: Any = None) -> str:
         """Get an internal state variable for this action.
@@ -729,9 +783,9 @@ class BaseAction(object):
 
         return self
 
-    def __get_status_code(self):
+    def __get_status_code(self) -> StatusCode:
         """Get the current status code from context."""
-        return self.__get_context(self.name, STATUS_CODE, StatusCode.PENDING.value)
+        return StatusCode(self.__get_context(self.name, STATUS_CODE, StatusCode.PENDING))
 
     def __get_status_reason(self):
         """Get the current status reason from context."""
@@ -772,74 +826,6 @@ class BaseAction(object):
         """
         key = "{}/{}".format(prn, name)
         self.context[key] = value
-
-    def __execute_lifecycle_hooks(self, event: str, reason: str):
-        """Execute lifecycle hooks for the specified event.
-
-        Args:
-            event: Lifecycle event (Pending, Running, Complete, Failed)
-            reason: Reason for the state change
-        """
-        # Retrieve the event hooks for this action, for this state event
-        event_hooks = [h for h in self.lifecycle_hooks if event in h.get("States", [])]
-
-        # Execute the event hooks
-        for event_hook in event_hooks:
-            hook_type = event_hook["Type"]
-            self.__execute_lifecycle_hook(event, hook_type, event_hook, reason)
-
-    def __execute_lifecycle_hook(self, event: str, hook_type: str, hook: dict[str, Any], reason: str):
-        """Execute a single lifecycle hook.
-
-        Args:
-            event: Lifecycle event name
-            hook_type: Type of hook to execute
-            hook: Hook configuration
-            reason: Reason for the state change
-
-        Raises:
-            Exception: If unsupported hook type is encountered
-        """
-        if hook_type == LC_TYPE_STATUS:
-            self.__execute_status_hook(event, hook, reason)
-        else:
-            raise Exception("Unsupported hook type {}".format(hook_type))
-
-    def __get_status_parameter(self, event: str, hook: dict[str, Any]) -> str | None:
-        """Extract status parameter from lifecycle hook configuration."""
-        key = f"On{event}"
-        parms = hook.get("Parameters", {})
-        if key in parms:
-            action = parms[key]
-            if "Status" in action:
-                return action["Status"]
-        return None
-
-    def __get_message_parameter(self, event, hook: dict[str, Any]) -> str | None:
-        """Extract message parameter from lifecycle hook configuration."""
-        key = f"On{event}"
-        parms = hook.get("Parameters", {})
-        if key in parms:
-            action = parms[key]
-            if "Message" in action:
-                return action["Message"]
-        return None
-
-    def __get_idenity_parameter(self, event: str, hook: dict[str, Any]) -> str | None:
-        """Extract identity parameter from lifecycle hook configuration."""
-        parms = hook.get("Parameters", hook)
-        if "Identity" in parms:
-            return parms["Identity"]
-        return None
-
-    def __get_details_parameter(self, event: str, hook: dict[str, Any]) -> dict | None:
-        """Extract details parameter from lifecycle hook configuration."""
-        parms = hook.get("Parameters", hook)
-        if "Details" in parms:
-            return parms["Details"]
-        return None
-
-    def __update_item_status(self, identity: str, status: str, message: str, details: Any):
         """Update status in the database for the specified identity.
 
         Args:
@@ -849,35 +835,39 @@ class BaseAction(object):
             details: Additional status details
         """
         try:
+
+            identity = self.deployment_details.get_identity()
+            status = self.__get_status_code().value
+            message = self.__get_status_reason() or ""
+
+            details = self.definition.model_dump()
+
             # Log the status
             log.set_identity(identity)
 
-            prn_sections = identity.split(":")
-
+            scope = self.deployment_details.get_scope()
             # Build PRN
-            if len(prn_sections) == 5:
-                build_prn = ":".join(prn_sections[0:5])
+            if scope == SCOPE_BUILD:
 
                 # Update the build status
+                build_prn = self.deployment_details.get_build_prn()
                 update_status(prn=build_prn, status=status, message=message, details=details)
 
                 # If a new build is being released, update the branch's released_build_prn pointer
                 if status == RELEASE_IN_PROGRESS:
-                    branch_prn = ":".join(prn_sections[0:4])
+                    branch_prn = self.deployment_details.get_branch_prn()
                     update_item(prn=branch_prn, released_build_prn=build_prn)
 
             # Component PRN
-            if len(prn_sections) == 6:
-                component_prn = ":".join(prn_sections[0:6])
+            if scope == SCOPE_COMPONENT:
 
                 # Update the component status
+                component_prn = self.deployment_details.get_component_prn()
                 update_status(prn=component_prn, status=status, message=message, details=details)
 
                 # If component has failed, update the build status to failed
                 if "_FAILED" in status:
-                    build_prn = ":".join(prn_sections[0:5])
-
-                    # Update the build status
+                    build_prn = self.deployment_details.get_build_prn()
                     update_status(prn=build_prn, status=status)
 
         except Exception as e:
@@ -886,60 +876,11 @@ class BaseAction(object):
         finally:
             log.reset_identity()
 
-    def __execute_status_hook(self, event: str, hook: dict[str, Any], reason: str | None):
-        """Execute a status lifecycle hook.
-
-        Args:
-            event: Lifecycle event name
-            hook: Hook configuration
-            reason: Reason for the state change
-        """
-        # Extract hook["Parameter"]["On<event>"]["Status"], then try hook["Status"]
-        status = self.__get_status_parameter(event, hook)
-        message = self.__get_message_parameter(event, hook)
-        identity = self.__get_idenity_parameter(event, hook)
-        details = self.__get_details_parameter(event, hook)
-
-        # Render templated parameters if a template has been provided
-        if status:
-            status = self.renderer.render_string(status, self.context)
-        if identity:
-            identity = self.renderer.render_string(identity, self.context)
-        if message:
-            message = self.renderer.render_string(message, self.context)
-
-        # Ensure a status was provided
-        if not status:
-            log.warn(
-                "Internal - status hook was executed, but no status was defined for event",
-                details={ACT_STATUS_HOOOK: hook},
-            )
-            return
-
-        # Ensure the identity was provided
-        if not identity:
-            log.warn(
-                "Internal - status hook was executed, but no identity was defined",
-                details={ACT_STATUS_HOOOK: hook},
-            )
-            return
-
-        # Append reason to the message
-        if reason:
-            message = f"{message} - {reason}" if message else reason
-
-        # Still no message?  Then see if we can finally get one set.
-        if not message:
-            message = reason if reason else ""
-
-        # Update the status of the item
-        self.__update_item_status(identity, status, message, details)
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         """String representation for debugging."""
         return "{}({})".format(type(self).__name__, self.name)
 
-    def __str__(self):
+    def __str__(self) -> str:
         """String representation for display."""
         return "{}({})".format(type(self).__name__, self.name)
 
@@ -985,14 +926,18 @@ class BaseAction(object):
         """
         return True
 
-    def initialize(self):
+    def initialize(self) -> bool:
         """
         Initialize action for rerun.
 
         This method should reset action state to allow clean rerun.
         Default implementation clears state and output data.
+
+        Returns:
+            bool: True if initialization was successful, False otherwise.
+
         """
-        log.debug("Initializing action {} for rerun", self.name)
+        log.debug("Initializing action {} for run", self.name)
 
         # Clear action-specific state (keep deployment context)
         state_keys_to_clear = []
@@ -1004,13 +949,6 @@ class BaseAction(object):
             self.context.pop(key, None)
             log.trace("Cleared state key: {}", key)
 
-    def is_rerunnable(self) -> bool:
-        """
-        Check if action supports rerunning.
-
-        Returns:
-            bool: True if action can be re-runned, False otherwise
-        """
         return True
 
     def can_execute(self) -> bool:
@@ -1024,3 +962,39 @@ class BaseAction(object):
             bool: True if action can execute, False otherwise
         """
         return True
+
+    def _execute_lifecycle_hooks(self, hook_type: str, reason: str) -> bool:
+        """Execute lifecycle hooks of the specified type.
+
+        Args:
+            hook_type: Lifecycle hook type (e.g., "running", "complete", "failed")
+            reason: Reason for the lifecycle event
+        """
+        log.trace("Executing lifecycle hooks of type '{}' for action '{}'", hook_type, self.name)
+
+        all_success = True
+        for hook_resource in self.lifecycle_hooks:
+            all_success &= self._execute_lifecycle_hook(hook_type, hook_resource, reason)
+
+        return all_success
+
+    def _execute_lifecycle_hook(self, hook_type: str, hook_resource: HookResource, reason: str) -> bool:
+
+        try:
+            log.trace("Executing lifecycle hook '{}' for action '{}'", hook_type, self.name)
+
+            hook_action: ActionHook = HookFactory.load(
+                hook_resource, self.context, self.deployment_details, parent_action_name=self.name
+            )
+
+            # Hooks output details of these **kwargs given their Case or case.  I like Case capetalized.
+            return hook_action.execute(State=hook_type, Reason=reason)
+
+        except Exception as e:
+            log.error(
+                "Failed to execute lifecycle hook '{}' for action '{}': {}",
+                hook_type,
+                self.name,
+                str(e),
+            )
+            return False

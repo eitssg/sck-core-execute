@@ -1,4 +1,4 @@
-"""Duplicate an AMI and copy it to one or more AWS accounts"""
+"""Duplicate an AMI and copy it to one or more AWS accounts."""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -15,21 +15,15 @@ from core_execute.actionlib.action import BaseAction
 
 
 class DuplicateImageToAccountActionSpec(ActionSpec):
-    """
-    Parameters for the DuplicateImageToAccountAction.
+    """Parameters for AMI duplication and cross-account copy.
 
-    :param account: The source account where the image is located (required)
-    :type account: str
-    :param region: The region where the image operations will occur (required)
-    :type region: str
-    :param image_name: The name of the AMI to duplicate (required)
-    :type image_name: str
-    :param accounts_to_share: List of target accounts to copy the image to (required)
-    :type accounts_to_share: list[str]
-    :param kms_key_arn: The KMS key ARN to use for encryption in target accounts (required)
-    :type kms_key_arn: str
-    :param tags: Additional tags to apply to the copied images (optional)
-    :type tags: dict[str, str] | None
+    Attributes:
+      account: Source AWS account ID that owns the AMI.
+      region: AWS region where the AMI and snapshots reside.
+      image_name: Name of the source AMI to duplicate.
+      accounts_to_share: Target AWS account IDs to receive the copy.
+      kms_key_arn: KMS key ARN in the target accounts for encryption.
+      tags: Extra tags to apply to copied AMIs and snapshots.
     """
 
     image_name: str = Field(
@@ -55,28 +49,15 @@ class DuplicateImageToAccountActionSpec(ActionSpec):
 
 
 class DuplicateImageToAccountActionResource(ActionResource):
-    """
-    Generate the action definition for DuplicateImageToAccountAction.
+    """Resource model for DuplicateImageToAccount.
 
-    This class provides default values and validation for DuplicateImageToAccountAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
+    Normalizes parameters and sets defaults (name, kind, scope, params).
     """
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Validate the parameters for the DuplicateImageToAccountActionResource.
-
-        :param values: Input values for validation
-        :type values: dict[str, Any]
-        :return: Validated and potentially modified values
-        :rtype: dict[str, Any]
-        """
+        """Normalize incoming values and set defaults for kind/spec."""
         if not (values.get("name") or values.get("Name")):
             values["name"] = "action-aws-duplicateimagetoaccount-name"
         if not (values.get("kind") or values.get("Kind")):
@@ -99,63 +80,14 @@ class DuplicateImageToAccountActionResource(ActionResource):
 
 
 class DuplicateImageToAccountAction(BaseAction):
-    """
-    Duplicate an AMI and copy it to one or more AWS accounts.
+    """Duplicate a source AMI and create encrypted copies in target accounts.
 
-    This action duplicates an existing AMI from a source account and creates copies
-    in one or more target accounts. The process involves:
-
-    1. Finding the source AMI and its snapshots
-    2. Sharing snapshots with target accounts
-    3. Copying snapshots in each target account with encryption
-    4. Creating new AMIs from the copied snapshots
-    5. Applying tags to the new AMIs and snapshots
-
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::DuplicateImageToAccount``
-    :Spec.Account: The source account where the AMI is located (required)
-    :Spec.Region: The region where the AMI operations will occur (required)
-    :Spec.ImageName: The name of the AMI to duplicate (required)
-    :Spec.AccountsToShare: List of target accounts to copy the AMI to (required)
-    :Spec.KmsKeyArn: The KMS key ARN for encryption in target accounts (required)
-    :Spec.Tags: Additional tags to apply to copied AMIs (optional)
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-duplicateimagetoaccount-name
-          Kind: "AWS::DuplicateImageToAccount"
-          Spec:
-            Account: "154798051514"
-            Region: "ap-southeast-1"
-            ImageName: "my-application-ami-v1.0"
-            AccountsToShare: ["123456789012", "123456789013"]
-            KmsKeyArn: "arn:aws:kms:ap-southeast-1:154798051514:key/your-kms-key-id"
-            Tags:
-              From: "John Smith"
-              Purpose: "Cross-account deployment"
-          Scope: "build"
-
-    .. note::
-        The provisioning role must exist and be trusted in all target accounts.
-        KMS key permissions must allow cross-account usage.
-
-    .. warning::
-        AMI copying can take significant time depending on the size of the underlying snapshots.
-        This action runs within AWS Step Functions and will continuously loop through _check()
-        until all AMI operations complete. The state file tracks which accounts have completed,
-        so if Lambda times out, Step Functions will restart execution and continue monitoring
-        remaining accounts. Progress is preserved across Lambda invocations.
+    Steps:
+      1) Find source AMI and snapshots
+      2) Share snapshot with target accounts
+      3) Copy snapshot in each target account using KMS
+      4) Register a new AMI from the copied snapshot
+      5) Tag the AMIs and snapshots
     """
 
     def __init__(
@@ -163,8 +95,10 @@ class DuplicateImageToAccountAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and validate parameters."""
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = DuplicateImageToAccountActionSpec(**definition.spec)
@@ -173,12 +107,7 @@ class DuplicateImageToAccountAction(BaseAction):
             self.params.tags["DeliveredBy"] = deployment_details.delivered_by
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        It handles account IDs, image names, region, and KMS key ARNs.
-        """
+        """Render templates in account, image_name, region, kms_key_arn, and targets."""
         log.trace("Resolving DuplicateImageToAccountAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -194,16 +123,11 @@ class DuplicateImageToAccountAction(BaseAction):
         log.trace("DuplicateImageToAccountAction resolved")
 
     def _execute(self):
-        """
-        Execute the AMI duplication operation.
+        """Start or resume AMI duplication across target accounts.
 
-        This method performs the complete AMI duplication workflow but is designed to be idempotent.
-        When Step Functions restarts Lambda, this method will be called again and should:
-        1. Check for existing operations in progress
-        2. Resume from where it left off
-        3. Only start new operations for accounts not yet processed
-
-        :raises: Sets action to failed if any critical operation fails
+        Behavior:
+          - Idempotent/resumable: uses state to continue on retries
+          - Fails fast on critical errors, records progress per account
         """
         log.trace("Executing DuplicateImageToAccountAction")
 
@@ -270,12 +194,7 @@ class DuplicateImageToAccountAction(BaseAction):
         log.trace("DuplicateImageToAccountAction execution completed")
 
     def _resume_execution(self):
-        """
-        Resume execution when Step Functions restarts Lambda.
-
-        This method checks the current state and continues processing accounts
-        that haven't been started yet, while leaving in-progress operations alone.
-        """
+        """Resume after a restart by continuing any incomplete account work."""
         log.trace("Resuming DuplicateImageToAccountAction execution")
 
         # Get existing state
@@ -304,20 +223,12 @@ class DuplicateImageToAccountAction(BaseAction):
         log.trace("DuplicateImageToAccountAction resume completed")
 
     def _process_target_accounts(self, ec2_client, source_image_id: str, snapshot_ids: list[str]):
-        """
-        Process target accounts, handling both fresh starts and resumes.
+        """Process remaining target accounts; skip completed and resume in-progress.
 
-        This method is idempotent and will:
-        - Skip accounts that already have AMIs created
-        - Continue processing accounts that haven't been started
-        - Handle partial failures gracefully
-
-        :param ec2_client: EC2 client for the source account
-        :type ec2_client: boto3.client
-        :param source_image_id: ID of the source AMI
-        :type source_image_id: str
-        :param snapshot_ids: List of snapshot IDs from the source AMI
-        :type snapshot_ids: list[str]
+        Args:
+          ec2_client: Source-account EC2 client.
+          source_image_id: Source AMI ID.
+          snapshot_ids: Snapshot IDs associated with the source AMI.
         """
         log.debug("Processing target accounts for AMI duplication")
 
@@ -433,11 +344,9 @@ class DuplicateImageToAccountAction(BaseAction):
             # Partial success - continue with _check() to monitor remaining AMIs
             self.set_state("DuplicationResult", "PARTIAL_SUCCESS")
             self.set_output("DuplicationResult", "PARTIAL_SUCCESS")
-            # No explicit flow control set - defaults to "execute" to continue monitoring
         else:
             self.set_state("DuplicationResult", "SUCCESS")
             self.set_output("DuplicationResult", "SUCCESS")
-            # No explicit flow control set - defaults to "execute" to continue with _check()
 
     def _duplicate_to_account(
         self,
@@ -446,23 +355,21 @@ class DuplicateImageToAccountAction(BaseAction):
         snapshot_id: str,
         target_account: str,
     ) -> str:
-        """
-        Duplicate an AMI to a specific target account.
+        """Duplicate a source AMI to a specific target account.
 
-        This method is designed to be resumable - if called multiple times for the same account,
-        it should detect existing work and not duplicate efforts.
+        Idempotent: detects ongoing work and returns existing IDs when present.
 
-        :param source_ec2_client: EC2 client for the source account
-        :type source_ec2_client: boto3.client
-        :param source_image_id: ID of the source AMI
-        :type source_image_id: str
-        :param snapshot_id: ID of the source snapshot to copy
-        :type snapshot_id: str
-        :param target_account: Target account ID
-        :type target_account: str
-        :return: ID of the created AMI in the target account
-        :rtype: str
-        :raises ClientError: If any step of the duplication fails
+        Args:
+          source_ec2_client: EC2 client for the source account.
+          source_image_id: ID of the source AMI.
+          snapshot_id: ID of the source snapshot to copy.
+          target_account: Target AWS account ID.
+
+        Returns:
+          The new AMI ID created in the target account.
+
+        Raises:
+          ClientError: If any step of the duplication fails.
         """
         log.info("Duplicating AMI '{}' to account '{}'", source_image_id, target_account)
 
@@ -635,13 +542,7 @@ class DuplicateImageToAccountAction(BaseAction):
             raise
 
     def _check(self):
-        """
-        Check the status of the AMI duplication operation.
-
-        This method monitors the completion status of AMI creation in all target accounts.
-        It waits for all AMIs to become available and applies tags when ready. The method
-        tracks completion per account to handle Step Function restarts gracefully.
-        """
+        """Monitor AMI creation in target accounts and apply tags when ready."""
         log.trace("Checking DuplicateImageToAccountAction")
 
         successful_accounts = self.get_state("SuccessfulAccounts", [])
@@ -769,17 +670,7 @@ class DuplicateImageToAccountAction(BaseAction):
         log.trace("DuplicateImageToAccountAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the AMI duplication operation.
-
-        .. note::
-            AMI duplication cannot be automatically rolled back. Created AMIs and snapshots
-            remain in target accounts. Manual cleanup may be required.
-
-        .. warning::
-            This action does not automatically delete AMIs that were created in target accounts.
-            Use appropriate cleanup actions if rollback is required.
-        """
+        """Best-effort rollback notice; AMIs and snapshots remain for manual cleanup."""
         log.trace("Unexecuting DuplicateImageToAccountAction")
 
         created_images = self.get_state("CreatedImages", {})
@@ -801,28 +692,19 @@ class DuplicateImageToAccountAction(BaseAction):
         log.trace("DuplicateImageToAccountAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the AMI duplication operation.
-
-        .. note::
-            AMI duplication involves long-running snapshot copy operations that cannot be cancelled
-            once started. Any AMIs already created will remain in place.
-        """
+        """No-op; long-running snapshot copies cannot be cancelled once started."""
         log.trace("Cancelling DuplicateImageToAccountAction")
-
-        # AMI duplication operations cannot be cancelled once snapshot copying has started
         self.set_complete("AMI duplication operations cannot be cancelled once snapshot copying has started")
-
         log.trace("DuplicateImageToAccountAction cancellation completed")
 
     def _get_target_session(self, target_account: str):
-        """
-        Get a boto3 session for the target account using the cached session architecture.
+        """Return a session for the target account using assumed credentials.
 
-        :param target_account: Target account ID
-        :type target_account: str
-        :return: Configured session for the target account
-        :rtype: Session-like object
+        Args:
+          target_account: Target AWS account ID.
+
+        Returns:
+          A session-like object configured for the target account and region.
         """
         log.trace("Getting session for target account '{}'", target_account)
 
@@ -841,15 +723,12 @@ class DuplicateImageToAccountAction(BaseAction):
         return target_session
 
     def _apply_tags_to_image(self, ec2_client, image_id: str, describe_response: dict):
-        """
-        Apply tags to the AMI and its associated snapshots.
+        """Apply tags to the AMI and its snapshots in the target account.
 
-        :param ec2_client: EC2 client for the target account
-        :type ec2_client: boto3.client
-        :param image_id: ID of the AMI to tag
-        :type image_id: str
-        :param describe_response: Response from describe_images call
-        :type describe_response: dict
+        Args:
+          ec2_client: EC2 client for the target account.
+          image_id: AMI ID to tag.
+          describe_response: Response from describe_images.
         """
         if not self.params.tags or len(self.params.tags) == 0:
             log.debug("No tags specified, skipping tag application for image '{}'", image_id)
@@ -881,13 +760,13 @@ class DuplicateImageToAccountAction(BaseAction):
             # Don't fail the action for tagging errors
 
     def _get_image_snapshots(self, describe_images_response: dict) -> list[str]:
-        """
-        Extract snapshot IDs from a describe_images response.
+        """Extract snapshot IDs from a describe_images response.
 
-        :param describe_images_response: Response from EC2 describe_images call
-        :type describe_images_response: dict
-        :return: List of snapshot IDs associated with the image
-        :rtype: list[str]
+        Args:
+          describe_images_response: Response returned by EC2 describe_images.
+
+        Returns:
+          List of snapshot IDs associated with the image.
         """
         snapshots = []
         for mapping in describe_images_response["Images"][0]["BlockDeviceMappings"]:
@@ -897,13 +776,13 @@ class DuplicateImageToAccountAction(BaseAction):
         return snapshots
 
     def _find_source_image(self, ec2_client) -> tuple[str | None, list[str]]:
-        """
-        Find the source AMI and extract its snapshot IDs.
+        """Find the source AMI by name and return its ID and snapshot IDs.
 
-        :param ec2_client: EC2 client for the source account
-        :type ec2_client: boto3.client
-        :return: Tuple of (image_id, snapshot_ids) or (None, []) if not found
-        :rtype: tuple[str | None, list[str]]
+        Args:
+          ec2_client: EC2 client for the source account.
+
+        Returns:
+          Tuple (image_id, snapshot_ids). If not found, returns (None, []).
         """
         log.debug("Finding AMI with name '{}'", self.params.image_name)
 
@@ -944,8 +823,9 @@ class DuplicateImageToAccountAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DuplicateImageToAccountActionResource:
+        """Factory: create a typed DuplicateImageToAccountActionResource."""
         return DuplicateImageToAccountActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DuplicateImageToAccountActionSpec:
-        return DuplicateImageToAccountActionSpec(**kwargs)
+        """Factory: create typed DuplicateImageToAccountActionSpec."""

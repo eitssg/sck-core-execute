@@ -1,4 +1,4 @@
-"""Create or update IAM users in an AWS account"""
+"""Create or update IAM users and attach inline assume-role policies."""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -15,17 +15,13 @@ from core_execute.actionlib.action import BaseAction
 
 
 class CreateUserActionSpec(ActionSpec):
-    """
-    Parameters for the CreateUserAction.
+    """Parameters for creating or updating IAM users.
 
-    :param account: The AWS account ID where users will be created/updated (required)
-    :type account: str
-    :param region: The AWS region for IAM operations (required)
-    :type region: str
-    :param user_names: The list of users to create/update (required)
-    :type user_names: list[str] | str
-    :param roles: The list of roles to assign to the users (optional)
-    :type roles: list[str] | str
+    Attributes:
+      account: AWS account ID where users are managed.
+      region: AWS region for IAM operations.
+      user_names: List of IAM user names, or a template that renders to a CSV list.
+      roles: List of role names/ARNs, or a template that renders to a CSV list.
     """
 
     user_names: list[str] | str = Field(
@@ -42,18 +38,15 @@ class CreateUserActionSpec(ActionSpec):
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Validate the parameters for the CreateUserActionSpec.
+        """Normalize user name inputs into a list.
 
-        :param values: Input values for validation
-        :type values: dict[str, Any]
-        :return: Validated and potentially modified values
-        :rtype: dict[str, Any]
+        Accepts:
+          - UserNames (list[str] or str)
+          - UserName (single str)
         """
         if isinstance(values, dict):
             usernames = values.pop("user_names", None) or values.pop("UserNames", None) or []
             if isinstance(usernames, str):
-                # If user_names is a string, convert it to a list
                 usernames = [usernames]
             username = values.pop("user_name", None) or values.pop("UserName", None)
             if username:
@@ -64,21 +57,12 @@ class CreateUserActionSpec(ActionSpec):
 
 
 class CreateUserActionResource(ActionResource):
-    """
-    Generate the action definition for CreateUserAction.
-
-    This class provides default values and validation for CreateUserAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
-    """
+    """Resource model for CreateUserAction (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and set canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -96,47 +80,11 @@ class CreateUserActionResource(ActionResource):
 
 
 class CreateUserAction(BaseAction):
-    """
-    Create or update IAM users in an AWS account.
+    """Create or update IAM users and attach inline policies to assume roles.
 
-    This action will create new IAM users or update existing ones in an AWS account.
-    For each user, it will create an inline policy that allows assuming the specified roles.
-    If a user already exists, only the role assignments will be updated.
-
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::CreateUser``
-    :Spec.Account: The account where the users are located (required)
-    :Spec.Region: The region for the IAM operations (required)
-    :Spec.UserNames: The list of user names to create/update (required)
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-putuser-name  # FIXED
-          Kind: "AWS::CreateUser"
-          Spec:
-            Account: "154798051514"
-            Region: "us-east-1"
-            UserNames: ["john.smith", "jane.doe"]
-            Roles: ["admin", "developer"]
-          Scope: "build"
-
-    .. note::
-        If users already exist, only their role assignments will be updated.
-
-    .. warning::
-        Users created by this action will have permissions to assume the specified roles.
-        Ensure role permissions are appropriate for the users being created.
+    - Creates users that don't exist; skips creation for existing users
+    - Builds or updates a single inline policy per user to allow sts:AssumeRole
+    - Records results in action state and outputs
     """
 
     def __init__(
@@ -144,17 +92,26 @@ class CreateUserAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and validate parameters.
+
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context for templates.
+          deployment_details: Deployment metadata for this run.
+          parent_action_name: Optional parent action name.
+        """
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the parameters
         self.params = CreateUserActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
+        """Render templates for account, region, user_names, and roles.
 
-        This method renders Jinja2 templates in the action parameters using the current context.
+        - Supports list and string inputs
+        - When strings are provided, treats them as comma-separated lists
         """
         log.trace("Resolving CreateUserAction")
 
@@ -163,38 +120,24 @@ class CreateUserAction(BaseAction):
 
         if isinstance(self.params.user_names, list):
             for i, user_name in enumerate(self.params.user_names):
-                # If user_names is a list, render each item as a Jinja2 template
                 self.params.user_names[i] = self.renderer.render_string(user_name, self.context)
         elif isinstance(self.params.user_names, str):
-            # If user_names is a string, render it as a Jinja2 template
             names = self.renderer.render_string(self.params.user_names, self.context)
-
-            # if the user has accidently put [ and ] at the beginning and end of the string,  remove them
             names = names.lstrip("[").rstrip("]").strip()
-
-            # Split the names by comma and strip any surrounding quotes
             names_list = []
             for name in names.split(","):
-                # We assume the response is formatted as a comma-separated list and if each value is surround with quotes, remove them
                 name = name.lstrip("\"'").rstrip("\"'").strip()
                 names_list.append(name)
             self.params.user_names = names_list
 
         if isinstance(self.params.roles, list):
             for i, role in enumerate(self.params.roles):
-                # If roles is a list, render each item as a Jinja2 template
                 self.params.roles[i] = self.renderer.render_string(role, self.context)
         elif isinstance(self.params.roles, str):
-
-            # If roles is a string, render it as a Jinja2 template
             roles = self.renderer.render_string(self.params.roles, self.context)
-
-            # if the user has accidently put [ and ] at the beginning and end of the string,  remove them
             roles = roles.lstrip("[").rstrip("]").strip()
-
             role_list = []
             for role in roles.split(","):
-                # We assume the response is formatted as a comma-separated list and if each value is surround with quotes, remove them
                 role = role.lstrip("\"'").rstrip("\"'").strip()
                 role_list.append(role)
             self.params.roles = role_list
@@ -202,14 +145,11 @@ class CreateUserAction(BaseAction):
         log.trace("CreateUserAction resolved")
 
     def _execute(self):
-        """
-        Execute the user creation/update operation.
+        """Create or update IAM users and attach inline assume-role policies.
 
-        This method creates new IAM users or updates existing ones with the specified roles.
-        For each user, it will create/update an inline policy for role assumptions.
-        IAM user operations are typically fast and don't require long-running monitoring.
-
-        :raises: Sets action to failed if user creation/update fails
+        Behavior:
+          - Fails when no users are provided or IAM client cannot be created
+          - Continues per user, recording created, skipped, and failed results
         """
         log.trace("Executing CreateUserAction")
 
@@ -256,7 +196,6 @@ class CreateUserAction(BaseAction):
         for user_name in self.params.user_names:
             log.info("Processing user '{}'", user_name)
 
-            # create the user
             if not user_name:
                 log.error("User name cannot be empty")
                 self.set_failed("User name cannot be empty")
@@ -287,25 +226,17 @@ class CreateUserAction(BaseAction):
 
             # Attach policies to the user
             if not self.params.roles:
-                log.warning(
-                    "No roles specified for user '{}', skipping role attachment",
-                    user_name,
-                )
+                log.warning("No roles specified for user '{}', skipping role attachment", user_name)
                 continue
 
-            # Ensure roles is a list
             if isinstance(self.params.roles, str):
                 self.params.roles = [self.params.roles]
 
             log.info("Creating and attaching inline policy for user '{}'", user_name)
 
             try:
-                # Create and attach inline policy that allows assuming the specified roles
                 policy_name, policy_document = self._attach_inline_policy_to_user(iam_client, user_name, self.params.roles)
-                log.info(
-                    "Successfully attached/updated role assumption policy for user '{}'",
-                    user_name,
-                )
+                log.info("Successfully attached/updated role assumption policy for user '{}'", user_name)
                 users_with_policies.append(user_name)
 
                 # ADD THIS - Store the final policy for this user
@@ -333,11 +264,7 @@ class CreateUserAction(BaseAction):
                 )
                 continue
             except Exception as e:
-                log.error(
-                    "Unexpected error attaching/updating policy for user '{}': {}",
-                    user_name,
-                    e,
-                )
+                log.error("Unexpected error attaching/updating policy for user '{}': {}", user_name, e)
                 failed_users.append(
                     {
                         "UserName": user_name,
@@ -387,58 +314,41 @@ class CreateUserAction(BaseAction):
         log.trace("CreateUserAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the user creation/update operation.
-
-        IAM user operations are typically immediate, so this method confirms completion.
-        """
+        """Not applicable; IAM user operations are immediate."""
         log.trace("Checking CreateUserAction")
 
-        # IAM user put is immediate, so if we get here, it's already complete
         self.set_complete("User put operations are immediate")
 
         log.trace("CreateUserAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the user creation/update operation.
-
-        .. note::
-            User creation cannot be automatically rolled back. Created users and their
-            policies remain in place. Manual cleanup may be required.
-        """
+        """No rollback; user creation/update cannot be undone automatically."""
         log.trace("Unexecuting CreateUserAction")
-
-        # User put cannot be undone
 
         self.set_complete("User put cannot be rolled back")
 
         log.trace("CreateUserAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the user creation/update operation.
-
-        .. note::
-            User creation/update operations are immediate and cannot be cancelled once started.
-        """
+        """No-op; user creation/update is immediate and cannot be cancelled."""
         log.trace("Cancelling CreateUserAction")
 
-        # User put is immediate and cannot be cancelled
         self.set_complete("User put operations are immediate and cannot be cancelled")
 
         log.trace("CreateUserAction cancellation completed")
 
     def _check_user_exists(self, iam_client, user_name: str) -> bool:
-        """
-        Check if a user exists in IAM.
+        """Return True if the IAM user exists.
 
-        :param iam_client: IAM client
-        :type iam_client: boto3.client
-        :param user_name: Name of the user to check
-        :type user_name: str
-        :return: True if user exists, False otherwise
-        :rtype: bool
+        Args:
+          iam_client: IAM client.
+          user_name: User name to check.
+
+        Returns:
+          True if user exists, else False.
+
+        Raises:
+          ClientError: For non-NoSuchEntity API errors.
         """
         try:
             iam_client.get_user(UserName=user_name)
@@ -447,37 +357,34 @@ class CreateUserAction(BaseAction):
             if e.response["Error"]["Code"] == "NoSuchEntity":
                 return False
             else:
-                # Re-raise other errors
                 raise
 
     def _attach_inline_policy_to_user(self, iam_client, user_name: str, roles: list[str]) -> tuple[str, dict]:
-        """
-        Create and attach an inline policy to a user that allows assuming specified roles.
-        If the policy already exists, replace only the sts:AssumeRole resources with the new ones,
-        preserving any other policy statements.
+        """Create or update an inline policy that allows assuming specified roles.
 
-        :param iam_client: IAM client
-        :type iam_client: boto3.client
-        :param user_name: Name of the user
-        :type user_name: str
-        :param roles: List of role names to allow assumption
-        :type roles: list[str]
-        :return: Tuple of (policy_name, policy_document)
-        :rtype: tuple[str, dict]
-        :raises ClientError: If policy attachment fails
-        """
+        Updates existing policy by replacing only sts:AssumeRole resources; preserves other statements.
 
+        Args:
+          iam_client: IAM client.
+          user_name: Target IAM user name.
+          roles: Role names or ARNs to allow assumption.
+
+        Returns:
+          Tuple (policy_name, policy_document).
+
+        Raises:
+          ClientError: If setting the inline policy fails.
+          ValueError: If account ID is required to build role ARNs and is missing.
+        """
         # Create policy name
         policy_name = f"{user_name}-AssumeRoles-Policy"
 
         # Convert roles to ARNs
         new_role_arns = set()
         for role in roles:
-            # check if the role is already an ARN or just a name
             if role.startswith("arn:aws:iam::"):
                 new_role_arns.add(role)
             else:
-                # If it's just a role name, convert it to ARN format
                 if not self.params.account:
                     raise ValueError("Account ID is required to create role ARNs")
                 role_arn = f"arn:aws:iam::{self.params.account}:role/{role}"
@@ -493,7 +400,6 @@ class CreateUserAction(BaseAction):
                 response = iam_client.get_user_policy(UserName=user_name, PolicyName=policy_name)
                 existing_policy_doc = response["PolicyDocument"]
 
-                # Parse the URL-decoded policy document
                 if isinstance(existing_policy_doc, str):
                     existing_policy = util.from_json(existing_policy_doc)
                 else:
@@ -504,20 +410,15 @@ class CreateUserAction(BaseAction):
 
             except ClientError as e:
                 if e.response["Error"]["Code"] == "NoSuchEntity":
-                    log.debug(
-                        "No existing policy found for user '{}', will create new one",
-                        user_name,
-                    )
+                    log.debug("No existing policy found for user '{}', will create new one", user_name)
                     existing_policy = None
                 else:
                     raise
 
             # Create the final policy document
             if existing_policy:
-                # Update existing policy by replacing sts:AssumeRole resources
                 policy_document = self._replace_assume_role_resources(existing_policy, new_role_arns)
             else:
-                # Create new policy with just the assume role statement
                 policy_document = self._create_policy_with_role_arns(new_role_arns)
 
             log.debug("Final policy document: {}", util.to_json(policy_document))
@@ -528,42 +429,31 @@ class CreateUserAction(BaseAction):
                 len(new_role_arns),
             )
 
-            # Put/update the inline policy on the user (this replaces any existing policy)
             iam_client.put_user_policy(
                 UserName=user_name,
                 PolicyName=policy_name,
                 PolicyDocument=util.to_json(policy_document),
             )
 
-            log.info(
-                "Successfully set inline policy '{}' for user '{}'",
-                policy_name,
-                user_name,
-            )
+            log.info("Successfully set inline policy '{}' for user '{}'", policy_name, user_name)
 
-            # CHANGE THIS - Return both policy name and document
             return policy_name, policy_document
 
         except ClientError as e:
-            log.error(
-                "Failed to set inline policy '{}' for user '{}': {}",
-                policy_name,
-                user_name,
-                e,
-            )
+            log.error("Failed to set inline policy '{}' for user '{}': {}", policy_name, user_name, e)
             raise
 
     def _replace_assume_role_resources(self, existing_policy: dict, new_role_arns: set) -> dict:
-        """
-        Replace the resources in sts:AssumeRole statements with new role ARNs,
-        while preserving all other policy statements.
+        """Replace sts:AssumeRole resources in an existing policy.
 
-        :param existing_policy: The existing IAM policy document
-        :type existing_policy: dict
-        :param new_role_arns: Set of new role ARNs to use
-        :type new_role_arns: set
-        :return: Updated policy document
-        :rtype: dict
+        Preserves all non-AssumeRole statements.
+
+        Args:
+          existing_policy: Existing policy document.
+          new_role_arns: Set of role ARNs to place in AssumeRole Resource.
+
+        Returns:
+          Updated policy document.
         """
         # Start with a copy of the existing policy
         updated_policy = {
@@ -578,29 +468,21 @@ class CreateUserAction(BaseAction):
         for statement in statements:
             action = statement.get("Action", [])
 
-            # Handle both string and list actions
             if isinstance(action, str):
                 actions = [action]
             else:
                 actions = action if isinstance(action, list) else []
 
-            # Check if this is an sts:AssumeRole statement
             if "sts:AssumeRole" in actions and statement.get("Effect") == "Allow":
-                # Replace the resources in this statement
                 updated_statement = statement.copy()
                 updated_statement["Resource"] = sorted(list(new_role_arns))
                 updated_policy["Statement"].append(updated_statement)
                 assume_role_statement_found = True
                 log.debug("Replaced sts:AssumeRole resources in existing statement")
             else:
-                # Keep other statements unchanged
                 updated_policy["Statement"].append(statement)
-                log.debug(
-                    "Preserved non-AssumeRole statement: {}",
-                    statement.get("Effect", "Unknown"),
-                )
+                log.debug("Preserved non-AssumeRole statement: {}", statement.get("Effect", "Unknown"))
 
-        # If no sts:AssumeRole statement was found, add one
         if not assume_role_statement_found:
             new_statement = {
                 "Effect": "Allow",
@@ -613,22 +495,19 @@ class CreateUserAction(BaseAction):
         return updated_policy
 
     def _create_policy_with_role_arns(self, role_arns: set) -> dict:
-        """
-        Create a policy document with the specified role ARNs.
+        """Create a simple policy document that allows assuming the given roles.
 
-        :param role_arns: Set of role ARNs to include in the policy
-        :type role_arns: set
-        :return: IAM policy document
-        :rtype: dict
+        Args:
+          role_arns: Set of role ARNs to include.
+
+        Returns:
+          IAM policy document dict.
         """
         if not role_arns:
-            # Return empty policy if no roles
             return {"Version": "2012-10-17", "Statement": []}
 
-        # Sort role ARNs for consistent output
         sorted_role_arns = sorted(list(role_arns))
 
-        # Create single statement with all role ARNs
         statement = {
             "Effect": "Allow",
             "Action": "sts:AssumeRole",
@@ -640,15 +519,14 @@ class CreateUserAction(BaseAction):
         return policy_document
 
     def _create_inline_policy_document(self, roles: list[str]) -> dict:
-        """
-        Create an inline policy document that allows assuming the specified roles.
+        """Create an inline policy document for the provided role names.
 
-        :param roles: List of role names to allow assumption
-        :type roles: list[str]
-        :return: IAM policy document
-        :rtype: dict
+        Args:
+          roles: List of role names.
+
+        Returns:
+          IAM policy document dict.
         """
-        # Convert role names to ARNs
         role_arns = set()
         for role in roles:
             role_arn = f"arn:aws:iam::{self.params.account}:role/{role}"
@@ -658,8 +536,10 @@ class CreateUserAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CreateUserActionResource:
+        """Factory: create a typed CreateUserActionResource."""
         return CreateUserActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CreateUserActionSpec:
+        """Factory: create typed CreateUserActionSpec."""
         return CreateUserActionSpec(**kwargs)

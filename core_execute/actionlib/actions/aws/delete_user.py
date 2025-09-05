@@ -1,4 +1,4 @@
-"""Delete IAM users from an AWS account"""
+"""Delete IAM users and clean up associated IAM resources."""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -15,15 +15,12 @@ from core_execute.actionlib.action import BaseAction
 
 
 class DeleteUserActionSpec(ActionSpec):
-    """
-    Parameters for the DeleteUserAction.
+    """Parameters for deleting IAM users.
 
-    :param account: The account to use for the action (required)
-    :type account: str
-    :param region: The region where the user is located (required)
-    :type region: str
-    :param user_names: The list of users to delete (required)
-    :type user_names: list[str]
+    Attributes:
+      account: AWS account ID where users exist.
+      region: AWS region for IAM operations.
+      user_names: List of IAM user names to delete.
     """
 
     user_names: list[str] = Field(
@@ -34,24 +31,16 @@ class DeleteUserActionSpec(ActionSpec):
 
     @property
     def user_name(self) -> str:
-        """
-        Return the first user name for backward compatibility.
-
-        :return: The first user name in the list
-        :rtype: str
-        """
+        """First user name for backward compatibility."""
         return self.user_names[0] if self.user_names else ""
 
     @model_validator(mode="before")
     @classmethod
     def validate_user_names(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """
-        Ensure user_names is a list and contains at least one user name.
+        """Normalize and validate user_names into a list.
 
-        :param values: Input values for validation
-        :type values: dict[str, Any]
-        :return: Validated and potentially modified values
-        :rtype: dict[str, Any]
+        - Accepts UserNames (list) or UserName (single string).
+        - Ensures the final field is a list of names.
         """
         # Handle both UserNames and UserName parameters
         for lk in ["UserNames", "user_names"]:
@@ -74,21 +63,12 @@ class DeleteUserActionSpec(ActionSpec):
 
 
 class DeleteUserActionResource(ActionResource):
-    """
-    Generate the action definition for DeleteUserAction.
-
-    This class provides default values and validation for DeleteUserAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
-    """
+    """Resource model for DeleteUser (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and enforce canonical kind/spec."""
         if not isinstance(values, dict):
             return values
 
@@ -106,45 +86,11 @@ class DeleteUserActionResource(ActionResource):
 
 
 class DeleteUserAction(BaseAction):
-    """
-    Delete IAM users from an AWS account.
+    """Delete IAM users and all related IAM resources.
 
-    This action will delete one or more IAM users from an AWS account. The action
-    will clean up all associated resources including access keys, signing certificates,
-    group memberships, and attached policies before deleting the user.
-
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::DeleteUser``
-    :Spec.Account: The account where the users are located (required)
-    :Spec.Region: The region for the IAM operations (required)
-    :Spec.UserNames: The list of user names to delete (required)
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-deleteuser-name
-          Kind: "AWS::DeleteUser"
-          Spec:
-            Account: "154798051514"
-            Region: "us-east-1"
-            UserNames: ["john.smith", "jane.doe"]
-          Scope: "build"
-
-    .. note::
-        User deletion removes all associated resources and cannot be undone.
-
-    .. warning::
-        Deleting users will invalidate any credentials they were using.
+    Cleans up access keys, signing certificates, group memberships,
+    inline/managed policies, login profiles, MFA devices, SSH keys,
+    and service-specific credentials before deleting the user.
     """
 
     def __init__(
@@ -152,18 +98,23 @@ class DeleteUserAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and validate parameters.
+
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context for templates.
+          deployment_details: Deployment metadata.
+          parent_action_name: Optional parent action name.
+        """
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the parameters
         self.params = DeleteUserActionSpec(**definition.spec)
 
     def _resolve(self):
-        """
-        Resolve template variables in action parameters.
-
-        This method renders Jinja2 templates in the action parameters using the current context.
-        """
+        """Render templates for account, region, and user_names."""
         log.trace("Resolving DeleteUserAction")
 
         self.params.account = self.renderer.render_string(self.params.account, self.context)
@@ -175,13 +126,9 @@ class DeleteUserAction(BaseAction):
         log.trace("DeleteUserAction resolved")
 
     def _execute(self):
-        """
-        Execute the user deletion operation.
+        """Delete specified IAM users and dependencies, set results.
 
-        This method deletes the specified IAM users and all their associated resources.
-        IAM user deletion is typically fast and doesn't require long-running monitoring.
-
-        :raises: Sets action to failed if user deletion fails
+        Sets state/outputs for deleted, failed, and skipped users.
         """
         log.trace("Executing DeleteUserAction")
 
@@ -299,25 +246,15 @@ class DeleteUserAction(BaseAction):
         log.trace("DeleteUserAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the user deletion operation.
-
-        IAM user deletion is typically immediate, so this method just confirms completion.
-        """
+        """No-op; IAM user deletion is immediate."""
         log.trace("Checking DeleteUserAction")
 
-        # IAM user deletion is immediate, so if we get here, it's already complete
         self.set_complete("User deletion operations are immediate")
 
         log.trace("DeleteUserAction check completed")
 
     def _unexecute(self):
-        """
-        Rollback the user deletion operation.
-
-        .. note::
-            User deletion cannot be undone. This method is a no-op.
-        """
+        """No rollback; deleted IAM users cannot be restored."""
         log.trace("Unexecuting DeleteUserAction")
 
         # User deletion cannot be undone
@@ -338,12 +275,7 @@ class DeleteUserAction(BaseAction):
         log.trace("DeleteUserAction unexecution completed")
 
     def _cancel(self):
-        """
-        Cancel the user deletion operation.
-
-        .. note::
-            User deletion operations are immediate and cannot be cancelled.
-        """
+        """No-op; user deletion is immediate and cannot be cancelled."""
         log.trace("Cancelling DeleteUserAction")
 
         # User deletion is immediate and cannot be cancelled
@@ -352,15 +284,17 @@ class DeleteUserAction(BaseAction):
         log.trace("DeleteUserAction cancellation completed")
 
     def _check_user_exists(self, iam_client, user_name: str) -> bool:
-        """
-        Check if a user exists in IAM.
+        """Return True if the IAM user exists.
 
-        :param iam_client: IAM client
-        :type iam_client: boto3.client
-        :param user_name: Name of the user to check
-        :type user_name: str
-        :return: True if user exists, False otherwise
-        :rtype: bool
+        Args:
+          iam_client: Boto3 IAM client.
+          user_name: Name of the user to check.
+
+        Returns:
+          True if user exists, else False.
+
+        Raises:
+          ClientError: For non-NoSuchEntity API errors.
         """
         try:
             iam_client.get_user(UserName=user_name)
@@ -373,14 +307,14 @@ class DeleteUserAction(BaseAction):
                 raise
 
     def _delete_user_completely(self, iam_client, user_name: str):
-        """
-        Delete a user and all associated resources.
+        """Delete a user and all associated IAM resources.
 
-        :param iam_client: IAM client
-        :type iam_client: boto3.client
-        :param user_name: Name of the user to delete
-        :type user_name: str
-        :raises ClientError: If any IAM operation fails
+        Args:
+          iam_client: Boto3 IAM client.
+          user_name: Name of the user to delete.
+
+        Raises:
+          ClientError: If any IAM operation fails.
         """
         log.debug("Deleting user '{}' and all associated resources", user_name)
 
@@ -503,8 +437,10 @@ class DeleteUserAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteUserActionResource:
+        """Factory: create a typed DeleteUserActionResource."""
         return DeleteUserActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteUserActionSpec:
+        """Factory: create a typed DeleteUserActionSpec."""
         return DeleteUserActionSpec(**kwargs)

@@ -1,4 +1,7 @@
-"""Record metric data in AWS CloudWatch"""
+"""Record metric data in AWS CloudWatch.
+
+Sends custom metrics (with optional dimensions and timestamps) to a namespace.
+"""
 
 from typing import Any, Optional
 from datetime import datetime
@@ -16,18 +19,7 @@ from core_execute.actionlib.action import BaseAction
 
 
 class MetricDimension(BaseModel):
-    """A single metric dimension for CloudWatch.
-
-    Represents a name-value pair that helps categorize and filter metrics
-    in CloudWatch. Dimensions provide additional context for metric data.
-
-    Attributes
-    ----------
-    name : str
-        The name of the dimension (e.g., "Environment", "Application")
-    value : str
-        The value of the dimension (e.g., "production", "myapp")
-    """
+    """CloudWatch metric dimension (name/value)."""
 
     model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
@@ -36,27 +28,7 @@ class MetricDimension(BaseModel):
 
 
 class MetricData(BaseModel):
-    """A single metric data point for CloudWatch.
-
-    Represents a complete metric measurement including name, value, unit,
-    optional timestamp, and optional dimensions for categorization.
-
-    Attributes
-    ----------
-    metric_name : str
-        The name of the metric (e.g., "ResponseTime", "ErrorCount")
-    value : float
-        The numeric value of the metric measurement
-    unit : str, optional
-        The unit of measurement (default: "None")
-        Must be a valid CloudWatch unit
-    timestamp : str, optional
-        ISO 8601 formatted timestamp for the metric data point
-        If not provided, CloudWatch uses the current time
-    dimensions : list[MetricDimension], optional
-        List of dimensions to categorize this metric
-        Maximum 10 dimensions per API call
-    """
+    """A single CloudWatch metric data point."""
 
     model_config = ConfigDict(populate_by_name=True, validate_assignment=True)
 
@@ -66,7 +38,7 @@ class MetricData(BaseModel):
     timestamp: Optional[datetime | str] = Field(
         default=None,
         alias="Timestamp",
-        description="The timestamp for the metric data point (ISO 8601 format or datetime object)",
+        description="The timestamp for the metric data point (ISO 8601 string or datetime)",
     )
     dimensions: Optional[list[MetricDimension]] = Field(
         default=None, alias="Dimensions", description="The dimensions for the metric"
@@ -75,23 +47,7 @@ class MetricData(BaseModel):
     @field_validator("unit")
     @classmethod
     def validate_unit(cls, v: str) -> str:
-        """Validate that the unit is a valid CloudWatch unit.
-
-        Parameters
-        ----------
-        v : str
-            The unit value to validate
-
-        Returns
-        -------
-        str
-            The validated unit value
-
-        Raises
-        ------
-        ValueError
-            If the unit is not in the list of valid CloudWatch units
-        """
+        """Ensure the unit is one of the valid CloudWatch units."""
         valid_units = {
             "Seconds",
             "Microseconds",
@@ -128,61 +84,25 @@ class MetricData(BaseModel):
     @field_validator("timestamp", mode="before")
     @classmethod
     def validate_timestamp(cls, v) -> str | None:
-        """Validate and convert timestamp to ISO 8601 string format.
-
-        Parameters
-        ----------
-        v : str, datetime, or None
-            The timestamp value to validate
-
-        Returns
-        -------
-        str | None
-            The validated timestamp as ISO 8601 string, or None
-
-        Raises
-        ------
-        ValueError
-            If timestamp format is invalid
-        """
+        """Accept ISO 8601 string or datetime and normalize to ISO string."""
         if v is None:
             return None
 
         if isinstance(v, str):
-            # Validate string format
             try:
-                # Parse to ensure valid format, then return original string
                 datetime.fromisoformat(v.replace("Z", "+00:00"))
                 return v
             except ValueError as e:
                 raise ValueError(f"Invalid timestamp format: {e}")
 
         if isinstance(v, datetime):
-            # Convert datetime to ISO 8601 string
             return v.isoformat()
 
         raise ValueError(f"Timestamp must be a string or datetime object, got {type(v)}")
 
 
 class PutMetricDataActionSpec(ActionSpec):
-    """Parameters for the PutMetricDataAction.
-
-    Contains all configuration needed to record metric data in CloudWatch,
-    including target account/region, namespace, and metric definitions.
-
-    Attributes
-    ----------
-    account : str
-        The AWS account ID where metrics will be recorded
-    region : str
-        The AWS region where metrics will be recorded
-    namespace : str
-        The CloudWatch namespace for organizing metrics
-        Cannot exceed 255 characters or start with 'AWS/'
-    metrics : list[MetricData]
-        List of metric data points to record
-        Maximum 20 metrics per API call
-    """
+    """Parameters for recording metrics to CloudWatch."""
 
     namespace: str = Field(
         ...,
@@ -194,23 +114,7 @@ class PutMetricDataActionSpec(ActionSpec):
     @field_validator("namespace")
     @classmethod
     def validate_namespace(cls, v: str) -> str:
-        """Validate that namespace follows CloudWatch naming conventions.
-
-        Parameters
-        ----------
-        v : str
-            The namespace value to validate
-
-        Returns
-        -------
-        str
-            The validated namespace value
-
-        Raises
-        ------
-        ValueError
-            If namespace is empty, too long, or uses reserved 'AWS/' prefix
-        """
+        """Validate namespace length and reserved prefix."""
         if not v:
             raise ValueError("Namespace cannot be empty")
         if len(v) > 255:
@@ -222,23 +126,7 @@ class PutMetricDataActionSpec(ActionSpec):
     @field_validator("metrics")
     @classmethod
     def validate_metrics(cls, v: list[MetricData]) -> list[MetricData]:
-        """Validate metrics list against CloudWatch constraints.
-
-        Parameters
-        ----------
-        v : list[MetricData]
-            The metrics list to validate
-
-        Returns
-        -------
-        list[MetricData]
-            The validated metrics list
-
-        Raises
-        ------
-        ValueError
-            If metrics list is empty or exceeds 20 items
-        """
+        """Validate metric list count (1..20 per request)."""
         if not v:
             raise ValueError("At least one metric must be provided")
         if len(v) > 20:
@@ -247,16 +135,11 @@ class PutMetricDataActionSpec(ActionSpec):
 
 
 class PutMetricDataActionResource(ActionResource):
-    """Generate the action definition for PutMetricData.
-
-    Provides a convenience wrapper for creating PutMetricData actions
-    with sensible defaults for common use cases.
-    """
+    """Resource model for PutMetricData (forces kind and normalizes spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
         if not isinstance(values, dict):
             return values
 
@@ -274,120 +157,17 @@ class PutMetricDataActionResource(ActionResource):
 
 
 class PutMetricDataAction(BaseAction):
-    """Put metric data into AWS CloudWatch.
-
-    This action records custom metric data in AWS CloudWatch for monitoring and alerting.
-    It supports multiple metrics with dimensions, custom timestamps, and various units.
-
-    **Key Features:**
-
-    - Record custom application and infrastructure metrics
-    - Support for metric dimensions for detailed filtering
-    - Batch processing of up to 20 metrics per action
-    - Automatic timestamp handling or custom timestamp specification
-    - Template variable support for dynamic metric values
-    - Comprehensive validation of metric data and CloudWatch limits
-
-    **Use Cases:**
-
-    - Deployment success/failure tracking
-    - Application performance metrics
-    - Business metrics and KPIs
-    - Infrastructure health monitoring
-    - Custom alerting triggers
-
-    **Action Parameters:**
-
-    :param Account: AWS account ID where metrics will be recorded
-    :type Account: str
-    :param Region: AWS region where metrics will be recorded
-    :type Region: str
-    :param Namespace: CloudWatch namespace for organizing metrics
-    :type Namespace: str
-    :param Metrics: List of metric data points to record
-    :type Metrics: list[dict]
-
-    **Examples:**
-
-    Simple deployment success metric:
-
-    .. code-block:: yaml
-
-        - name: record-deployment-success
-          kind: put_metric_data
-          params:
-            Account: "{{ deployment.account }}"
-            Region: "{{ deployment.region }}"
-            Namespace: "MyApp/Deployments"
-            Metrics:
-              - MetricName: "DeploymentSuccess"
-                Value: 1
-                Unit: "Count"
-                Dimensions:
-                  - Name: "Environment"
-                    Value: "{{ deployment.environment }}"
-                  - Name: "Application"
-                    Value: "{{ app.name }}"
-
-    Multiple metrics with custom timestamps:
-
-    .. code-block:: yaml
-
-        - name: record-performance-metrics
-          kind: put_metric_data
-          params:
-            Account: "{{ deployment.account }}"
-            Region: "{{ deployment.region }}"
-            Namespace: "MyApp/Performance"
-            Metrics:
-              - MetricName: "ResponseTime"
-                Value: "{{ test_results.avg_response_time }}"
-                Unit: "Milliseconds"
-                Timestamp: "{{ test_results.timestamp }}"
-              - MetricName: "ThroughputRPS"
-                Value: "{{ test_results.requests_per_second }}"
-                Unit: "Count/Second"
-              - MetricName: "ErrorRate"
-                Value: "{{ test_results.error_percentage }}"
-                Unit: "Percent"
-
-    **CloudWatch Limits:**
-
-    - Maximum 20 metrics per API call
-    - Namespace cannot exceed 255 characters
-    - Cannot use 'AWS/' namespace prefix (reserved)
-    - Metric names and dimension names cannot exceed 255 characters
-    - Maximum 10 dimensions per metric
-
-    **State Tracking:**
-
-    This action tracks execution state using instance-based keys:
-
-    - ``{timestamp}/status`` - Success/error status for each execution
-    - ``{timestamp}/metrics_sent`` - Number of metrics recorded
-    - ``{timestamp}/batches_processed`` - Number of API batches sent
-    - ``status`` - Overall action status
-    - ``total_metrics_sent`` - Total metrics recorded across all executions
-    """
+    """Record custom metrics to CloudWatch (batch size up to 20)."""
 
     def __init__(
         self,
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        """Initialize the PutMetricDataAction.
-
-        Parameters
-        ----------
-        definition : ActionResource
-            The action specification containing parameters and configuration
-        context : dict[str, Any]
-            Template rendering context with deployment variables
-        deployment_details : DeploymentDetails
-            Deployment context and metadata
-        """
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and validate parameters."""
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         # Validate the action parameters
         self.params = PutMetricDataActionSpec(**definition.spec)
@@ -396,29 +176,7 @@ class PutMetricDataAction(BaseAction):
         self.metric_data: list[dict[str, Any]] = []
 
     def _execute(self):
-        """Execute the metric data recording operation.
-
-        Records all configured metrics to CloudWatch using the put_metric_data API.
-        Metrics are processed in batches if more than 20 are provided.
-
-        The execution process:
-
-        1. Creates CloudWatch client with appropriate IAM role
-        2. Processes metrics in batches of 20 (CloudWatch API limit)
-        3. Sends each batch via put_metric_data API call
-        4. Tracks execution state and completion status
-        5. Records success/error information for monitoring
-
-        Raises
-        ------
-        Exception
-            If CloudWatch API call fails or if metric data is invalid
-
-        Notes
-        -----
-        This method implements the core functionality and should not be
-        called directly. Use the action execution framework instead.
-        """
+        """Send metrics to CloudWatch using put_metric_data (in batches of 20)."""
         log.trace("PutMetricDataAction._execute()")
 
         try:
@@ -488,87 +246,21 @@ class PutMetricDataAction(BaseAction):
         log.trace("PutMetricDataAction._execute() complete")
 
     def _check(self):
-        """Check operation - not applicable for metric recording.
-
-        CloudWatch metric recording does not support check operations
-        as metrics represent point-in-time measurements that cannot
-        be verified without actually recording them.
-
-        Raises
-        ------
-        RuntimeError
-            Always raises as check operation is not supported
-        """
+        """Not applicable for metrics; mark check as unsupported."""
         log.trace("PutMetricDataAction._check()")
         self.set_failed("Check operation not supported for metric data recording")
         log.trace("PutMetricDataAction._check() complete")
 
     def _unexecute(self):
-        """Unexecute operation - not applicable for metric recording.
-
-        CloudWatch metrics cannot be deleted once recorded, so this is a no-op.
-        Metric data becomes part of the CloudWatch time series and cannot
-        be removed through the API.
-
-        Notes
-        -----
-        This is a no-op method as CloudWatch does not support metric deletion.
-        """
+        """No-op; metrics cannot be deleted from CloudWatch."""
         log.debug("Unexecute requested for metric data - metrics cannot be deleted from CloudWatch")
-        pass
 
     def _cancel(self):
-        """Cancel operation - not applicable for metric recording.
-
-        CloudWatch API calls cannot be cancelled once initiated.
-        The put_metric_data operation is atomic and completes quickly.
-
-        Notes
-        -----
-        This is a no-op method as CloudWatch API calls cannot be cancelled.
-        """
+        """No-op; put_metric_data calls are atomic and cannot be cancelled."""
         log.debug("Cancel requested for metric data recording - operation cannot be cancelled")
-        pass
 
     def _resolve(self):
-        """Resolve template variables and prepare metric data for CloudWatch API.
-
-        Processes all metrics, renders template variables, validates data formats,
-        and prepares the final metric data structure for the CloudWatch API.
-
-        **Resolution Process:**
-
-        1. **Template Rendering**: Renders all template variables in account, region, namespace
-        2. **Metric Processing**: Processes each metric individually:
-
-           - Renders metric name and value templates
-           - Converts values to appropriate numeric types
-           - Validates and parses custom timestamps
-           - Processes dimension name/value templates
-
-        3. **Data Structuring**: Converts to CloudWatch API format
-        4. **Validation**: Ensures all data meets CloudWatch constraints
-
-        **Template Variables Available:**
-
-        - ``deployment.*`` - Deployment context (account, region, environment)
-        - ``app.*`` - Application information (name, version, config)
-        - ``branch.*`` - Branch details (name, type, commit)
-        - ``env.*`` - Environment variables
-        - Action outputs from dependencies
-
-        Raises
-        ------
-        ValueError
-            If metric values cannot be converted to numeric types
-        Exception
-            If template rendering fails or data validation errors occur
-
-        Notes
-        -----
-        This method prepares data for execution and should not be
-        called directly. Use the action execution framework instead.
-        """
+        """Render templates and build CloudWatch MetricData payloads."""
         log.trace("PutMetricDataAction._resolve()")
 
         try:
@@ -633,8 +325,10 @@ class PutMetricDataAction(BaseAction):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> PutMetricDataActionResource:
+        """Factory: create a typed PutMetricDataActionResource."""
         return PutMetricDataActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> PutMetricDataActionSpec:
+        """Factory: create typed PutMetricDataActionSpec."""
         return PutMetricDataActionSpec(**kwargs)

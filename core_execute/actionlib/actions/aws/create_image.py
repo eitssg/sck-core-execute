@@ -1,4 +1,8 @@
-"""Create an Image of an EC2 instance"""
+"""Create an AMI from an EC2 instance and tag related resources.
+
+Starts AMI creation (_execute), waits until available and applies tags (_check),
+then exposes IDs/status via action state and outputs.
+"""
 
 from typing import Any
 from pydantic import Field, model_validator
@@ -14,19 +18,14 @@ from core_execute.actionlib.action import BaseAction
 
 
 class CreateImageActionSpec(ActionSpec):
-    """
-    Parameters for the CreateImageAction.
+    """Parameters for creating an AMI from an EC2 instance.
 
-    :param account: The account to use for the action (required)
-    :type account: str
-    :param image_name: The name of the image to create (required)
-    :type image_name: str
-    :param instance_id: The instance ID to create the image from (required)
-    :type instance_id: str
-    :param region: The region to create the image in (required)
-    :type region: str
-    :param tags: The tags to apply to the image (optional)
-    :type tags: dict[str, str] | None
+    Attributes:
+      account: AWS account ID to use.
+      region: AWS region where the instance resides.
+      image_name: Name of the AMI to create.
+      instance_id: Source EC2 instance ID.
+      tags: Optional tags to apply to the AMI and its snapshots.
     """
 
     image_name: str = Field(
@@ -42,26 +41,17 @@ class CreateImageActionSpec(ActionSpec):
     tags: dict[str, str] | None = Field(
         default_factory=dict,
         alias="Tags",
-        description="The tags to apply to the image (optional)",
+        description="The tags to apply to the image and snapshots (optional)",
     )
 
 
 class CreateImageActionResource(ActionResource):
-    """
-    Generate the action definition for CreateImageAction.
-
-    This class provides default values and validation for CreateImageAction parameters.
-
-    :param values: Dictionary of action specification values
-    :type values: dict[str, Any]
-    :return: Validated action specification values
-    :rtype: dict[str, Any]
-    """
+    """Resource model for CreateImageAction (normalizes kind/spec)."""
 
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-
+        """Normalize incoming values and force kind to 'AWS::CreateImage'."""
         if not isinstance(values, dict):
             return values
 
@@ -79,50 +69,11 @@ class CreateImageActionResource(ActionResource):
 
 
 class CreateImageAction(BaseAction):
-    """
-    Create an AMI Image from an EC2 Instance.
+    """Create an AMI from an EC2 instance and tag the AMI and snapshots.
 
-    This action will create an AMI for an EC2 instance and wait for the operation to complete.
-    The action will apply tags to both the image and associated snapshots when available.
-
-    :param definition: The action specification containing configuration details
-    :type definition: ActionResource
-    :param context: The Jinja2 rendering context containing all variables
-    :type context: dict[str, Any]
-    :param deployment_details: Client/portfolio/app/branch/build information
-    :type deployment_details: DeploymentDetails
-
-    .. rubric:: Parameters
-
-    :Name: Enter a name to define this action instance
-    :Kind: Use the value ``AWS::CreateImage`` (not AWS::KMS::CreateImage)
-    :Spec.Account: The account where the EC2 instance is located
-    :Spec.Region: The region where the EC2 instance is located
-    :Spec.InstanceId: The instance ID to create an image from (required)
-    :Spec.ImageName: The name of the image to create (required)
-    :Spec.Tags: Optional tags to apply to the created image
-
-    .. rubric:: ActionResource Example
-
-    .. code-block:: yaml
-
-        - Name: action-aws-createimage-name
-          Kind: "AWS::CreateImage"
-          Spec:
-            Account: "123456789012"
-            Region: "ap-southeast-1"
-            InstanceId: "i-1234567890abcdef0"
-            ImageName: "My-Image-Name"
-            Tags:
-              Environment: "production"
-              Project: "my-project"
-          Scope: "build"
-
-    .. note::
-        The action will automatically add a "DeliveredBy" tag if deployment_details.delivered_by is available.
-
-    .. warning::
-        The source instance must be in a running or stopped state for image creation to succeed.
+    - _execute: starts image creation
+    - _check: waits for availability and applies tags
+    - State/outputs include ImageId, SnapshotIds, and completion status
     """
 
     def __init__(
@@ -130,8 +81,17 @@ class CreateImageAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details)
+        """Initialize the action and prepare tag list.
+
+        Args:
+          definition: Action resource with metadata/spec.
+          context: Rendering context for templates.
+          deployment_details: Deployment metadata for this run.
+          parent_action_name: Optional parent action name.
+        """
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         self.params = CreateImageActionSpec(**definition.spec)
 
@@ -142,13 +102,11 @@ class CreateImageAction(BaseAction):
         self.tags = aws.transform_tag_hash(tags)
 
     def _execute(self):
-        """
-        Execute the image creation operation.
+        """Start AMI creation and set initial state/outputs.
 
-        This method creates an AMI from the specified EC2 instance and sets
-        appropriate state outputs for tracking.
-
-        :raises: Sets action to failed if instance ID is missing or EC2 operations fail
+        Raises:
+          Sets failed status when required parameters are missing
+          or when EC2 client/image creation fails.
         """
         log.trace("Executing CreateImageAction")
 
@@ -212,13 +170,11 @@ class CreateImageAction(BaseAction):
         log.trace("CreateImageAction execution completed")
 
     def _check(self):
-        """
-        Check the status of the image creation operation.
+        """Poll image status, apply tags to AMI and snapshots, and finalize results.
 
-        This method waits for the image creation to complete and applies tags
-        to both the image and its snapshots when available.
-
-        :raises: Sets action to failed if image is not found, in error state, or EC2 operations fail
+        Raises:
+          Sets failed status if the image cannot be found,
+          enters an error state, or EC2 calls fail.
         """
         log.trace("Checking CreateImageAction")
 

@@ -1,4 +1,8 @@
-"""Grant access to KMS keys to principals"""
+"""Create AWS KMS grants for one or more principals.
+
+This action creates KMS grants on a given key for specified principals and operations,
+optionally ignoring failures per-principal. Results are written to state/outputs.
+"""
 
 from typing import Any
 from pydantic import model_validator, Field, field_validator
@@ -15,17 +19,17 @@ import re
 
 
 class CreateGrantsActionResource(ActionResource):
-    """ActionResource for KMS grant creation actions."""
+    """Resource definition for the KMS grant creation action."""
 
     @model_validator(mode="before")
     def validate_params(cls, values) -> dict:
-        """
-        Validate the parameters for the CreateGrantsActionResource.
+        """Seed default resource fields and ensure required structure.
 
-        :param values: The input values dictionary
-        :type values: dict
-        :return: The validated values dictionary
-        :rtype: dict
+        Args:
+          values: Raw resource dict.
+
+        Returns:
+          Normalized resource dict with name/kind/scope/params defaults.
         """
         if not (values.get("name") or values.get("Name")):
             values["name"] = "action-aws-kms-creategrants-name"
@@ -48,26 +52,14 @@ class CreateGrantsActionResource(ActionResource):
 
 
 class CreateGrantsActionSpec(ActionSpec):
-    """
-    Parameters for the CreateGrantsAction.
+    """Parameters for creating KMS grants.
 
-    This model defines the required and optional parameters for creating
-    KMS grants to principals.
-
-    :param account: The account to use for the action (required)
-    :type account: str
-    :param region: The region to create the stack in (required)
-    :type region: str
-    :param kms_key_id: The ID of the KMS key to create grants for (optionally required)
-    :type kms_key_id: str | None
-    :param kms_key_arn: The ARN of the KMS key to create grants for (optionally required)
-    :type kms_key_arn: str | None
-    :param grantee_principals: The principals to grant access to (required)
-    :type grantee_principals: list[str]
-    :param operations: The operations to grant access for (required)
-    :type operations: list[str]
-    :param ignore_failed_grants: If 'true', ignore failed grants, otherwise fail the action if a grant fails. Can contain Jinja2 expressions.
-    :type ignore_failed_grants: str
+    Attributes:
+      kms_key_id: KMS key ID (optional if kms_key_arn provided).
+      kms_key_arn: KMS key ARN (optional if kms_key_id provided).
+      grantee_principals: Principals to grant access to.
+      operations: KMS operations to allow for each grant.
+      ignore_failed_grants: If 'true', continue even if some grants fail (templated string).
     """
 
     kms_key_id: str | None = Field(
@@ -93,18 +85,12 @@ class CreateGrantsActionSpec(ActionSpec):
     ignore_failed_grants: str = Field(
         "false",  # String default
         alias="IgnoreFailedGrants",
-        description="If 'true', ignore failed grants, otherwise fail the action if a grant fails. Can contain Jinja2 expressions like '{{ state.variable.one }}'",
+        description="If 'true', ignore failed grants; otherwise fail on first error. May contain Jinja2.",
     )
 
     @model_validator(mode="after")
     def validate_kms_key(self):
-        """
-        Validate that either kms_key_id or kms_key_arn is provided.
-
-        :return: The validated model instance
-        :rtype: CreateGrantsActionSpec
-        :raises ValueError: If neither kms_key_id nor kms_key_arn is provided
-        """
+        """Ensure either kms_key_id or kms_key_arn is provided."""
         if not self.kms_key_id and not self.kms_key_arn:
             raise ValueError("Either kms_key_id or kms_key_arn must be provided")
         return self
@@ -112,15 +98,7 @@ class CreateGrantsActionSpec(ActionSpec):
     @field_validator("grantee_principals")
     @classmethod
     def validate_grantee_principals(cls, v):
-        """
-        Validate that grantee_principals is not empty.
-
-        :param v: The grantee_principals list
-        :type v: list[str]
-        :return: The validated grantee_principals list
-        :rtype: list[str]
-        :raises ValueError: If grantee_principals is empty
-        """
+        """Validate grantee_principals is not empty."""
         if not v:
             raise ValueError("grantee_principals cannot be empty")
         return v
@@ -128,15 +106,7 @@ class CreateGrantsActionSpec(ActionSpec):
     @field_validator("operations")
     @classmethod
     def validate_operations(cls, v):
-        """
-        Validate that operations is not empty and contains valid KMS operations.
-
-        :param v: The operations list
-        :type v: list[str]
-        :return: The validated operations list
-        :rtype: list[str]
-        :raises ValueError: If operations is empty or contains invalid operations
-        """
+        """Validate operations is not empty and contains valid KMS operations."""
         if not v:
             raise ValueError("operations cannot be empty")
 
@@ -165,37 +135,10 @@ class CreateGrantsActionSpec(ActionSpec):
 
 
 class CreateGrantsAction(BaseAction):
-    """
-    Create Grants for an AWS KMS Key.
+    """Create KMS grants for a key and optionally ignore per-principal failures.
 
-    This action will create grants for KMS Keys. The action will wait for the
-    modifications to complete before returning.
-
-    :param definition: The action specification containing parameters
-    :type definition: ActionResource
-    :param context: The execution context for template rendering
-    :type context: dict[str, Any]
-    :param deployment_details: The deployment details for the action
-    :type deployment_details: DeploymentDetails
-
-    Example:
-        Action specification in YAML format:
-
-        .. code-block:: yaml
-
-            - Name: action-aws-kms-creategrants-name
-              Kind: "AWS::KMS::CreateGrants"
-              Spec:
-                Account: "123456789012"
-                Region: "ap-southeast-1"
-                KmsKeyArn: "arn:aws:kms:ap-southeast-1:123456789012:key/your-kms-key-id"
-                GranteePrincipals: ["arn:aws:iam::123456789012:role/YourRole"]
-                Operations: ["Encrypt", "Decrypt", "GenerateDataKey"]
-                IgnoreFailedGrants: "{{ state.ignore_grant_failures }}"
-              Scope: "build"
-
-    Note:
-        Use the Kind value: ``AWS::KMS::CreateGrants``
+    Writes summary and per-grant details to outputs, including GrantIds, GrantTokens,
+    and principal mappings. Can retire created grants on unexecute.
     """
 
     def __init__(
@@ -203,18 +146,16 @@ class CreateGrantsAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
+        parent_action_name: str | None = None,
     ):
-        """
-        Initialize the CreateGrantsAction.
+        """Initialize the KMS grant action and load parameters.
 
-        :param definition: The action specification containing parameters
-        :type definition: ActionResource
-        :param context: The execution context for template rendering
-        :type context: dict[str, Any]
-        :param deployment_details: The deployment details for the action
-        :type deployment_details: DeploymentDetails
+        Args:
+          definition: Action resource definition.
+          context: Template rendering context.
+          deployment_details: Deployment metadata for this run.
         """
-        super().__init__(definition, context, deployment_details)
+        super().__init__(definition, context, deployment_details, parent_action_name)
 
         self.params = CreateGrantsActionSpec(**definition.spec)
 
@@ -227,12 +168,12 @@ class CreateGrantsAction(BaseAction):
         self.ignore_failed_grants = self.params.ignore_failed_grants
 
     def _execute(self):
-        """
-        Execute the KMS grant creation.
+        """Create grants for each principal and record results.
 
-        This method creates grants for each principal in the grantee_principals list.
-        It handles failures based on the ignore_failed_grants setting and tracks
-        all created grants in the action's state.
+        Behavior:
+          - Creates a grant per principal using the provided operations.
+          - If ignore_failed_grants is truthy, continues on failures and records them.
+          - Sets outputs: CreatedGrants, GrantIds, GrantTokens, summary counts, etc.
         """
         try:
             # Convert ignore_failed_grants string to boolean
@@ -338,17 +279,13 @@ class CreateGrantsAction(BaseAction):
         successful_count: int,
         failed_count: int,
     ):
-        """
-        Store grant creation results in the action's state.
+        """Persist grant creation results to outputs.
 
-        :param created_grants: List of successfully created grants
-        :type created_grants: list
-        :param failed_principals: List of failed grant attempts
-        :type failed_principals: list
-        :param successful_count: Number of successful grants
-        :type successful_count: int
-        :param failed_count: Number of failed grants
-        :type failed_count: int
+        Args:
+          created_grants: Successfully created grants with metadata.
+          failed_principals: Failures with principal and error details.
+          successful_count: Number of successful grants.
+          failed_count: Number of failed grants.
         """
         # Store summary information
         self.set_output("TotalGrantsCreated", successful_count)
@@ -388,11 +325,7 @@ class CreateGrantsAction(BaseAction):
         self.set_output("IgnoreFailedGrants", self.ignore_failed_grants)
 
     def _check(self):
-        """
-        Check the status of created grants.
-
-        This method verifies that all created grants still exist and are active.
-        """
+        """Verify created grants still exist and mark completion."""
         try:
             # Get the stored grant information
             created_grants = self.get_output("CreatedGrants", [])
@@ -447,11 +380,7 @@ class CreateGrantsAction(BaseAction):
             self.set_failed(f"Error checking grant status: {str(e)}")
 
     def _unexecute(self):
-        """
-        Reverse the action by retiring all created grants.
-
-        This method attempts to retire all grants that were created by this action.
-        """
+        """Retire all grants created by this action (best-effort)."""
         try:
             # Get the stored grant information
             created_grants = self.get_output("CreatedGrants", [])
@@ -512,14 +441,7 @@ class CreateGrantsAction(BaseAction):
             self.set_failed(f"Error during grant retirement: {str(e)}")
 
     def _string_to_bool(self, value: str) -> bool:
-        """
-        Convert a string value to boolean.
-
-        :param value: The string value to convert
-        :type value: str
-        :return: True if the string represents a truthy value, False otherwise
-        :rtype: bool
-        """
+        """Return True for truthy strings like 'true', '1', 'yes', 'on'."""
         if isinstance(value, bool):
             return value
         if isinstance(value, str):
@@ -527,12 +449,7 @@ class CreateGrantsAction(BaseAction):
         return False
 
     def _resolve(self):
-        """
-        Resolve template variables in the action parameters.
-
-        This method uses the Jinja2 renderer to resolve template variables
-        in the action parameters using the provided context.
-        """
+        """Render templates for account, region, key ID/ARN, principals, operations, and flags."""
         try:
             self.account = self.renderer.render_string(self.account, self.context)
             self.region = self.renderer.render_string(self.region, self.context)
@@ -549,20 +466,16 @@ class CreateGrantsAction(BaseAction):
             self.set_failed(f"Error resolving template variables: {str(e)}")
 
     def _cancel(self):
-        """
-        Cancel the action (not implemented for KMS grants).
-
-        Note:
-            KMS grant creation is typically fast and cannot be cancelled.
-            This method is intentionally left empty.
-        """
+        """No-op; KMS grant creation is fast and cannot be cancelled."""
         log.debug("Cancel requested for action '{}' - no action taken", self.name)
         self.set_complete()
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CreateGrantsActionResource:
+        """Factory: create a typed CreateGrantsActionResource."""
         return CreateGrantsActionResource(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CreateGrantsActionSpec:
+        """Factory: create typed CreateGrantsActionSpec."""
         return CreateGrantsActionSpec(**kwargs)
