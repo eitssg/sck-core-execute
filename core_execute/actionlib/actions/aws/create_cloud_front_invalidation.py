@@ -60,7 +60,7 @@ class CreateCloudFrontInvalidationActionResource(ActionResource):
         return values
 
 
-class CreateCloudFrontInvalidationAction(BaseAction):
+class CreateCloudFrontInvalidationAction(BaseAction[CreateCloudFrontInvalidationActionSpec]):
     """Create a CloudFront invalidation to clear cached content.
 
     Completes after requesting the invalidation; does not wait for completion.
@@ -81,21 +81,21 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action definition parameters
-        self.params = CreateCloudFrontInvalidationActionSpec(**definition.spec)
+        self.spec = CreateCloudFrontInvalidationActionSpec(**definition.spec)
 
     def _resolve(self):
         """Render templates for region, account, distribution_id, and paths."""
         log.trace("Resolving CreateCloudFrontInvalidationAction")
 
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.distribution_id = self.renderer.render_string(self.params.distribution_id, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.distribution_id = self.renderer.render_string(self.spec.distribution_id, self.context)
 
         # Render each path in the paths list
         rendered_paths = []
-        for path in self.params.paths:
+        for path in self.spec.paths:
             rendered_paths.append(self.renderer.render_string(path, self.context))
-        self.params.paths = rendered_paths
+        self.spec.paths = rendered_paths
 
         log.trace("CreateCloudFrontInvalidationAction resolved")
 
@@ -108,26 +108,26 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         log.trace("Executing CreateCloudFrontInvalidationAction")
 
         # Validate required parameters
-        if not self.params.distribution_id or self.params.distribution_id == "":
+        if not self.spec.distribution_id or self.spec.distribution_id == "":
             self.set_failed("DistributionId parameter is required")
             log.error("DistributionId parameter is required")
             return
 
         # Set initial state information
-        self.set_state("DistributionId", self.params.distribution_id)
-        self.set_state("InvalidationPaths", self.params.paths)
-        self.set_state("Region", self.params.region)
-        self.set_state("Account", self.params.account)
+        self.set_state("DistributionId", self.spec.distribution_id)
+        self.set_state("InvalidationPaths", self.spec.paths)
+        self.set_state("Region", self.spec.region)
+        self.set_state("Account", self.spec.account)
 
         # Set outputs for other actions to reference
-        self.set_output("DistributionId", self.params.distribution_id)
-        self.set_output("InvalidationPaths", self.params.paths)
+        self.set_output("DistributionId", self.spec.distribution_id)
+        self.set_output("InvalidationPaths", self.spec.paths)
 
         # Obtain a CloudFront client
         try:
             cloudfront_client = aws.cloudfront_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFront client: {}", e)
@@ -141,11 +141,11 @@ class CreateCloudFrontInvalidationAction(BaseAction):
 
         try:
             response = cloudfront_client.create_invalidation(
-                DistributionId=self.params.distribution_id,
+                DistributionId=self.spec.distribution_id,
                 InvalidationBatch={
                     "Paths": {
-                        "Items": self.params.paths,
-                        "Quantity": len(self.params.paths),
+                        "Items": self.spec.paths,
+                        "Quantity": len(self.spec.paths),
                     },
                     "CallerReference": caller_reference,
                 },
@@ -188,8 +188,8 @@ class CreateCloudFrontInvalidationAction(BaseAction):
 
         try:
             cloudfront_client = aws.cloudfront_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFront client for status check: {}", e)
@@ -197,7 +197,7 @@ class CreateCloudFrontInvalidationAction(BaseAction):
             return
 
         try:
-            response = cloudfront_client.get_invalidation(DistributionId=self.params.distribution_id, Id=invalidation_id)
+            response = cloudfront_client.get_invalidation(DistributionId=self.spec.distribution_id, Id=invalidation_id)
         except Exception as e:
             log.error("Failed to get invalidation status: {}", e)
             self.set_failed(f"Failed to get invalidation status: {e}")

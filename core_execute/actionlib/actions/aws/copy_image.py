@@ -75,7 +75,7 @@ class CopyImageActionResource(ActionResource):
         return values
 
 
-class CopyImageAction(BaseAction):
+class CopyImageAction(BaseAction[CopyImageActionSpec]):
     """Copy an AMI to another region with KMS encryption and apply tags.
 
     - _execute: finds the source AMI by name and starts the copy
@@ -96,9 +96,9 @@ class CopyImageAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = CopyImageActionSpec(**definition.spec)
+        self.spec = CopyImageActionSpec(**definition.spec)
 
-        tags = self.params.tags
+        tags = self.spec.tags
         if deployment_details.delivered_by:
             tags["DeliveredBy"] = deployment_details.delivered_by
 
@@ -113,19 +113,19 @@ class CopyImageAction(BaseAction):
         log.trace("Executing CopyImageAction")
 
         # Validate required parameters
-        if not self.params.image_name:
+        if not self.spec.image_name:
             self.set_failed("ImageName parameter is required")
             return
 
-        if not self.params.destination_image_name:
+        if not self.spec.destination_image_name:
             self.set_failed("DestinationImageName parameter is required")
             return
 
         # Obtain an EC2 client
         try:
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)
@@ -133,24 +133,24 @@ class CopyImageAction(BaseAction):
             return
 
         # Find image (provides image id and snapshot ids)
-        log.debug("Finding image with name '{}'", self.params.image_name)
+        log.debug("Finding image with name '{}'", self.spec.image_name)
 
         try:
-            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.params.image_name]}])
+            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.spec.image_name]}])
         except Exception as e:
             log.error("Failed to describe images: {}", e)
             self.set_failed(f"Failed to describe images: {e}")
             return
 
         if len(response["Images"]) == 0:
-            self.set_failed(f"Could not find image with name '{self.params.image_name}'")
-            log.error("Could not find image with name '{}'", self.params.image_name)
+            self.set_failed(f"Could not find image with name '{self.spec.image_name}'")
+            log.error("Could not find image with name '{}'", self.spec.image_name)
             return
 
         if len(response["Images"]) > 1:
             log.warning(
                 "Multiple images found with name '{}', using the first one",
-                self.params.image_name,
+                self.spec.image_name,
             )
 
         source_image = response["Images"][0]
@@ -158,15 +158,15 @@ class CopyImageAction(BaseAction):
 
         # Set state outputs for source image information
         self.set_state("SourceImageId", source_image_id)
-        self.set_state("SourceImageName", self.params.image_name)
-        self.set_state("SourceRegion", self.params.region)
-        self.set_state("SourceAccount", self.params.account)
+        self.set_state("SourceImageName", self.spec.image_name)
+        self.set_state("SourceRegion", self.spec.region)
+        self.set_state("SourceAccount", self.spec.account)
 
         # Set outputs for source image information
         self.set_output("SourceImageId", source_image_id)
-        self.set_output("SourceImageName", self.params.image_name)
+        self.set_output("SourceImageName", self.spec.image_name)
 
-        log.debug("Found image '{}' with name '{}'", source_image_id, self.params.image_name)
+        log.debug("Found image '{}' with name '{}'", source_image_id, self.spec.image_name)
 
         # Encrypt AMI by copying source AMI with encryption option
         self.set_running("Copying and encrypting image")
@@ -174,10 +174,10 @@ class CopyImageAction(BaseAction):
         try:
             response = ec2_client.copy_image(
                 Encrypted=True,
-                KmsKeyId=self.params.kms_key_arn,
-                Name=self.params.destination_image_name,
+                KmsKeyId=self.spec.kms_key_arn,
+                Name=self.spec.destination_image_name,
                 SourceImageId=source_image_id,
-                SourceRegion=self.params.region,
+                SourceRegion=self.spec.region,
             )
         except Exception as e:
             log.error("Failed to copy image '{}': {}", source_image_id, e)
@@ -189,17 +189,17 @@ class CopyImageAction(BaseAction):
         # Set state outputs for destination image information
         self.set_state("ImageId", new_image_id)
         self.set_state("DestinationImageId", new_image_id)
-        self.set_state("DestinationImageName", self.params.destination_image_name)
-        self.set_state("DestinationRegion", self.params.region)
-        self.set_state("DestinationAccount", self.params.account)
-        self.set_state("KmsKeyArn", self.params.kms_key_arn)
+        self.set_state("DestinationImageName", self.spec.destination_image_name)
+        self.set_state("DestinationRegion", self.spec.region)
+        self.set_state("DestinationAccount", self.spec.account)
+        self.set_state("KmsKeyArn", self.spec.kms_key_arn)
         self.set_state("CopyStarted", True)
 
         # Set outputs for destination image information (for other actions to reference)
         self.set_output("ImageId", new_image_id)
         self.set_output("DestinationImageId", new_image_id)
-        self.set_output("DestinationImageName", self.params.destination_image_name)
-        self.set_output("KmsKeyArn", self.params.kms_key_arn)
+        self.set_output("DestinationImageName", self.spec.destination_image_name)
+        self.set_output("KmsKeyArn", self.spec.kms_key_arn)
 
         log.debug("Started copy operation, new image ID: '{}'", new_image_id)
         log.trace("CopyImageAction completed")
@@ -215,8 +215,8 @@ class CopyImageAction(BaseAction):
         # Obtain an EC2 client
         try:
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)
@@ -331,11 +331,11 @@ class CopyImageAction(BaseAction):
         """Render templates for account, region, names, and KMS key."""
         log.trace("Resolving CopyImageAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.destination_image_name = self.renderer.render_string(self.params.destination_image_name, self.context)
-        self.params.image_name = self.renderer.render_string(self.params.image_name, self.context)
-        self.params.kms_key_arn = self.renderer.render_string(self.params.kms_key_arn, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.destination_image_name = self.renderer.render_string(self.spec.destination_image_name, self.context)
+        self.spec.image_name = self.renderer.render_string(self.spec.image_name, self.context)
+        self.spec.kms_key_arn = self.renderer.render_string(self.spec.kms_key_arn, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
 
         log.trace("CopyImageAction resolved")
 

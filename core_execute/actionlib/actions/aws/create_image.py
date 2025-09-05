@@ -68,7 +68,7 @@ class CreateImageActionResource(ActionResource):
         return values
 
 
-class CreateImageAction(BaseAction):
+class CreateImageAction(BaseAction[CreateImageActionSpec]):
     """Create an AMI from an EC2 instance and tag the AMI and snapshots.
 
     - _execute: starts image creation
@@ -92,9 +92,9 @@ class CreateImageAction(BaseAction):
         """
         super().__init__(definition, context, deployment_details)
 
-        self.params = CreateImageActionSpec(**definition.spec)
+        self.spec = CreateImageActionSpec(**definition.spec)
 
-        tags = self.params.tags or {}
+        tags = self.spec.tags or {}
         if deployment_details.delivered_by:
             tags["DeliveredBy"] = deployment_details.delivered_by
 
@@ -110,31 +110,31 @@ class CreateImageAction(BaseAction):
         log.trace("Executing CreateImageAction")
 
         # Validate required parameters
-        if not self.params.instance_id or self.params.instance_id == "":
+        if not self.spec.instance_id or self.spec.instance_id == "":
             self.set_failed("InstanceId parameter is required")
             log.error("InstanceId parameter is required")
             return
 
-        if not self.params.image_name or self.params.image_name == "":
+        if not self.spec.image_name or self.spec.image_name == "":
             self.set_failed("ImageName parameter is required")
             log.error("ImageName parameter is required")
             return
 
         # Set initial state information
-        self.set_state("SourceInstanceId", self.params.instance_id)
-        self.set_state("ImageName", self.params.image_name)
-        self.set_state("Region", self.params.region)
-        self.set_state("Account", self.params.account)
+        self.set_state("SourceInstanceId", self.spec.instance_id)
+        self.set_state("ImageName", self.spec.image_name)
+        self.set_state("Region", self.spec.region)
+        self.set_state("Account", self.spec.account)
 
         # Set outputs for other actions to reference
-        self.set_output("SourceInstanceId", self.params.instance_id)
-        self.set_output("ImageName", self.params.image_name)
+        self.set_output("SourceInstanceId", self.spec.instance_id)
+        self.set_output("ImageName", self.spec.image_name)
 
         # Obtain an EC2 client
         try:
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)
@@ -142,17 +142,17 @@ class CreateImageAction(BaseAction):
             return
 
         # Create an image
-        self.set_running(f"Creating new image '{self.params.image_name}'")
+        self.set_running(f"Creating new image '{self.spec.image_name}'")
 
         try:
-            response = ec2_client.create_image(InstanceId=self.params.instance_id, Name=self.params.image_name)
+            response = ec2_client.create_image(InstanceId=self.spec.instance_id, Name=self.spec.image_name)
         except Exception as e:
             log.error(
                 "Failed to create image from instance '{}': {}",
-                self.params.instance_id,
+                self.spec.instance_id,
                 e,
             )
-            self.set_failed(f"Failed to create image from instance '{self.params.instance_id}': {e}")
+            self.set_failed(f"Failed to create image from instance '{self.spec.instance_id}': {e}")
             return
 
         image_id = response["ImageId"]
@@ -180,8 +180,8 @@ class CreateImageAction(BaseAction):
         # Obtain an EC2 client
         try:
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)
@@ -303,8 +303,8 @@ class CreateImageAction(BaseAction):
 
         try:
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client for rollback: {}", e)
@@ -352,10 +352,10 @@ class CreateImageAction(BaseAction):
         """
         log.trace("Resolving CreateImageAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.image_name = self.renderer.render_string(self.params.image_name, self.context)
-        self.params.instance_id = self.renderer.render_string(self.params.instance_id, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.image_name = self.renderer.render_string(self.spec.image_name, self.context)
+        self.spec.instance_id = self.renderer.render_string(self.spec.instance_id, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
 
         log.trace("CreateImageAction resolved")
 

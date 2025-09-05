@@ -125,7 +125,7 @@ class CreateStackActionResource(ActionResource):
         return values
 
 
-class CreateStackAction(BaseAction):
+class CreateStackAction(BaseAction[CreateStackActionSpec]):
     """CloudFormation stack creation and update action.
 
     Creates new CloudFormation stacks or updates existing ones using change sets.
@@ -158,10 +158,10 @@ class CreateStackAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = CreateStackActionSpec(**definition.spec)
+        self.spec = CreateStackActionSpec(**definition.spec)
 
         if deployment_details.delivered_by:
-            self.params.tags["DeliveredBy"] = deployment_details.delivered_by
+            self.spec.tags["DeliveredBy"] = deployment_details.delivered_by
 
     def can_initialize(self) -> bool:
         """Return True if the action can be reinitialized (no CFN operation in progress)."""
@@ -240,19 +240,19 @@ class CreateStackAction(BaseAction):
     def can_execute(self) -> bool:
         """Validate required params and AWS connectivity prior to execution."""
         # Basic parameter validation
-        if not self.params.stack_name:
+        if not self.spec.stack_name:
             log.error("Cannot execute - StackName is required")
             return False
 
-        if not self.params.template_url:
+        if not self.spec.template_url:
             log.error("Cannot execute - TemplateUrl is required")
             return False
 
         # Test AWS connectivity
         try:
             aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
             return True
         except Exception as e:
@@ -263,32 +263,32 @@ class CreateStackAction(BaseAction):
         """Render template variables and coerce parameter types."""
         log.trace("Resolving CreateStackAction")
 
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
-        self.params.template_url = self.renderer.render_string(self.params.template_url, self.context)
-        self.params.on_failure = self.renderer.render_string(self.params.on_failure, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.stack_name = self.renderer.render_string(self.spec.stack_name, self.context)
+        self.spec.template_url = self.renderer.render_string(self.spec.template_url, self.context)
+        self.spec.on_failure = self.renderer.render_string(self.spec.on_failure, self.context)
 
         # Handle timeout_in_minutes conversion
-        timeout_rendered = self.renderer.render_string(str(self.params.timeout_in_minutes), self.context)
+        timeout_rendered = self.renderer.render_string(str(self.spec.timeout_in_minutes), self.context)
         try:
-            self.params.timeout_in_minutes = int(timeout_rendered)
+            self.spec.timeout_in_minutes = int(timeout_rendered)
         except (ValueError, TypeError):
             log.warning("Invalid timeout value '{}', using default 15", timeout_rendered)
-            self.params.timeout_in_minutes = 15
+            self.spec.timeout_in_minutes = 15
 
-        if self.params.parameters:
+        if self.spec.parameters:
             parameters_to_remove = []
-            for parameter_key, parameter_value in self.params.parameters.items():
+            for parameter_key, parameter_value in self.spec.parameters.items():
                 value = self.renderer.render_string(str(parameter_value), self.context)
                 if value == "_NULL_":
                     parameters_to_remove.append(parameter_key)
                 else:
-                    self.params.parameters[parameter_key] = value
+                    self.spec.parameters[parameter_key] = value
 
             # Remove null parameters
             for key in parameters_to_remove:
-                self.params.parameters.pop(key)
+                self.spec.parameters.pop(key)
 
         log.trace("Resolved CreateStackAction")
 
@@ -297,31 +297,31 @@ class CreateStackAction(BaseAction):
         log.trace("Executing CreateStackAction")
 
         # Validate required parameters
-        if not self.params.stack_name or self.params.stack_name == "":
+        if not self.spec.stack_name or self.spec.stack_name == "":
             self.set_failed("StackName parameter is required")
             log.error("StackName parameter is required")
             return
 
-        if not self.params.template_url or self.params.template_url == "":
+        if not self.spec.template_url or self.spec.template_url == "":
             self.set_failed("TemplateUrl parameter is required")
             log.error("TemplateUrl parameter is required")
             return
 
         # Set initial state information
-        self.set_state("StackName", self.params.stack_name)
-        self.set_state("TemplateUrl", self.params.template_url)
-        self.set_state("Region", self.params.region)
-        self.set_state("Account", self.params.account)
+        self.set_state("StackName", self.spec.stack_name)
+        self.set_state("TemplateUrl", self.spec.template_url)
+        self.set_state("Region", self.spec.region)
+        self.set_state("Account", self.spec.account)
 
         # Set outputs for other actions to reference
-        self.set_output("StackName", self.params.stack_name)
-        self.set_output("Region", self.params.region)
+        self.set_output("StackName", self.spec.stack_name)
+        self.set_output("Region", self.spec.region)
 
         # Obtain a CloudFormation client
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -334,7 +334,7 @@ class CreateStackAction(BaseAction):
         describe_stack_response = None
 
         try:
-            describe_stack_response = cfn_client.describe_stacks(StackName=self.params.stack_name)
+            describe_stack_response = cfn_client.describe_stacks(StackName=self.spec.stack_name)
             if describe_stack_response.get("Stacks"):
                 stack_info = describe_stack_response["Stacks"][0]
                 stack_id = stack_info["StackId"]
@@ -348,7 +348,7 @@ class CreateStackAction(BaseAction):
 
                 log.info(
                     "Stack '{}' exists with status '{}' (ID: {})",
-                    self.params.stack_name,
+                    self.spec.stack_name,
                     stack_status,
                     stack_id,
                 )
@@ -357,7 +357,7 @@ class CreateStackAction(BaseAction):
                 if stack_status in ["DELETE_IN_PROGRESS", "DELETE_COMPLETE"]:
                     log.warning(
                         "Stack '{}' is in status '{}' - treating as non-existent for rerun",
-                        self.params.stack_name,
+                        self.spec.stack_name,
                         stack_status,
                     )
                     stack_exists = False
@@ -367,14 +367,14 @@ class CreateStackAction(BaseAction):
             if "does not exist" in e.response["Error"]["Message"]:
                 stack_exists = False
                 self.set_state("StackExists", False)
-                log.info("Stack '{}' does not exist - will create new stack", self.params.stack_name)
+                log.info("Stack '{}' does not exist - will create new stack", self.spec.stack_name)
             else:
-                log.error("Error describing stack '{}': {}", self.params.stack_name, e.response["Error"]["Message"])
-                self.set_failed(f"Failed to describe stack '{self.params.stack_name}': {e.response['Error']['Message']}")
+                log.error("Error describing stack '{}': {}", self.spec.stack_name, e.response["Error"]["Message"])
+                self.set_failed(f"Failed to describe stack '{self.spec.stack_name}': {e.response['Error']['Message']}")
                 return
         except Exception as e:
-            log.error("Unexpected error describing stack '{}': {}", self.params.stack_name, e)
-            self.set_failed(f"Unexpected error describing stack '{self.params.stack_name}': {e}")
+            log.error("Unexpected error describing stack '{}': {}", self.spec.stack_name, e)
+            self.set_failed(f"Unexpected error describing stack '{self.spec.stack_name}': {e}")
             return
 
         # Execute appropriate operation
@@ -387,40 +387,40 @@ class CreateStackAction(BaseAction):
 
     def __create_stack(self, cfn_client):
         """Create a new CloudFormation stack after validating the template."""
-        log.trace("Creating new stack '{}'", self.params.stack_name)
+        log.trace("Creating new stack '{}'", self.spec.stack_name)
 
         try:
             # Validate template before creating stack
             try:
-                cfn_client.validate_template(TemplateURL=self.params.template_url)
-                log.debug("Template validation successful for: {}", self.params.template_url)
+                cfn_client.validate_template(TemplateURL=self.spec.template_url)
+                log.debug("Template validation successful for: {}", self.spec.template_url)
             except ClientError as e:
                 log.error("Template validation failed: {}", e.response["Error"]["Message"])
                 self.set_failed(f"Template validation failed: {e.response['Error']['Message']}")
                 return
 
             args = {
-                "StackName": self.params.stack_name,
-                "TemplateURL": self.params.template_url,
+                "StackName": self.spec.stack_name,
+                "TemplateURL": self.spec.template_url,
                 "Capabilities": CAPABILITITES,
-                "Parameters": aws.transform_stack_parameter_hash(self.params.parameters),
-                "OnFailure": self.params.on_failure,
+                "Parameters": aws.transform_stack_parameter_hash(self.spec.parameters),
+                "OnFailure": self.spec.on_failure,
             }
 
             # Add optional parameters
-            if self.params.tags:
-                args["Tags"] = aws.transform_tag_hash(self.params.tags)
-            if self.params.timeout_in_minutes is not None:
-                args["TimeoutInMinutes"] = self.params.timeout_in_minutes
-            if self.params.stack_policy != "":
-                args["StackPolicyBody"] = util.to_json(self.params.stack_policy)
+            if self.spec.tags:
+                args["Tags"] = aws.transform_tag_hash(self.spec.tags)
+            if self.spec.timeout_in_minutes is not None:
+                args["TimeoutInMinutes"] = self.spec.timeout_in_minutes
+            if self.spec.stack_policy != "":
+                args["StackPolicyBody"] = util.to_json(self.spec.stack_policy)
 
             log.debug(
                 "Creating stack with parameters: StackName={}, TemplateURL={}, ParameterCount={}, TagCount={}",
-                self.params.stack_name,
-                self.params.template_url,
-                len(self.params.parameters),
-                len(self.params.tags),
+                self.spec.stack_name,
+                self.spec.template_url,
+                len(self.spec.parameters),
+                len(self.spec.tags),
             )
 
             cfn_response = cfn_client.create_stack(**args)
@@ -436,7 +436,7 @@ class CreateStackAction(BaseAction):
             self.set_output("StackId", stack_id)
             self.set_output("StackOperation", "CREATE")
 
-            self.set_running(f"Creating new stack '{self.params.stack_name}'")
+            self.set_running(f"Creating new stack '{self.spec.stack_name}'")
             log.debug("Stack creation initiated with ID: {}", stack_id)
 
         except ClientError as e:
@@ -445,9 +445,9 @@ class CreateStackAction(BaseAction):
 
             # Handle specific CloudFormation errors
             if error_code == "AlreadyExistsException":
-                log.warning("Stack '{}' already exists, will attempt update", self.params.stack_name)
+                log.warning("Stack '{}' already exists, will attempt update", self.spec.stack_name)
                 self.set_state("StackExists", True)
-                self.set_failed(f"Stack '{self.params.stack_name}' already exists")
+                self.set_failed(f"Stack '{self.spec.stack_name}' already exists")
             elif error_code == "InsufficientCapabilitiesException":
                 log.error("Insufficient capabilities for stack creation: {}", error_message)
                 self.set_failed(f"Insufficient capabilities: {error_message}")
@@ -457,15 +457,15 @@ class CreateStackAction(BaseAction):
             else:
                 log.error(
                     "Failed to create stack '{}': {} - {}",
-                    self.params.stack_name,
+                    self.spec.stack_name,
                     error_code,
                     error_message,
                 )
-                self.set_failed(f"Failed to create stack '{self.params.stack_name}': {error_message}")
+                self.set_failed(f"Failed to create stack '{self.spec.stack_name}': {error_message}")
 
         except Exception as e:
-            log.error("Unexpected error creating stack '{}': {}", self.params.stack_name, e)
-            self.set_failed(f"Unexpected error creating stack '{self.params.stack_name}': {e}")
+            log.error("Unexpected error creating stack '{}': {}", self.spec.stack_name, e)
+            self.set_failed(f"Unexpected error creating stack '{self.spec.stack_name}': {e}")
 
         log.trace("Stack creation initiated")
 
@@ -478,22 +478,22 @@ class CreateStackAction(BaseAction):
           describe_stack_response: Result of describe_stacks for the target stack.
         """
         try:
-            log.trace("Updating existing stack '{}'", self.params.stack_name)
+            log.trace("Updating existing stack '{}'", self.spec.stack_name)
 
             # Create a change set first for safer updates
             change_set_name = f"update-{util.get_current_timestamp()}"
 
             args = {
                 "StackName": stack_id,
-                "TemplateURL": self.params.template_url,
+                "TemplateURL": self.spec.template_url,
                 "Capabilities": CAPABILITITES,
-                "Parameters": aws.transform_stack_parameter_hash(self.params.parameters or {}),
+                "Parameters": aws.transform_stack_parameter_hash(self.spec.parameters or {}),
                 "ChangeSetName": change_set_name,
             }
-            if self.params.tags:
-                args["Tags"] = aws.transform_tag_hash(self.params.tags)
-            if self.params.stack_policy:
-                args["StackPolicyBody"] = util.to_json(self.params.stack_policy)
+            if self.spec.tags:
+                args["Tags"] = aws.transform_tag_hash(self.spec.tags)
+            if self.spec.stack_policy:
+                args["StackPolicyBody"] = util.to_json(self.spec.stack_policy)
 
             # Create and execute change set
             try:
@@ -516,7 +516,7 @@ class CreateStackAction(BaseAction):
                 changes = change_set_details.get("Changes", [])
                 if not changes:
                     # No changes detected
-                    log.debug("No changes detected in change set for stack '{}'", self.params.stack_name)
+                    log.debug("No changes detected in change set for stack '{}'", self.spec.stack_name)
 
                     # Delete the empty change set
                     cfn_client.delete_change_set(StackName=stack_id, ChangeSetName=change_set_name)
@@ -543,7 +543,7 @@ class CreateStackAction(BaseAction):
                 # Set outputs for other actions
                 self.set_output("StackOperation", "UPDATE")
 
-                self.set_running(f"Updating existing stack '{self.params.stack_name}'")
+                self.set_running(f"Updating existing stack '{self.spec.stack_name}'")
                 log.debug("Stack update initiated via change set for: {}", stack_id)
 
             except ClientError as cs_error:
@@ -551,7 +551,7 @@ class CreateStackAction(BaseAction):
                     "No updates" in cs_error.response["Error"]["Message"]
                     or "didn't contain changes" in cs_error.response["Error"]["Message"]
                 ):
-                    log.debug("No updates required for stack '{}'", self.params.stack_name)
+                    log.debug("No updates required for stack '{}'", self.spec.stack_name)
                     self.set_state("StackOperation", "NO_UPDATE")
                     self.set_state("NoUpdatesRequired", True)
                     self.set_output("StackOperation", "NO_UPDATE")
@@ -563,11 +563,11 @@ class CreateStackAction(BaseAction):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
-            log.error("Error updating stack '{}': {} - {}", self.params.stack_name, error_code, error_message)
-            self.set_failed(f"Failed to update stack '{self.params.stack_name}': {error_message}")
+            log.error("Error updating stack '{}': {} - {}", self.spec.stack_name, error_code, error_message)
+            self.set_failed(f"Failed to update stack '{self.spec.stack_name}': {error_message}")
         except Exception as e:
-            log.error("Unexpected error updating stack '{}': {}", self.params.stack_name, e)
-            self.set_failed(f"Unexpected error updating stack '{self.params.stack_name}': {e}")
+            log.error("Unexpected error updating stack '{}': {}", self.spec.stack_name, e)
+            self.set_failed(f"Unexpected error updating stack '{self.spec.stack_name}': {e}")
 
         log.trace("Stack update initiated")
 
@@ -583,8 +583,8 @@ class CreateStackAction(BaseAction):
         # Obtain a CloudFormation client
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client for status check: {}", e)
@@ -703,8 +703,8 @@ class CreateStackAction(BaseAction):
 
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client for rollback: {}", e)
@@ -716,7 +716,7 @@ class CreateStackAction(BaseAction):
             log.debug("Initiated deletion of stack '{}'", stack_id)
 
             self.set_state("StackDeletionStarted", True)
-            self.set_running(f"Deleting stack '{self.params.stack_name}'")
+            self.set_running(f"Deleting stack '{self.spec.stack_name}'")
 
         except ClientError as e:
             log.error("Failed to delete stack '{}': {}", stack_id, e.response["Error"]["Message"])
@@ -736,8 +736,8 @@ class CreateStackAction(BaseAction):
 
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
 
             cfn_client.cancel_update_stack(StackName=stack_id)
@@ -867,8 +867,8 @@ class CreateStackAction(BaseAction):
         """Capture a simple count of resources and types present in the stack."""
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
 
             stack_id = self.get_state("StackId")

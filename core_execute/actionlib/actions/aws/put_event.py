@@ -79,7 +79,7 @@ class PutEventActionResource(ActionResource):
         return values
 
 
-class PutEventAction(BaseAction):
+class PutEventAction(BaseAction[PutEventActionSpec]):
     """Record an event in the DB and log at the appropriate level."""
 
     def __init__(
@@ -99,7 +99,7 @@ class PutEventAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = PutEventActionSpec(**definition.spec)
+        self.spec = PutEventActionSpec(**definition.spec)
 
         self.item_type = deployment_details.scope
 
@@ -113,36 +113,36 @@ class PutEventAction(BaseAction):
 
         # Track this event instance in general state
         self.set_state("last_event_time", start_time)
-        self.set_state("last_event_type", self.params.type)
-        self.set_state("last_event_status", self.params.status)
+        self.set_state("last_event_type", self.spec.type)
+        self.set_state("last_event_status", self.spec.status)
         self.set_state("total_events", self.get_state("total_events", 0) + 1)
 
         try:
-            t = self.params.type.upper()
+            t = self.spec.type.upper()
             if t == "STATUS":
                 log.status(
-                    self.params.status,
-                    self.params.message,
-                    identity=self.params.identity,
+                    self.spec.status,
+                    self.spec.message,
+                    identity=self.spec.identity,
                 )
             elif t == "DEBUG":
-                log.debug(self.params.message, identity=self.params.identity)
+                log.debug(self.spec.message, identity=self.spec.identity)
             elif t == "INFO":
-                log.info(self.params.message, identity=self.params.identity)
+                log.info(self.spec.message, identity=self.spec.identity)
             elif t == "WARN":
-                log.warn(self.params.message, identity=self.params.identity)
+                log.warn(self.spec.message, identity=self.spec.identity)
             elif t == "ERROR":
-                log.error(self.params.message, identity=self.params.identity)
+                log.error(self.spec.message, identity=self.spec.identity)
             else:
                 log.fatal("Invalid event type: {}", t)
                 raise ValueError("Invalid event type. Must be one of: STATUS, DEBUG, INFO, WARN, ERROR")
 
             event = EventActions.create(
-                self.params.identity,
-                event_type=self.params.type,
+                self.spec.identity,
+                event_type=self.spec.type,
                 item_type=self.item_type,
-                status=self.params.status,
-                message=self.params.message,
+                status=self.spec.status,
+                message=self.spec.message,
             )
             log.debug("Event created: {}", event)
 
@@ -150,10 +150,10 @@ class PutEventAction(BaseAction):
             events = self.get_state("events", {})
             completion_time = util.get_current_timestamp()
             events[completion_time] = {
-                "type": self.params.type,
-                "status": self.params.status,
-                "message": self.params.message,
-                "identity": self.params.identity,
+                "type": self.spec.type,
+                "status": self.spec.status,
+                "message": self.spec.message,
+                "identity": self.spec.identity,
             }
             # use set_output to respect the save_outputs flag
             self.set_output("events", events)
@@ -168,7 +168,7 @@ class PutEventAction(BaseAction):
             # Instance-specific error state
             # General error state (tracks last event attempt)
             self.set_state("last_event_time", start_time)
-            self.set_state("last_event_type", self.params.type)
+            self.set_state("last_event_type", self.spec.type)
             self.set_state("last_event_status", "ERROR")
             self.set_state("last_error_message", error_message)
             self.set_state("status", "error")
@@ -202,10 +202,10 @@ class PutEventAction(BaseAction):
         """Render template variables in type, status, message, and identity."""
         log.trace("PutEventAction._resolve()")
 
-        self.params.type = self.renderer.render_string(self.params.type, self.context)
-        self.params.status = self.renderer.render_string(self.params.status, self.context)
-        self.params.message = self.renderer.render_string(self.params.message, self.context)
-        self.params.identity = self.renderer.render_string(self.params.identity, self.context)
+        self.spec.type = self.renderer.render_string(self.spec.type, self.context)
+        self.spec.status = self.renderer.render_string(self.spec.status, self.context)
+        self.spec.message = self.renderer.render_string(self.spec.message, self.context)
+        self.spec.identity = self.renderer.render_string(self.spec.identity, self.context)
 
         log.trace("PutEventAction._resolve() complete")
 

@@ -43,9 +43,6 @@ class Helper:
         # Determine if this is the first loop through the state machine, so we should initialize all actions
         self.initialize = task_payload.flow_control is None or task_payload.flow_control == "init"
 
-        # Track actions executed this Step Function run.  prevents re-execution of completed actions on rerun.
-        self.executed_this_run: Set[str] = set()
-
         log.debug(
             "Helper initialized with {} actions (initialize={}, threading={}, max_workers={})",
             len(self.actions),
@@ -106,22 +103,21 @@ class Helper:
 
     def _initialize_actions(self, action: BaseAction) -> None:
 
-        # Go through each action in the list an initialize or re-initialize as needed
-        # All actions should set their state to PENDING so they can be picked up for execution.
-        initialized = False
+        # Determine status of this run and update counters
+        if self.initialize:
 
-        # Determine initial status
-        if self.initialize and action.can_initialize():
+            if action.can_initialize():
 
-            log.debug("(Re)Initializing action {} for run", action.action_name)
-            try:
-                initialized = action.initialize()
-            except Exception as e:
-                action.set_failed(f"Initialization error: {e}")
-                log.error("Failed to initialize action {}: {}", action.action_name, e)
+                log.debug("(Re)Initializing action {} for run", action.action_name)
+                try:
+                    initialized = action.initialize()
+                except Exception as e:
+                    action.set_failed(f"Initialization error: {e}")
+                    log.error("Failed to initialize action {}: {}", action.action_name, e)
+                    initialized = False
 
-            if not initialized:
-                log.debug("Action {} cannot be (re)initialized, keeping existing status", action.action_name)
+                if not initialized:
+                    log.debug("Action {} cannot be (re)initialized, keeping existing status", action.action_name)
 
             status = action.get_status()
             if status == StatusCode.PENDING:

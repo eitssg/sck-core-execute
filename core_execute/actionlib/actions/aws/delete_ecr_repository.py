@@ -77,15 +77,15 @@ class DeleteEcrRepositoryAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = DeleteEcrRepositoryActionSpec(**definition.spec)
+        self.spec = DeleteEcrRepositoryActionSpec(**definition.spec)
 
     def _resolve(self):
         """Render template variables in account, region, and repository_name."""
         log.trace("Resolving DeleteEcrRepositoryAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.repository_name = self.renderer.render_string(self.params.repository_name, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+        self.spec.repository_name = self.renderer.render_string(self.spec.repository_name, self.context)
 
         log.trace("DeleteEcrRepositoryAction resolved")
 
@@ -97,28 +97,28 @@ class DeleteEcrRepositoryAction(BaseAction):
         log.trace("Executing DeleteEcrRepositoryAction")
 
         # Validate required parameters
-        if not self.params.repository_name or self.params.repository_name == "":
+        if not self.spec.repository_name or self.spec.repository_name == "":
             self.set_failed("RepositoryName parameter is required")
             log.error("RepositoryName parameter is required")
             return
 
         # Set initial state information
-        self.set_state("RepositoryName", self.params.repository_name)
-        self.set_state("Region", self.params.region)
-        self.set_state("Account", self.params.account)
+        self.set_state("RepositoryName", self.spec.repository_name)
+        self.set_state("Region", self.spec.region)
+        self.set_state("Account", self.spec.account)
         self.set_state("DeletionStarted", True)
         self.set_state("StartTime", util.get_current_timestamp())
 
         # Set outputs for other actions to reference
-        self.set_output("RepositoryName", self.params.repository_name)
-        self.set_output("Region", self.params.region)
+        self.set_output("RepositoryName", self.spec.repository_name)
+        self.set_output("Region", self.spec.region)
         self.set_output("DeletionStarted", True)
 
         # Obtain an ECR client
         try:
             ecr_client = aws.ecr_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create ECR client: {}", e)
@@ -129,8 +129,8 @@ class DeleteEcrRepositoryAction(BaseAction):
         repository_exists = False
         try:
             describe_response = ecr_client.describe_repositories(
-                registryId=self.params.account,
-                repositoryNames=[self.params.repository_name],
+                registryId=self.spec.account,
+                repositoryNames=[self.spec.repository_name],
             )
 
             if describe_response.get("repositories"):
@@ -148,7 +148,7 @@ class DeleteEcrRepositoryAction(BaseAction):
 
                 log.debug(
                     "Repository '{}' exists with {} images ({} bytes)",
-                    self.params.repository_name,
+                    self.spec.repository_name,
                     repository_info.get("imageCount", 0),
                     repository_info.get("repositorySizeInBytes", 0),
                 )
@@ -156,34 +156,34 @@ class DeleteEcrRepositoryAction(BaseAction):
         except ClientError as e:
             if e.response["Error"]["Code"] == "RepositoryNotFoundException":
                 repository_exists = False
-                log.debug("Repository '{}' does not exist", self.params.repository_name)
+                log.debug("Repository '{}' does not exist", self.spec.repository_name)
             else:
                 log.error(
                     "Error checking repository '{}': {}",
-                    self.params.repository_name,
+                    self.spec.repository_name,
                     e.response["Error"]["Message"],
                 )
-                self.set_failed(f"Failed to check repository '{self.params.repository_name}': {e.response['Error']['Message']}")
+                self.set_failed(f"Failed to check repository '{self.spec.repository_name}': {e.response['Error']['Message']}")
                 return
         except Exception as e:
             log.error(
                 "Unexpected error checking repository '{}': {}",
-                self.params.repository_name,
+                self.spec.repository_name,
                 e,
             )
-            self.set_failed(f"Unexpected error checking repository '{self.params.repository_name}': {e}")
+            self.set_failed(f"Unexpected error checking repository '{self.spec.repository_name}': {e}")
             return
 
         self.set_state("RepositoryExisted", repository_exists)
 
         # Attempt to delete the repository
         if repository_exists:
-            self.set_running(f"Deleting ECR repository '{self.params.repository_name}'")
+            self.set_running(f"Deleting ECR repository '{self.spec.repository_name}'")
 
             try:
                 ecr_client.delete_repository(
-                    registryId=self.params.account,
-                    repositoryName=self.params.repository_name,
+                    registryId=self.spec.account,
+                    repositoryName=self.spec.repository_name,
                     force=True,  # Delete even if it contains images
                 )
 
@@ -196,10 +196,10 @@ class DeleteEcrRepositoryAction(BaseAction):
                 self.set_output("DeletionCompleted", True)
                 self.set_output("DeletionResult", "SUCCESS")
 
-                self.set_complete(f"ECR repository '{self.params.repository_name}' has been deleted successfully")
+                self.set_complete(f"ECR repository '{self.spec.repository_name}' has been deleted successfully")
                 log.debug(
                     "Successfully deleted ECR repository '{}'",
-                    self.params.repository_name,
+                    self.spec.repository_name,
                 )
 
             except ClientError as e:
@@ -210,50 +210,50 @@ class DeleteEcrRepositoryAction(BaseAction):
                     # Repository was deleted between our check and delete call
                     log.warning(
                         "ECR repository '{}' was not found during deletion (may have been deleted concurrently)",
-                        self.params.repository_name,
+                        self.spec.repository_name,
                     )
                     self.set_state("DeletionCompleted", True)
                     self.set_state("CompletionTime", util.get_current_timestamp())
                     self.set_state("DeletionResult", "ALREADY_DELETED")
                     self.set_output("DeletionCompleted", True)
                     self.set_output("DeletionResult", "ALREADY_DELETED")
-                    self.set_complete(f"ECR repository '{self.params.repository_name}' was already deleted")
+                    self.set_complete(f"ECR repository '{self.spec.repository_name}' was already deleted")
                 elif error_code == "RepositoryNotEmptyException":
                     # This shouldn't happen with force=True, but handle gracefully
                     log.error(
                         "ECR repository '{}' could not be deleted - repository not empty: {}",
-                        self.params.repository_name,
+                        self.spec.repository_name,
                         error_message,
                     )
                     self.set_state("DeletionResult", "FAILED_NOT_EMPTY")
                     self.set_failed(
-                        f"Repository '{self.params.repository_name}' could not be deleted - repository not empty: {error_message}"
+                        f"Repository '{self.spec.repository_name}' could not be deleted - repository not empty: {error_message}"
                     )
                 else:
                     log.error(
                         "Error deleting ECR repository '{}': {} - {}",
-                        self.params.repository_name,
+                        self.spec.repository_name,
                         error_code,
                         error_message,
                     )
                     self.set_state("DeletionResult", "FAILED")
                     self.set_state("FailureReason", f"{error_code}: {error_message}")
-                    self.set_failed(f"Failed to delete repository '{self.params.repository_name}': {error_message}")
+                    self.set_failed(f"Failed to delete repository '{self.spec.repository_name}': {error_message}")
 
             except Exception as e:
                 log.error(
                     "Unexpected error deleting ECR repository '{}': {}",
-                    self.params.repository_name,
+                    self.spec.repository_name,
                     e,
                 )
                 self.set_state("DeletionResult", "FAILED")
                 self.set_state("FailureReason", str(e))
-                self.set_failed(f"Unexpected error deleting repository '{self.params.repository_name}': {e}")
+                self.set_failed(f"Unexpected error deleting repository '{self.spec.repository_name}': {e}")
         else:
             # Repository doesn't exist - treat as successful deletion
             log.info(
                 "ECR repository '{}' does not exist, treating as successful deletion",
-                self.params.repository_name,
+                self.spec.repository_name,
             )
             self.set_state("DeletionCompleted", True)
             self.set_state("CompletionTime", util.get_current_timestamp())
@@ -262,7 +262,7 @@ class DeleteEcrRepositoryAction(BaseAction):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "NOT_FOUND")
 
-            self.set_complete(f"ECR repository '{self.params.repository_name}' does not exist, may have been previously deleted")
+            self.set_complete(f"ECR repository '{self.spec.repository_name}' does not exist, may have been previously deleted")
 
         log.trace("DeleteEcrRepositoryAction execution completed")
 
@@ -281,7 +281,7 @@ class DeleteEcrRepositoryAction(BaseAction):
 
         log.warning(
             "ECR repository deletion cannot be rolled back - repository '{}' remains deleted",
-            self.params.repository_name,
+            self.spec.repository_name,
         )
 
         self.set_state("RollbackAttempted", True)

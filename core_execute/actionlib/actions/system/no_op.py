@@ -49,7 +49,7 @@ class NoOpActionResource(ActionResource):
         return values
 
 
-class NoOpAction(BaseAction):
+class NoOpAction(BaseAction[NoOpActionSpec]):
     """Perform a NoOps (No Operation) action
 
     There is no operation to perform
@@ -78,7 +78,7 @@ class NoOpAction(BaseAction):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.params = NoOpActionSpec(**definition.spec)
+        self.spec = NoOpActionSpec(**definition.spec)
 
     @classmethod
     def generate_spec(cls, action_resource: dict) -> ActionResource:

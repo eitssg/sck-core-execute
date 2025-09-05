@@ -40,7 +40,7 @@ class ActionNameGoesHereActionResource(ActionResource):
         return values
 
 
-class ActionNameGoesHereAction(BaseAction):
+class ActionNameGoesHereAction(BaseAction[ActionNameGoesHereActionSpec]):
     """Sameple Action Description
 
     Kind: Use the value: ``SYSTEM::ActionNameGoesHere``
@@ -69,7 +69,7 @@ class ActionNameGoesHereAction(BaseAction):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.params = ActionNameGoesHereActionSpec(**definition.spec)
+        self.spec = ActionNameGoesHereActionSpec(**definition.spec)
 
     def _execute(self):
         # TODO: implement action execution

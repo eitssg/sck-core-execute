@@ -63,7 +63,7 @@ class DeleteSecurityGroupEnisActionResource(ActionResource):
         return values
 
 
-class DeleteSecurityGroupEnisAction(BaseAction):
+class DeleteSecurityGroupEnisAction(BaseAction[DeleteSecurityGroupEnisActionSpec]):
     """Detach and delete ENIs attached to a security group.
 
     - Detaches in-use ENIs (non-hyperplane) and deletes available ENIs
@@ -81,15 +81,15 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate and set the parameters
-        self.params = DeleteSecurityGroupEnisActionSpec(**definition.spec)
+        self.spec = DeleteSecurityGroupEnisActionSpec(**definition.spec)
 
     def _resolve(self):
         """Render template variables in account, region, and security_group_id."""
         log.trace("Resolving DeleteSecurityGroupEnisAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.security_group_id = self.renderer.render_string(self.params.security_group_id, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+        self.spec.security_group_id = self.renderer.render_string(self.spec.security_group_id, self.context)
 
         log.trace("DeleteSecurityGroupEnisAction resolved")
 
@@ -98,24 +98,24 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         log.trace("Executing DeleteSecurityGroupEnisAction")
 
         # Validate required parameters
-        if not self.params.security_group_id or self.params.security_group_id == "":
+        if not self.spec.security_group_id or self.spec.security_group_id == "":
             self.set_failed("SecurityGroupId parameter is required")
             log.error("SecurityGroupId parameter is required")
             return
 
         # Set initial state information
-        self.set_state("SecurityGroupId", self.params.security_group_id)
-        self.set_state("Region", self.params.region)
-        self.set_state("Account", self.params.account)
+        self.set_state("SecurityGroupId", self.spec.security_group_id)
+        self.set_state("Region", self.spec.region)
+        self.set_state("Account", self.spec.account)
         self.set_state("DeletionStarted", True)
         self.set_state("StartTime", util.get_current_timestamp())
 
         # Set outputs for other actions to reference
-        self.set_output("SecurityGroupId", self.params.security_group_id)
-        self.set_output("Region", self.params.region)
+        self.set_output("SecurityGroupId", self.spec.security_group_id)
+        self.set_output("Region", self.spec.region)
         self.set_output("DeletionStarted", True)
 
-        self.set_running(f"Deleting ENIs attached to security group '{self.params.security_group_id}'")
+        self.set_running(f"Deleting ENIs attached to security group '{self.spec.security_group_id}'")
         self._detach_enis()
 
         log.trace("DeleteSecurityGroupEnisAction execution completed")
@@ -135,7 +135,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         # ENI deletion cannot be undone
         log.warning(
             "ENI deletion cannot be rolled back - ENIs for security group '{}' remain deleted",
-            self.params.security_group_id,
+            self.spec.security_group_id,
         )
 
         self.set_state("RollbackAttempted", True)
@@ -161,13 +161,13 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         - Detaches in-use ENIs then deletes when available
         - Updates state/outputs with progress and results
         """
-        log.trace("Processing ENIs for security group '{}'", self.params.security_group_id)
+        log.trace("Processing ENIs for security group '{}'", self.spec.security_group_id)
 
         # Obtain an EC2 client
         try:
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)
@@ -177,14 +177,14 @@ class DeleteSecurityGroupEnisAction(BaseAction):
         # Retrieve security group ENIs
         try:
             response = ec2_client.describe_network_interfaces(
-                Filters=[{"Name": "group-id", "Values": [self.params.security_group_id]}]
+                Filters=[{"Name": "group-id", "Values": [self.spec.security_group_id]}]
             )
             network_interfaces = response["NetworkInterfaces"]
 
             log.debug(
                 "Found {} ENIs attached to security group '{}'",
                 len(network_interfaces),
-                self.params.security_group_id,
+                self.spec.security_group_id,
             )
 
         except ClientError as e:
@@ -194,7 +194,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
             if error_code == "InvalidGroup.NotFound":
                 log.warning(
                     "Security group '{}' not found: {}",
-                    self.params.security_group_id,
+                    self.spec.security_group_id,
                     error_message,
                 )
                 self.set_state("SecurityGroupExists", False)
@@ -205,12 +205,12 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                 self.set_output("DeletionCompleted", True)
                 self.set_output("DeletionResult", "SECURITY_GROUP_NOT_FOUND")
 
-                self.set_complete(f"Security group '{self.params.security_group_id}' not found, no ENIs to delete")
+                self.set_complete(f"Security group '{self.spec.security_group_id}' not found, no ENIs to delete")
                 return
             else:
                 log.error(
                     "Error describing network interfaces for security group '{}': {} - {}",
-                    self.params.security_group_id,
+                    self.spec.security_group_id,
                     error_code,
                     error_message,
                 )
@@ -258,7 +258,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                 self.set_output("DeletionResult", "SUCCESS")
                 self.set_output("ProcessedEniCount", 0)
 
-                self.set_complete(f"No ENIs found attached to security group '{self.params.security_group_id}'")
+                self.set_complete(f"No ENIs found attached to security group '{self.spec.security_group_id}'")
                 return
             else:
                 # No more ENIs found - all previous ENIs have been processed
@@ -351,7 +351,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                             log.debug(
                                 "Detaching ENI '{}' from security group '{}'",
                                 eni_id,
-                                self.params.security_group_id,
+                                self.spec.security_group_id,
                             )
 
                             ec2_client.detach_network_interface(
@@ -462,7 +462,7 @@ class DeleteSecurityGroupEnisAction(BaseAction):
                 total_enis,
             )
             self.set_complete(
-                f"Processed {total_processed} ENIs with {len(failed_enis)} failures for security group '{self.params.security_group_id}'"
+                f"Processed {total_processed} ENIs with {len(failed_enis)} failures for security group '{self.spec.security_group_id}'"
             )
         else:
             self.set_state("DeletionResult", "SUCCESS")
@@ -474,12 +474,12 @@ class DeleteSecurityGroupEnisAction(BaseAction):
             self.set_output("ProcessedEniCount", total_processed)
 
             self.set_complete(
-                f"Successfully processed all {total_processed} ENIs for security group '{self.params.security_group_id}'"
+                f"Successfully processed all {total_processed} ENIs for security group '{self.spec.security_group_id}'"
             )
 
         log.trace(
             "ENI processing completed for security group '{}'",
-            self.params.security_group_id,
+            self.spec.security_group_id,
         )
 
     @classmethod

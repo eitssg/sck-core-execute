@@ -134,7 +134,7 @@ class CreateGrantsActionSpec(ActionSpec):
         return v
 
 
-class CreateGrantsAction(BaseAction):
+class CreateGrantsAction(BaseAction[CreateGrantsActionSpec]):
     """Create KMS grants for a key and optionally ignore per-principal failures.
 
     Writes summary and per-grant details to outputs, including GrantIds, GrantTokens,
@@ -156,15 +156,15 @@ class CreateGrantsAction(BaseAction):
         """
         super().__init__(definition, context, deployment_details)
 
-        self.params = CreateGrantsActionSpec(**definition.spec)
+        self.spec = CreateGrantsActionSpec(**definition.spec)
 
         self.name = definition.name
-        self.account = self.params.account
-        self.region = self.params.region
-        self.kms_key_id = self.params.kms_key_id or self.params.kms_key_arn
-        self.grantee_principals = self.params.grantee_principals
-        self.operations = self.params.operations
-        self.ignore_failed_grants = self.params.ignore_failed_grants
+        self.account = self.spec.account
+        self.region = self.spec.region
+        self.kms_key_id = self.spec.kms_key_id or self.spec.kms_key_arn
+        self.grantee_principals = self.spec.grantee_principals
+        self.operations = self.spec.operations
+        self.ignore_failed_grants = self.spec.ignore_failed_grants
 
     def _execute(self):
         """Create grants for each principal and record results.

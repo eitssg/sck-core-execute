@@ -79,7 +79,7 @@ class DuplicateImageToAccountActionResource(ActionResource):
         return values
 
 
-class DuplicateImageToAccountAction(BaseAction):
+class DuplicateImageToAccountAction(BaseAction[DuplicateImageToAccountActionSpec]):
     """Duplicate a source AMI and create encrypted copies in target accounts.
 
     Steps:
@@ -100,24 +100,24 @@ class DuplicateImageToAccountAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = DuplicateImageToAccountActionSpec(**definition.spec)
+        self.spec = DuplicateImageToAccountActionSpec(**definition.spec)
 
         if deployment_details.delivered_by:
-            self.params.tags["DeliveredBy"] = deployment_details.delivered_by
+            self.spec.tags["DeliveredBy"] = deployment_details.delivered_by
 
     def _resolve(self):
         """Render templates in account, image_name, region, kms_key_arn, and targets."""
         log.trace("Resolving DuplicateImageToAccountAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.image_name = self.renderer.render_string(self.params.image_name, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.kms_key_arn = self.renderer.render_string(self.params.kms_key_arn, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.image_name = self.renderer.render_string(self.spec.image_name, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+        self.spec.kms_key_arn = self.renderer.render_string(self.spec.kms_key_arn, self.context)
 
         # Resolve each account in the list
-        if isinstance(self.params.accounts_to_share, list):
-            for i, account in enumerate(self.params.accounts_to_share):
-                self.params.accounts_to_share[i] = self.renderer.render_string(account, self.context)
+        if isinstance(self.spec.accounts_to_share, list):
+            for i, account in enumerate(self.spec.accounts_to_share):
+                self.spec.accounts_to_share[i] = self.renderer.render_string(account, self.context)
 
         log.trace("DuplicateImageToAccountAction resolved")
 
@@ -137,32 +137,32 @@ class DuplicateImageToAccountAction(BaseAction):
             return self._resume_execution()
 
         # Fresh execution - validate required parameters
-        if not self.params.accounts_to_share:
+        if not self.spec.accounts_to_share:
             self.set_complete("No target accounts specified for AMI duplication")
             log.warning("No target accounts specified for AMI duplication")
             return
 
         # Set initial state information
-        self.set_state("SourceAccount", self.params.account)
-        self.set_state("SourceRegion", self.params.region)
-        self.set_state("SourceImageName", self.params.image_name)
-        self.set_state("TargetAccounts", self.params.accounts_to_share)
-        self.set_state("KmsKeyArn", self.params.kms_key_arn)
+        self.set_state("SourceAccount", self.spec.account)
+        self.set_state("SourceRegion", self.spec.region)
+        self.set_state("SourceImageName", self.spec.image_name)
+        self.set_state("TargetAccounts", self.spec.accounts_to_share)
+        self.set_state("KmsKeyArn", self.spec.kms_key_arn)
         self.set_state("DuplicationStarted", True)
         self.set_state("StartTime", util.get_current_timestamp())
 
         # Set outputs for other actions to reference
-        self.set_output("SourceAccount", self.params.account)
-        self.set_output("SourceRegion", self.params.region)
-        self.set_output("SourceImageName", self.params.image_name)
-        self.set_output("TargetAccounts", self.params.accounts_to_share)
+        self.set_output("SourceAccount", self.spec.account)
+        self.set_output("SourceRegion", self.spec.region)
+        self.set_output("SourceImageName", self.spec.image_name)
+        self.set_output("TargetAccounts", self.spec.accounts_to_share)
         self.set_output("DuplicationStarted", True)
 
         try:
             # Obtain an EC2 client for the source account
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Find the source AMI (only if not already found)
@@ -208,8 +208,8 @@ class DuplicateImageToAccountAction(BaseAction):
         try:
             # Obtain an EC2 client for the source account
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Continue processing accounts
@@ -239,7 +239,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
         # Determine which accounts still need processing
         processed_accounts = set(successful_accounts + [fa["Account"] for fa in failed_accounts])
-        accounts_to_process = [acc for acc in self.params.accounts_to_share if acc not in processed_accounts]
+        accounts_to_process = [acc for acc in self.spec.accounts_to_share if acc not in processed_accounts]
 
         log.info(
             "Account status: {} successful, {} failed, {} in progress, {} remaining to process",
@@ -400,13 +400,13 @@ class DuplicateImageToAccountAction(BaseAction):
 
             # Step 2: Get client and resource for target account
             target_ec2_client = aws.ec2_client(
-                region=self.params.region,
+                region=self.spec.region,
                 role=util.get_provisioning_role_arn(target_account),
             )
 
             target_ec2_resource = aws.get_resource(
                 "ec2",
-                region=self.params.region,
+                region=self.spec.region,
                 role=util.get_provisioning_role_arn(target_account),
             )
 
@@ -417,10 +417,10 @@ class DuplicateImageToAccountAction(BaseAction):
                 # FIXED: Use resource for snapshot operations
                 shared_snapshot = target_ec2_resource.Snapshot(snapshot_id)
                 copy_response = shared_snapshot.copy(
-                    SourceRegion=self.params.region,
+                    SourceRegion=self.spec.region,
                     Encrypted=True,
-                    KmsKeyId=self.params.kms_key_arn,
-                    Description=f"Copy of snapshot {snapshot_id} from account {self.params.account}",
+                    KmsKeyId=self.spec.kms_key_arn,
+                    Description=f"Copy of snapshot {snapshot_id} from account {self.spec.account}",
                 )
 
                 copied_snapshot_id = copy_response["SnapshotId"]
@@ -514,8 +514,8 @@ class DuplicateImageToAccountAction(BaseAction):
                         },
                     },
                 ],
-                Description=f"Copy of AMI {source_image_id} from account {self.params.account}",
-                Name=f"{self.params.image_name}-copy-{target_account}-{util.get_current_timestamp_short()}",
+                Description=f"Copy of AMI {source_image_id} from account {self.spec.account}",
+                Name=f"{self.spec.image_name}-copy-{target_account}-{util.get_current_timestamp_short()}",
                 VirtualizationType=source_image_data.get("VirtualizationType", "hvm"),
                 EnaSupport=source_image_data.get("EnaSupport", True),
                 SriovNetSupport=source_image_data.get("SriovNetSupport", "simple"),
@@ -579,7 +579,7 @@ class DuplicateImageToAccountAction(BaseAction):
             try:
                 # Get EC2 client for target account
                 ec2_client = aws.ec2_client(
-                    region=self.params.region,
+                    region=self.spec.region,
                     role=util.get_provisioning_role_arn(target_account),
                 )
 
@@ -711,12 +711,12 @@ class DuplicateImageToAccountAction(BaseAction):
         credentials = aws.assume_role(
             role=util.get_provisioning_role_arn(target_account),
             session_name=f"ami-copy-session-{target_account}",
-            region=self.params.region,
+            region=self.spec.region,
         )
 
         # FIXED: Use aws helper to get session instead of creating new boto3.Session
         # This respects the cached session architecture
-        target_session = aws.get_session(region=self.params.region, credentials=credentials)
+        target_session = aws.get_session(region=self.spec.region, credentials=credentials)
 
         log.trace("Successfully got session for target account '{}'", target_account)
         return target_session
@@ -729,7 +729,7 @@ class DuplicateImageToAccountAction(BaseAction):
           image_id: AMI ID to tag.
           describe_response: Response from describe_images.
         """
-        if not self.params.tags or len(self.params.tags) == 0:
+        if not self.spec.tags or len(self.spec.tags) == 0:
             log.debug("No tags specified, skipping tag application for image '{}'", image_id)
             return
 
@@ -737,7 +737,7 @@ class DuplicateImageToAccountAction(BaseAction):
 
         try:
             # Tag the AMI
-            ec2_client.create_tags(Resources=[image_id], Tags=aws.transform_tag_hash(self.params.tags))
+            ec2_client.create_tags(Resources=[image_id], Tags=aws.transform_tag_hash(self.spec.tags))
 
             # Tag associated snapshots
             snapshot_ids = self._get_image_snapshots(describe_response)
@@ -745,7 +745,7 @@ class DuplicateImageToAccountAction(BaseAction):
                 log.info("Applying tags to snapshots: {}", snapshot_ids)
                 ec2_client.create_tags(
                     Resources=snapshot_ids,
-                    Tags=aws.transform_tag_hash(self.params.tags),
+                    Tags=aws.transform_tag_hash(self.spec.tags),
                 )
 
             log.debug(
@@ -783,14 +783,14 @@ class DuplicateImageToAccountAction(BaseAction):
         Returns:
           Tuple (image_id, snapshot_ids). If not found, returns (None, []).
         """
-        log.debug("Finding AMI with name '{}'", self.params.image_name)
+        log.debug("Finding AMI with name '{}'", self.spec.image_name)
 
         try:
-            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.params.image_name]}])
+            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.spec.image_name]}])
 
             if not response["Images"]:
-                self.set_failed(f"Could not find AMI with name '{self.params.image_name}' in source account")
-                log.error("Could not find AMI with name '{}'", self.params.image_name)
+                self.set_failed(f"Could not find AMI with name '{self.spec.image_name}' in source account")
+                log.error("Could not find AMI with name '{}'", self.spec.image_name)
                 return None, []
 
             image = response["Images"][0]

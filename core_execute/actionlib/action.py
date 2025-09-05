@@ -1,6 +1,6 @@
 """Defines the BaseActions abstraction for all actions."""
 
-from typing import Any, Self, Optional
+from typing import Any, Generic, Self, Optional, TypeVar
 import traceback
 import sys
 import os
@@ -53,7 +53,10 @@ class StatusCode(str, enum.Enum):
     BLOCKED = "blocked"
 
 
-class BaseAction(object):
+SpecType = TypeVar("SpecType", bound=ActionSpec)
+
+
+class BaseAction(Generic[SpecType]):
     """Base class for all Simple Cloud Kit actions.
 
     Provides the foundation for implementing custom deployment actions with:
@@ -121,7 +124,7 @@ class BaseAction(object):
     renderer: Jinja2Renderer
     """Template renderer using the action's context for variable substitution"""
 
-    spec: Optional[ActionSpec] = None
+    spec: SpecType
 
     def _execute(self):
         """Execute the main action logic.
@@ -188,7 +191,6 @@ class BaseAction(object):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str | None = None,
     ) -> None:
         """Initialize a new BaseAction instance.
 
@@ -200,7 +202,6 @@ class BaseAction(object):
             definition: Action specification from deployspec.yaml
             context: Jinja2 rendering context with deployment variables
             deployment_details: Client/portfolio/app/branch/build information
-            parent_action_name: Parent action name for lifecycle hooks (enables namespace inheritance)
         """
         log.trace("BaseAction.__init__()")
 
@@ -211,154 +212,25 @@ class BaseAction(object):
         self.definition = definition
         self.context = context
         self.deployment_details = deployment_details
-        self.parent_action_name = parent_action_name
         self.condition = definition.condition or "true"
         self.before = definition.before or []
         self.after = definition.after or []
         self.lifecycle_hooks = definition.lifecycle_hooks or []
 
-        # Handle metadata-based vs legacy name-based configuration
-        self._resolve_action_identity()
+        metadata = self.definition.metadata
+        if metadata:
+            save_outputs = metadata.save_outputs if metadata.save_outputs is not None else True
+
+        self.save_outputs = save_outputs
+        self.name = self.definition.action_key
+        self.action_name = self.definition.action_name
+        self.output_namespace = self.definition.output_namespace
+        self.state_namespace = self.definition.state_namespace
 
         log.debug("Action name is: {}", self.name)
         log.debug("Action output namespace is: {}", self.output_namespace)
         log.debug("Action state namespace is: {}", self.state_namespace)
-        log.debug("Action parent namespace: {}", parent_action_name or "")
         log.debug("Action context is: ", details=self.context)
-
-    def _resolve_action_identity(self):
-        """Resolve action identity using metadata-first approach with legacy fallback.
-
-        Priority order:
-        1. Use metadata.name and metadata.namespace if available (modern approach)
-        2. Fall back to legacy name field parsing if metadata not available
-        3. Create metadata from legacy name for forward compatibility
-
-        Raises:
-            ValueError: If neither metadata.name nor legacy name field is provided
-        """
-        # Check if we have modern metadata structure
-        if self.definition.metadata and self.definition.metadata.name:
-            # Modern metadata-based approach
-            self._setup_from_metadata()
-            log.debug("Using metadata-based action identity")
-
-        elif self.definition.name:
-            # Legacy name-based approach with metadata creation
-            self._setup_from_legacy_name()
-            log.debug("Using legacy name-based action identity with metadata creation")
-
-        else:
-            raise ValueError("Action must have either metadata.name or legacy name field")
-
-    def _setup_from_metadata(self):
-        """Setup action identity using metadata.name and metadata.namespace.
-
-        Configures action name, namespaces, and output settings based on the
-        ActionMetadata structure. Transforms namespaces for output and state
-        variable organization. Inherits parent namespace for lifecycle hooks.
-        """
-        metadata = self.definition.metadata
-
-        # Set basic properties from metadata
-        self.action_name = metadata.name
-
-        # Handle save_outputs - check both definition level and metadata
-        save_outputs = getattr(self.definition, "save_outputs", None)
-        if save_outputs is None:
-            save_outputs = metadata.save_outputs if metadata.save_outputs is not None else True
-        self.save_outputs = save_outputs
-
-        # Build full name with parent namespace inheritance for lifecycle hooks
-        if self.parent_action_name:
-            # Lifecycle hook: inherit parent's namespace hierarchy
-            self.name = f"{self.parent_action_name}/{metadata.name}"
-            base_namespace = self.parent_action_name
-        elif metadata.namespace:
-            # Regular action with explicit namespace
-            self.name = f"{metadata.namespace}/{metadata.name}"
-            base_namespace = metadata.namespace
-        else:
-            # Regular action without namespace
-            self.name = metadata.name
-            base_namespace = metadata.name
-
-        # Calculate namespaces using inherited or explicit base
-        if base_namespace:
-            # Transform namespace for outputs (e.g., "myapp:action" -> "myapp:output")
-            if ":action" in base_namespace:
-                self.output_namespace = base_namespace.replace(":action", ":output") if save_outputs else None
-                self.state_namespace = base_namespace.replace(":action", ":var")
-            else:
-                # For simple namespaces, append type suffixes
-                self.output_namespace = f"{base_namespace}:output" if save_outputs else None
-                self.state_namespace = f"{base_namespace}:var"
-        else:
-            # No namespace provided, use action name as namespace
-            self.output_namespace = self.action_name if save_outputs else None
-            self.state_namespace = self.action_name
-
-    def _setup_from_legacy_name(self):
-        """Setup action identity using legacy name field and create metadata.
-
-        Parses the legacy name field to extract namespace and action name,
-        then creates ActionMetadata for forward compatibility. Inherits parent
-        namespace for lifecycle hooks to prevent state collision.
-        """
-        legacy_name = self.definition.name
-
-        # Build name with parent namespace inheritance
-        if self.parent_action_name:
-            # Lifecycle hook: inherit parent's namespace hierarchy
-            self.name = f"{self.parent_action_name}/{legacy_name}"
-            # Parse parent namespace for base calculations
-            if "/" in self.parent_action_name:
-                base_namespace = self.parent_action_name
-            else:
-                base_namespace = self.parent_action_name
-        else:
-            # Regular action: use legacy name as-is
-            self.name = legacy_name
-            base_namespace = None
-
-        # Parse legacy name to extract action_name and namespace
-        if "/" in legacy_name:
-            parts = legacy_name.split("/")
-            action_name_part = parts[-1]
-            if not self.parent_action_name:
-                # Only use legacy namespace if not a lifecycle hook
-                base_namespace = parts[0]
-        else:
-            action_name_part = legacy_name
-            if not base_namespace:
-                base_namespace = None
-
-        self.action_name = action_name_part
-
-        # Handle save_outputs
-        save_outputs = getattr(self.definition, "save_outputs", None)
-        if save_outputs is None:
-            save_outputs = True  # Default True for backwards compatibility
-        self.save_outputs = save_outputs
-
-        # Calculate namespaces using inherited or legacy logic
-        if base_namespace:
-            # Transform namespace for outputs (e.g., "myapp:action" -> "myapp:output")
-            if ":action" in base_namespace:
-                self.output_namespace = base_namespace.replace(":action", ":output") if save_outputs else None
-                self.state_namespace = self.name.replace(":action/", ":var/")
-            else:
-                # For simple namespaces
-                self.output_namespace = base_namespace if save_outputs else None
-                self.state_namespace = self.name
-        else:
-            # No namespace in legacy name
-            self.output_namespace = self.name if save_outputs else None
-            self.state_namespace = self.name
-
-        # Create metadata from legacy name for forward compatibility
-        legacy_namespace = base_namespace if not self.parent_action_name else None
-        self._create_metadata_from_legacy_name(legacy_namespace, action_name_part)
 
     def _create_metadata_from_legacy_name(self, namespace: str | None, action_name: str):
         """Create metadata structure from legacy name for forward compatibility.
@@ -974,9 +846,7 @@ class BaseAction(object):
         try:
             log.trace("Executing lifecycle hook '{}' for action '{}'", hook_type, self.name)
 
-            hook_action: ActionHook = HookFactory.load(
-                hook_resource, self.context, self.deployment_details, parent_action_name=self.name
-            )
+            hook_action: ActionHook = HookFactory.load(hook_resource, self.context, self.deployment_details, self.name)
 
             # Hooks output details of these **kwargs given their Case or case.  I like Case capetalized.
             return hook_action.execute(State=hook_type, Reason=reason)

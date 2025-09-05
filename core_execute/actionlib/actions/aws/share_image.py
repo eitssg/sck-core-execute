@@ -138,7 +138,7 @@ class ShareImageActionResource(ActionResource):
         return values
 
 
-class ShareImageAction(BaseAction):
+class ShareImageAction(BaseAction[ShareImageActionSpec]):
     """Grant launch permissions on an AMI to other AWS accounts.
 
     Validates target accounts against the approved siblings list before sharing.
@@ -161,11 +161,11 @@ class ShareImageAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = ShareImageActionSpec(**definition.spec)
+        self.spec = ShareImageActionSpec(**definition.spec)
 
         # Add deployment tracking tag if available
         if deployment_details.delivered_by:
-            self.params.tags["DeliveredBy"] = deployment_details.delivered_by
+            self.spec.tags["DeliveredBy"] = deployment_details.delivered_by
 
     def _execute(self):
         """Share the AMI by updating launch permissions.
@@ -184,18 +184,18 @@ class ShareImageAction(BaseAction):
         try:
             # Obtain an EC2 client
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
 
-            log.debug(f"Finding AMI image with name '{self.params.image_name}'")
+            log.debug(f"Finding AMI image with name '{self.spec.image_name}'")
 
             # Find image by name
-            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.params.image_name]}])
+            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.spec.image_name]}])
 
             if len(response["Images"]) == 0:
                 message = (
-                    f"Could not find AMI image with name '{self.params.image_name}'. It may have been deleted or does not exist."
+                    f"Could not find AMI image with name '{self.spec.image_name}'. It may have been deleted or does not exist."
                 )
                 log.warning(message)
                 self.set_state("status", "skipped")
@@ -204,10 +204,10 @@ class ShareImageAction(BaseAction):
                 return
 
             image_id = response["Images"][0]["ImageId"]
-            log.debug(f"Found AMI image '{image_id}' with name '{self.params.image_name}'")
+            log.debug(f"Found AMI image '{image_id}' with name '{self.spec.image_name}'")
 
             # Validate that all target accounts are in siblings list
-            invalid_accounts = [acc for acc in self.params.accounts_to_share if acc not in self.params.siblings]
+            invalid_accounts = [acc for acc in self.spec.accounts_to_share if acc not in self.spec.siblings]
             if invalid_accounts:
                 message = f"Cannot share to accounts {invalid_accounts} - they are not in the approved siblings list"
                 log.error(message)
@@ -219,15 +219,15 @@ class ShareImageAction(BaseAction):
             # Modify image launch permissions
             ec2_client.modify_image_attribute(
                 ImageId=image_id,
-                LaunchPermission={"Add": [{"UserId": account_id} for account_id in self.params.accounts_to_share]},
+                LaunchPermission={"Add": [{"UserId": account_id} for account_id in self.spec.accounts_to_share]},
             )
 
             # Record successful sharing
             self.set_state("image_id", image_id)
-            self.set_state("shared_accounts", self.params.accounts_to_share)
+            self.set_state("shared_accounts", self.spec.accounts_to_share)
             self.set_state("status", "success")
 
-            success_message = f"Successfully shared AMI {image_id} to accounts {self.params.accounts_to_share}"
+            success_message = f"Successfully shared AMI {image_id} to accounts {self.spec.accounts_to_share}"
             log.info(success_message)
             self.set_complete(success_message)
 
@@ -261,8 +261,8 @@ class ShareImageAction(BaseAction):
 
             # Obtain an EC2 client
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Remove launch permissions
@@ -289,33 +289,33 @@ class ShareImageAction(BaseAction):
 
         try:
             # Render template variables
-            self.params.account = self.renderer.render_string(self.params.account, self.context)
-            self.params.region = self.renderer.render_string(self.params.region, self.context)
-            self.params.image_name = self.renderer.render_string(self.params.image_name, self.context)
+            self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+            self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+            self.spec.image_name = self.renderer.render_string(self.spec.image_name, self.context)
 
             # Render accounts_to_share list
             rendered_accounts = []
-            for account in self.params.accounts_to_share:
+            for account in self.spec.accounts_to_share:
                 rendered_account = self.renderer.render_string(str(account), self.context)
                 rendered_accounts.append(rendered_account)
-            self.params.accounts_to_share = rendered_accounts
+            self.spec.accounts_to_share = rendered_accounts
 
             # Render siblings list
             rendered_siblings = []
-            for sibling in self.params.siblings:
+            for sibling in self.spec.siblings:
                 rendered_sibling = self.renderer.render_string(str(sibling), self.context)
                 rendered_siblings.append(rendered_sibling)
-            self.params.siblings = rendered_siblings
+            self.spec.siblings = rendered_siblings
 
             # Render tags
             rendered_tags = {}
-            for key, value in self.params.tags.items():
+            for key, value in self.spec.tags.items():
                 rendered_key = self.renderer.render_string(str(key), self.context)
                 rendered_value = self.renderer.render_string(str(value), self.context)
                 rendered_tags[rendered_key] = rendered_value
-            self.params.tags = rendered_tags
+            self.spec.tags = rendered_tags
 
-            log.debug(f"Resolved image sharing for '{self.params.image_name}' to accounts {self.params.accounts_to_share}")
+            log.debug(f"Resolved image sharing for '{self.spec.image_name}' to accounts {self.spec.accounts_to_share}")
 
         except Exception as e:
             error_message = f"Failed to resolve template variables: {str(e)}"

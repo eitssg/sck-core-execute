@@ -65,7 +65,7 @@ class GetStackReferencesActionResource(ActionResource):
         return values
 
 
-class GetStackReferencesAction(BaseAction):
+class GetStackReferencesAction(BaseAction[GetStackReferencesActionSpec]):
     """List stacks that import a specific CloudFormation export.
 
     Constructs "<stack_name>:<output_name>" and calls ListImports. Results and
@@ -89,7 +89,7 @@ class GetStackReferencesAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = GetStackReferencesActionSpec(**definition.spec)
+        self.spec = GetStackReferencesActionSpec(**definition.spec)
 
     def _execute(self):
         """Call CloudFormation ListImports and record referencing stacks.
@@ -103,20 +103,20 @@ class GetStackReferencesAction(BaseAction):
         # Initialize state tracking
         start_time = util.get_current_timestamp()
         self.set_state("start_time", start_time)
-        self.set_state("stack_name", self.params.stack_name)
-        self.set_state("output_name", self.params.output_name)
-        self.set_state("account", self.params.account)
-        self.set_state("region", self.params.region)
+        self.set_state("stack_name", self.spec.stack_name)
+        self.set_state("output_name", self.spec.output_name)
+        self.set_state("account", self.spec.account)
+        self.set_state("region", self.spec.region)
 
-        output_export_name = f"{self.params.stack_name}:{self.params.output_name}"
+        output_export_name = f"{self.spec.stack_name}:{self.spec.output_name}"
         self.set_state("export_name", output_export_name)
 
         self.set_running(f"Checking references for export '{output_export_name}'")
 
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
-            region=self.params.region,
-            role=util.get_provisioning_role_arn(self.params.account),
+            region=self.spec.region,
+            role=util.get_provisioning_role_arn(self.spec.account),
         )
 
         try:
@@ -134,11 +134,11 @@ class GetStackReferencesAction(BaseAction):
             self.set_state("references", imports)
 
             # Set comprehensive outputs
-            self.set_output("stack_name", self.params.stack_name)
-            self.set_output("output_name", self.params.output_name)
+            self.set_output("stack_name", self.spec.stack_name)
+            self.set_output("output_name", self.spec.output_name)
             self.set_output("export_name", output_export_name)
-            self.set_output("account", self.params.account)
-            self.set_output("region", self.params.region)
+            self.set_output("account", self.spec.account)
+            self.set_output("region", self.spec.region)
             self.set_output("references", imports)
             self.set_output("has_references", True)
             self.set_output("num_references", num_references)
@@ -153,8 +153,8 @@ class GetStackReferencesAction(BaseAction):
             log.debug(
                 "Stack export is being referenced",
                 details={
-                    "StackName": self.params.stack_name,
-                    "OutputName": self.params.output_name,
+                    "StackName": self.spec.stack_name,
+                    "OutputName": self.spec.output_name,
                     "ExportName": output_export_name,
                     "References": imports,
                     "HasReferences": True,
@@ -177,11 +177,11 @@ class GetStackReferencesAction(BaseAction):
                 self.set_state("references", [])
 
                 # Set outputs for non-existent export
-                self.set_output("stack_name", self.params.stack_name)
-                self.set_output("output_name", self.params.output_name)
+                self.set_output("stack_name", self.spec.stack_name)
+                self.set_output("output_name", self.spec.output_name)
                 self.set_output("export_name", output_export_name)
-                self.set_output("account", self.params.account)
-                self.set_output("region", self.params.region)
+                self.set_output("account", self.spec.account)
+                self.set_output("region", self.spec.region)
                 self.set_output("references", [])
                 self.set_output("has_references", False)
                 self.set_output("num_references", 0)
@@ -203,11 +203,11 @@ class GetStackReferencesAction(BaseAction):
                 self.set_state("references", [])
 
                 # Set outputs for unreferenced export
-                self.set_output("stack_name", self.params.stack_name)
-                self.set_output("output_name", self.params.output_name)
+                self.set_output("stack_name", self.spec.stack_name)
+                self.set_output("output_name", self.spec.output_name)
                 self.set_output("export_name", output_export_name)
-                self.set_output("account", self.params.account)
-                self.set_output("region", self.params.region)
+                self.set_output("account", self.spec.account)
+                self.set_output("region", self.spec.region)
                 self.set_output("references", [])
                 self.set_output("has_references", False)
                 self.set_output("num_references", 0)
@@ -222,8 +222,8 @@ class GetStackReferencesAction(BaseAction):
                 log.warning(
                     "Stack export is not referenced",
                     details={
-                        "StackName": self.params.stack_name,
-                        "OutputName": self.params.output_name,
+                        "StackName": self.spec.stack_name,
+                        "OutputName": self.spec.output_name,
                         "ExportName": output_export_name,
                     },
                 )
@@ -236,11 +236,11 @@ class GetStackReferencesAction(BaseAction):
                 self.set_state("error_message", error_message)
 
                 # Set error outputs
-                self.set_output("stack_name", self.params.stack_name)
-                self.set_output("output_name", self.params.output_name)
+                self.set_output("stack_name", self.spec.stack_name)
+                self.set_output("output_name", self.spec.output_name)
                 self.set_output("export_name", output_export_name)
-                self.set_output("account", self.params.account)
-                self.set_output("region", self.params.region)
+                self.set_output("account", self.spec.account)
+                self.set_output("region", self.spec.region)
                 self.set_output("start_time", start_time)
                 self.set_output("error_time", completion_time)
                 self.set_output("status", "error")
@@ -252,7 +252,7 @@ class GetStackReferencesAction(BaseAction):
 
                 log.error(
                     "Error getting references for stack '{}': {}",
-                    self.params.stack_name,
+                    self.spec.stack_name,
                     e,
                 )
                 raise
@@ -279,10 +279,10 @@ class GetStackReferencesAction(BaseAction):
         """Render templates in account, region, stack_name, and output_name."""
         log.trace("GetStackReferencesAction._resolve()")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
-        self.params.output_name = self.renderer.render_string(self.params.output_name, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+        self.spec.stack_name = self.renderer.render_string(self.spec.stack_name, self.context)
+        self.spec.output_name = self.renderer.render_string(self.spec.output_name, self.context)
 
         log.trace("GetStackReferencesAction._resolve() complete")
 

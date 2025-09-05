@@ -98,7 +98,7 @@ class CreateChangeSetActionResource(ActionResource):
         return values
 
 
-class CreateChangeSetAction(BaseAction):
+class CreateChangeSetAction(BaseAction[CreateChangeSetActionSpec]):
     """Create a CloudFormation change set for a stack.
 
     Behavior:
@@ -122,37 +122,37 @@ class CreateChangeSetAction(BaseAction):
         """Initialize the action and validate parameters."""
         super().__init__(definition, context, deployment_details)
 
-        self.params = CreateChangeSetActionSpec(**definition.spec)
+        self.spec = CreateChangeSetActionSpec(**definition.spec)
 
     def _resolve(self):
         """Render templates for account, region, names, parameters, and tags."""
         log.trace("Resolving CreateChangeSetAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
-        self.params.template_url = self.renderer.render_string(self.params.template_url, self.context)
-        self.params.change_set_name = self.renderer.render_string(self.params.change_set_name, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+        self.spec.stack_name = self.renderer.render_string(self.spec.stack_name, self.context)
+        self.spec.template_url = self.renderer.render_string(self.spec.template_url, self.context)
+        self.spec.change_set_name = self.renderer.render_string(self.spec.change_set_name, self.context)
 
         # Render stack parameters
-        if self.params.parameters:
+        if self.spec.parameters:
             rendered_params = {}
-            for key, value in self.params.parameters.items():
+            for key, value in self.spec.parameters.items():
                 if isinstance(value, str):
                     rendered_params[key] = self.renderer.render_string(value, self.context)
                 else:
                     rendered_params[key] = value
-            self.params.parameters = rendered_params
+            self.spec.parameters = rendered_params
 
         # Render tags
-        if self.params.tags:
+        if self.spec.tags:
             rendered_tags = {}
-            for key, value in self.params.tags.items():
+            for key, value in self.spec.tags.items():
                 if isinstance(value, str):
                     rendered_tags[key] = self.renderer.render_string(value, self.context)
                 else:
                     rendered_tags[key] = value
-            self.params.tags = rendered_tags
+            self.spec.tags = rendered_tags
 
         log.trace("CreateChangeSetAction resolved")
 
@@ -164,17 +164,17 @@ class CreateChangeSetAction(BaseAction):
         log.trace("Executing CreateChangeSetAction")
 
         # Validate required parameters
-        if not self.params.stack_name or self.params.stack_name == "":
+        if not self.spec.stack_name or self.spec.stack_name == "":
             self.set_failed("StackName parameter is required")
             log.error("StackName parameter is required")
             return
 
-        if not self.params.change_set_name or self.params.change_set_name == "":
+        if not self.spec.change_set_name or self.spec.change_set_name == "":
             self.set_failed("ChangeSetName parameter is required")
             log.error("ChangeSetName parameter is required")
             return
 
-        if not self.params.template_url or self.params.template_url == "":
+        if not self.spec.template_url or self.spec.template_url == "":
             self.set_failed("TemplateUrl parameter is required")
             log.error("TemplateUrl parameter is required")
             return
@@ -183,29 +183,29 @@ class CreateChangeSetAction(BaseAction):
         if self.get_state("ChangeSetCreationStarted") and self.get_state("ChangeSetArn"):
             log.info(
                 "Change set creation already in progress for {}",
-                self.params.change_set_name,
+                self.spec.change_set_name,
             )
-            self.set_running(f"Change set creation already in progress for {self.params.change_set_name}")
+            self.set_running(f"Change set creation already in progress for {self.spec.change_set_name}")
             return
 
         # Set initial state information
-        self.set_state("ChangeSetName", self.params.change_set_name)
-        self.set_state("StackName", self.params.stack_name)
-        self.set_state("Region", self.params.region)
-        self.set_state("Account", self.params.account)
+        self.set_state("ChangeSetName", self.spec.change_set_name)
+        self.set_state("StackName", self.spec.stack_name)
+        self.set_state("Region", self.spec.region)
+        self.set_state("Account", self.spec.account)
         self.set_state("ChangeSetCreationStarted", True)
         self.set_state("StartTime", util.get_current_timestamp())
 
         # Set outputs for other actions to reference
-        self.set_output("ChangeSetName", self.params.change_set_name)
-        self.set_output("StackName", self.params.stack_name)
-        self.set_output("Region", self.params.region)
+        self.set_output("ChangeSetName", self.spec.change_set_name)
+        self.set_output("StackName", self.spec.stack_name)
+        self.set_output("Region", self.spec.region)
 
         # Obtain a CloudFormation client
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -215,7 +215,7 @@ class CreateChangeSetAction(BaseAction):
         # Check if stack exists first for better logging
         stack_exists = False
         try:
-            describe_response = cfn_client.describe_stacks(StackName=self.params.stack_name)
+            describe_response = cfn_client.describe_stacks(StackName=self.spec.stack_name)
 
             if describe_response.get("Stacks"):
                 stack_info = describe_response["Stacks"][0]
@@ -227,7 +227,7 @@ class CreateChangeSetAction(BaseAction):
 
                 log.debug(
                     "Stack '{}' exists with status: {}",
-                    self.params.stack_name,
+                    self.spec.stack_name,
                     stack_info.get("StackStatus", "UNKNOWN"),
                 )
 
@@ -237,18 +237,18 @@ class CreateChangeSetAction(BaseAction):
                 "StackNotFoundException",
             ]:
                 stack_exists = False
-                log.debug("Stack '{}' does not exist", self.params.stack_name)
+                log.debug("Stack '{}' does not exist", self.spec.stack_name)
             else:
                 log.error(
                     "Error checking stack '{}': {}",
-                    self.params.stack_name,
+                    self.spec.stack_name,
                     e.response["Error"]["Message"],
                 )
-                self.set_failed(f"Failed to check stack '{self.params.stack_name}': {e.response['Error']['Message']}")
+                self.set_failed(f"Failed to check stack '{self.spec.stack_name}': {e.response['Error']['Message']}")
                 return
         except Exception as e:
-            log.error("Unexpected error checking stack '{}': {}", self.params.stack_name, e)
-            self.set_failed(f"Unexpected error checking stack '{self.params.stack_name}': {e}")
+            log.error("Unexpected error checking stack '{}': {}", self.spec.stack_name, e)
+            self.set_failed(f"Unexpected error checking stack '{self.spec.stack_name}': {e}")
             return
 
         self.set_state("StackExists", stack_exists)
@@ -258,14 +258,14 @@ class CreateChangeSetAction(BaseAction):
         self.set_state("ChangeSetType", change_set_type)
 
         # Attempt to create the change set
-        self.set_running(f"Creating change set '{self.params.change_set_name}' for stack '{self.params.stack_name}'")
+        self.set_running(f"Creating change set '{self.spec.change_set_name}' for stack '{self.spec.stack_name}'")
 
         try:
             # Prepare change set parameters
             change_set_params = {
-                "StackName": self.params.stack_name,
-                "ChangeSetName": self.params.change_set_name,
-                "TemplateURL": self.params.template_url,
+                "StackName": self.spec.stack_name,
+                "ChangeSetName": self.spec.change_set_name,
+                "TemplateURL": self.spec.template_url,
                 "ChangeSetType": change_set_type,
                 "Capabilities": [
                     "CAPABILITY_IAM",
@@ -275,20 +275,20 @@ class CreateChangeSetAction(BaseAction):
             }
 
             # Add stack parameters if provided
-            if self.params.parameters:
+            if self.spec.parameters:
                 change_set_params["Parameters"] = [
-                    {"ParameterKey": key, "ParameterValue": str(value)} for key, value in self.params.parameters.items()
+                    {"ParameterKey": key, "ParameterValue": str(value)} for key, value in self.spec.parameters.items()
                 ]
 
             # Add tags if provided
-            if self.params.tags:
-                change_set_params["Tags"] = aws.transform_tag_hash(self.params.tags)
+            if self.spec.tags:
+                change_set_params["Tags"] = aws.transform_tag_hash(self.spec.tags)
 
             # Create the change set
             log.info(
                 "Creating change set {} for stack {}",
-                self.params.change_set_name,
-                self.params.stack_name,
+                self.spec.change_set_name,
+                self.spec.stack_name,
             )
 
             response = cfn_client.create_change_set(**change_set_params)
@@ -316,23 +316,23 @@ class CreateChangeSetAction(BaseAction):
 
             log.error(
                 "Error creating change set '{}': {} - {}",
-                self.params.change_set_name,
+                self.spec.change_set_name,
                 error_code,
                 error_message,
             )
             self.set_state("CreationResult", "FAILED")
             self.set_state("FailureReason", f"{error_code}: {error_message}")
-            self.set_failed(f"Failed to create change set '{self.params.change_set_name}': {error_message}")
+            self.set_failed(f"Failed to create change set '{self.spec.change_set_name}': {error_message}")
 
         except Exception as e:
             log.error(
                 "Unexpected error creating change set '{}': {}",
-                self.params.change_set_name,
+                self.spec.change_set_name,
                 e,
             )
             self.set_state("CreationResult", "FAILED")
             self.set_state("FailureReason", str(e))
-            self.set_failed(f"Unexpected error creating change set '{self.params.change_set_name}': {e}")
+            self.set_failed(f"Unexpected error creating change set '{self.spec.change_set_name}': {e}")
 
         log.trace("CreateChangeSetAction execution completed")
 
@@ -350,8 +350,8 @@ class CreateChangeSetAction(BaseAction):
         # Obtain a CloudFormation client
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -385,16 +385,16 @@ class CreateChangeSetAction(BaseAction):
                 self.set_output("Changes", changes)
                 self.set_output("ChangesCount", len(changes))
 
-                self.set_complete(f"Change set {self.params.change_set_name} created successfully with {len(changes)} changes")
+                self.set_complete(f"Change set {self.spec.change_set_name} created successfully with {len(changes)} changes")
                 log.info(
                     "Change set {} created successfully with {} changes",
-                    self.params.change_set_name,
+                    self.spec.change_set_name,
                     len(changes),
                 )
 
             elif change_set_status in ["CREATE_IN_PROGRESS", "CREATE_PENDING"]:
                 # Still creating
-                self.set_running(f"Change set {self.params.change_set_name} creation in progress")
+                self.set_running(f"Change set {self.spec.change_set_name} creation in progress")
 
             elif change_set_status in ["FAILED", "DELETE_COMPLETE"]:
                 # Creation failed
@@ -408,15 +408,15 @@ class CreateChangeSetAction(BaseAction):
             else:
                 # Unknown status
                 log.warning("Unknown change set status: {}", change_set_status)
-                self.set_running(f"Change set {self.params.change_set_name} in unknown status: {change_set_status}")
+                self.set_running(f"Change set {self.spec.change_set_name} in unknown status: {change_set_status}")
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
 
             if error_code == "ChangeSetNotFoundException":
-                log.error("Change set {} not found", self.params.change_set_name)
-                self.set_failed(f"Change set {self.params.change_set_name} not found")
+                log.error("Change set {} not found", self.spec.change_set_name)
+                self.set_failed(f"Change set {self.spec.change_set_name} not found")
             else:
                 log.error(
                     "Error checking change set status: {} - {}",
@@ -446,8 +446,8 @@ class CreateChangeSetAction(BaseAction):
         # Obtain a CloudFormation client
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -465,8 +465,8 @@ class CreateChangeSetAction(BaseAction):
             self.set_state("RollbackTime", util.get_current_timestamp())
             self.set_state("RollbackResult", "SUCCESS")
 
-            self.set_complete(f"Change set {self.params.change_set_name} deleted successfully")
-            log.info("Change set {} deleted successfully", self.params.change_set_name)
+            self.set_complete(f"Change set {self.spec.change_set_name} deleted successfully")
+            log.info("Change set {} deleted successfully", self.spec.change_set_name)
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -474,9 +474,9 @@ class CreateChangeSetAction(BaseAction):
 
             if error_code == "ChangeSetNotFoundException":
                 # Change set already deleted
-                log.info("Change set {} was already deleted", self.params.change_set_name)
+                log.info("Change set {} was already deleted", self.spec.change_set_name)
                 self.set_state("RollbackResult", "ALREADY_DELETED")
-                self.set_complete(f"Change set {self.params.change_set_name} was already deleted")
+                self.set_complete(f"Change set {self.spec.change_set_name} was already deleted")
             else:
                 log.error("Error deleting change set: {} - {}", error_code, error_message)
                 self.set_state("RollbackResult", "FAILED")

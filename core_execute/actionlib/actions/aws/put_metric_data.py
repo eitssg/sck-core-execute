@@ -156,7 +156,7 @@ class PutMetricDataActionResource(ActionResource):
         return values
 
 
-class PutMetricDataAction(BaseAction):
+class PutMetricDataAction(BaseAction[PutMetricDataActionSpec]):
     """Record custom metrics to CloudWatch (batch size up to 20)."""
 
     def __init__(
@@ -169,7 +169,7 @@ class PutMetricDataAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = PutMetricDataActionSpec(**definition.spec)
+        self.spec = PutMetricDataActionSpec(**definition.spec)
 
         # Processed metric data ready for CloudWatch API
         self.metric_data: list[dict[str, Any]] = []
@@ -186,12 +186,12 @@ class PutMetricDataAction(BaseAction):
             # Track execution in state
             self.set_state("start_time", start_time)
             self.set_state("metrics_count", len(self.metric_data))
-            self.set_state("namespace", self.params.namespace)
+            self.set_state("namespace", self.spec.namespace)
 
             # Obtain CloudWatch client
             cloudwatch_client = aws.cloudwatch_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Process metrics in batches of 20 (CloudWatch limit)
@@ -205,7 +205,7 @@ class PutMetricDataAction(BaseAction):
                 log.debug(f"Sending batch {batches_processed + 1} with {len(batch)} metrics to CloudWatch")
 
                 # Send batch to CloudWatch
-                response = cloudwatch_client.put_metric_data(Namespace=self.params.namespace, MetricData=batch)
+                response = cloudwatch_client.put_metric_data(Namespace=self.spec.namespace, MetricData=batch)
 
                 batches_processed += 1
                 log.debug(f"Successfully sent batch {batches_processed}, response: {response}")
@@ -219,7 +219,7 @@ class PutMetricDataAction(BaseAction):
             self.set_state("total_metrics_sent", total_metrics)
 
             log.info(
-                f"Successfully recorded {total_metrics} metrics to CloudWatch namespace '{self.params.namespace}' in {batches_processed} batches"
+                f"Successfully recorded {total_metrics} metrics to CloudWatch namespace '{self.spec.namespace}' in {batches_processed} batches"
             )
 
             self.set_complete(f"Successfully recorded {total_metrics} metrics to CloudWatch")
@@ -264,13 +264,13 @@ class PutMetricDataAction(BaseAction):
 
         try:
             # Render account, region, and namespace
-            self.params.account = self.renderer.render_string(self.params.account, self.context)
-            self.params.region = self.renderer.render_string(self.params.region, self.context)
-            self.params.namespace = self.renderer.render_string(self.params.namespace, self.context)
+            self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+            self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+            self.spec.namespace = self.renderer.render_string(self.spec.namespace, self.context)
 
             # Process each metric
             metric_data = []
-            for metric in self.params.metrics:
+            for metric in self.spec.metrics:
                 # Render template variables in metric name and value
                 metric_name = self.renderer.render_string(metric.metric_name, self.context)
                 metric_value = self.renderer.render_string(str(metric.value), self.context)
@@ -313,7 +313,7 @@ class PutMetricDataAction(BaseAction):
 
             self.metric_data = metric_data
 
-            log.debug(f"Resolved {len(metric_data)} metrics for namespace '{self.params.namespace}'")
+            log.debug(f"Resolved {len(metric_data)} metrics for namespace '{self.spec.namespace}'")
 
         except Exception as e:
             log.error(f"Failed to resolve metric data: {e}")

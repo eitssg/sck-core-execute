@@ -58,7 +58,7 @@ class DeleteImageActionResource(ActionResource):
         return values
 
 
-class DeleteImageAction(BaseAction):
+class DeleteImageAction(BaseAction[DeleteImageActionSpec]):
     """Delete an AMI and its associated EBS snapshots.
 
     - Treats missing images as success with a message
@@ -83,15 +83,15 @@ class DeleteImageAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = DeleteImageActionSpec(**definition.spec)
+        self.spec = DeleteImageActionSpec(**definition.spec)
 
     def _resolve(self):
         """Render template variables in account, region, and image_name."""
         log.trace("Resolving DeleteImageAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.image_name = self.renderer.render_string(self.params.image_name, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+        self.spec.image_name = self.renderer.render_string(self.spec.image_name, self.context)
 
         log.trace("DeleteImageAction resolved")
 
@@ -105,28 +105,28 @@ class DeleteImageAction(BaseAction):
         log.trace("Executing DeleteImageAction")
 
         # Validate required parameters
-        if not self.params.image_name or self.params.image_name == "":
+        if not self.spec.image_name or self.spec.image_name == "":
             self.set_failed("ImageName parameter is required")
             log.error("ImageName parameter is required")
             return
 
         # Set initial state information
-        self.set_state("ImageName", self.params.image_name)
-        self.set_state("Region", self.params.region)
-        self.set_state("Account", self.params.account)
+        self.set_state("ImageName", self.spec.image_name)
+        self.set_state("Region", self.spec.region)
+        self.set_state("Account", self.spec.account)
         self.set_state("DeletionStarted", True)
         self.set_state("StartTime", util.get_current_timestamp())
 
         # Set outputs for other actions to reference
-        self.set_output("ImageName", self.params.image_name)
-        self.set_output("Region", self.params.region)
+        self.set_output("ImageName", self.spec.image_name)
+        self.set_output("Region", self.spec.region)
         self.set_output("DeletionStarted", True)
 
         # Obtain an EC2 client
         try:
             ec2_client = aws.ec2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)
@@ -139,11 +139,11 @@ class DeleteImageAction(BaseAction):
         image_exists = False
 
         try:
-            log.debug("Finding image with name '{}'", self.params.image_name)
-            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.params.image_name]}])
+            log.debug("Finding image with name '{}'", self.spec.image_name)
+            response = ec2_client.describe_images(Filters=[{"Name": "name", "Values": [self.spec.image_name]}])
 
             if len(response["Images"]) == 0:
-                log.warning("Image '{}' does not exist", self.params.image_name)
+                log.warning("Image '{}' does not exist", self.spec.image_name)
                 self.set_state("ImageExists", False)
                 self.set_state("DeletionCompleted", True)
                 self.set_state("CompletionTime", util.get_current_timestamp())
@@ -152,7 +152,7 @@ class DeleteImageAction(BaseAction):
                 self.set_output("DeletionCompleted", True)
                 self.set_output("DeletionResult", "NOT_FOUND")
 
-                self.set_complete(f"Image '{self.params.image_name}' does not exist, may have been previously deleted")
+                self.set_complete(f"Image '{self.spec.image_name}' does not exist, may have been previously deleted")
                 return
 
             image_info = response["Images"][0]
@@ -167,7 +167,7 @@ class DeleteImageAction(BaseAction):
             self.set_state("ImageState", image_info.get("State", ""))
             self.set_state("ImageCreationDate", image_info.get("CreationDate", ""))
 
-            log.debug("Found image '{}' with id '{}'", self.params.image_name, image_id)
+            log.debug("Found image '{}' with id '{}'", self.spec.image_name, image_id)
 
             # Extract snapshot ids from describe_images response
             for block_device_mapping in image_info["BlockDeviceMappings"]:
@@ -189,14 +189,14 @@ class DeleteImageAction(BaseAction):
         except ClientError as e:
             log.error(
                 "Error describing image '{}': {}",
-                self.params.image_name,
+                self.spec.image_name,
                 e.response["Error"]["Message"],
             )
-            self.set_failed(f"Failed to describe image '{self.params.image_name}': {e.response['Error']['Message']}")
+            self.set_failed(f"Failed to describe image '{self.spec.image_name}': {e.response['Error']['Message']}")
             return
         except Exception as e:
-            log.error("Unexpected error describing image '{}': {}", self.params.image_name, e)
-            self.set_failed(f"Unexpected error describing image '{self.params.image_name}': {e}")
+            log.error("Unexpected error describing image '{}': {}", self.spec.image_name, e)
+            self.set_failed(f"Unexpected error describing image '{self.spec.image_name}': {e}")
             return
 
         # Deregister image
@@ -331,7 +331,7 @@ class DeleteImageAction(BaseAction):
             self.set_output("DeletedSnapshotCount", len(deleted_snapshots) if snapshot_ids else 0)
 
             self.set_complete(
-                f"Successfully deleted image '{self.params.image_name}' (ID: {image_id}) and {len(deleted_snapshots) if snapshot_ids else 0} snapshots"
+                f"Successfully deleted image '{self.spec.image_name}' (ID: {image_id}) and {len(deleted_snapshots) if snapshot_ids else 0} snapshots"
             )
 
         log.trace("DeleteImageAction execution completed")
@@ -350,7 +350,7 @@ class DeleteImageAction(BaseAction):
         log.trace("Unexecuting DeleteImageAction")
 
         # AMI deletion cannot be undone
-        image_name = self.params.image_name
+        image_name = self.spec.image_name
         log.warning(
             "AMI deletion cannot be rolled back - image '{}' remains deleted",
             image_name,

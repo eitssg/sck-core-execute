@@ -68,7 +68,7 @@ class UploadContextActionResource(ActionResource):
         return values
 
 
-class UploadContextAction(BaseAction):
+class UploadContextAction(BaseAction[UploadContextActionSpec]):
     """Upload deployment context outputs to S3 (YAML and JSON).
 
     Extracts action output variables from the context, organizes them by
@@ -90,7 +90,7 @@ class UploadContextAction(BaseAction):
 
         """
         super().__init__(definition, context, deployment_details)
-        self.params = UploadContextActionSpec(**definition.spec)
+        self.spec = UploadContextActionSpec(**definition.spec)
 
     def __context_outputs(self) -> dict[str, Any]:
         """Collect output variables from the context.
@@ -166,17 +166,17 @@ class UploadContextAction(BaseAction):
                 util.set_nested(body_hash, var_path, value)
 
             # Create S3 client
-            role_arn = util.get_provisioning_role_arn(self.params.account)
-            client = MagicS3Client.get_client(self.params.region, role_arn)
+            role_arn = util.get_provisioning_role_arn(self.spec.account)
+            client = MagicS3Client.get_client(self.spec.region, role_arn)
 
             uploaded_files = []
 
             # Upload context as YAML
-            yaml_key = f"{self.params.prefix}/context.yaml"
-            log.debug(f"Uploading YAML context file '{yaml_key}' to '{self.params.bucket_name}'")
+            yaml_key = f"{self.spec.prefix}/context.yaml"
+            log.debug(f"Uploading YAML context file '{yaml_key}' to '{self.spec.bucket_name}'")
 
             client.put_object(
-                Bucket=self.params.bucket_name,
+                Bucket=self.spec.bucket_name,
                 Key=yaml_key,
                 Body=util.to_yaml(body_hash),
                 ServerSideEncryption="AES256",
@@ -184,11 +184,11 @@ class UploadContextAction(BaseAction):
             uploaded_files.append(yaml_key)
 
             # Upload context as JSON
-            json_key = f"{self.params.prefix}/context.json"
-            log.debug(f"Uploading JSON context file '{json_key}' to '{self.params.bucket_name}'")
+            json_key = f"{self.spec.prefix}/context.json"
+            log.debug(f"Uploading JSON context file '{json_key}' to '{self.spec.bucket_name}'")
 
             client.put_object(
-                Bucket=self.params.bucket_name,
+                Bucket=self.spec.bucket_name,
                 Key=json_key,
                 Body=util.to_json(body_hash),
                 ServerSideEncryption="AES256",
@@ -201,8 +201,8 @@ class UploadContextAction(BaseAction):
             self.set_state("yaml_file", yaml_key)
             self.set_state("json_file", json_key)
             self.set_state("variable_count", len(context_outputs))
-            self.set_state("bucket_name", self.params.bucket_name)
-            self.set_state("prefix", self.params.prefix)
+            self.set_state("bucket_name", self.spec.bucket_name)
+            self.set_state("prefix", self.spec.prefix)
 
             success_message = f"Successfully uploaded context files: {uploaded_files}"
             log.info(success_message)
@@ -230,15 +230,15 @@ class UploadContextAction(BaseAction):
                 return
 
             # Create S3 client
-            client = MagicS3Client(Region=self.params.region)
+            client = MagicS3Client(Region=self.spec.region)
 
             # Verify each uploaded file exists
             for file_key in uploaded_files:
                 try:
-                    client.head_object(Bucket=self.params.bucket_name, Key=file_key)
-                    log.debug(f"Verified file exists: s3://{self.params.bucket_name}/{file_key}")
+                    client.head_object(Bucket=self.spec.bucket_name, Key=file_key)
+                    log.debug(f"Verified file exists: s3://{self.spec.bucket_name}/{file_key}")
                 except Exception as e:
-                    error_message = f"Failed to verify file s3://{self.params.bucket_name}/{file_key}: {str(e)}"
+                    error_message = f"Failed to verify file s3://{self.spec.bucket_name}/{file_key}: {str(e)}"
                     log.error(error_message)
                     self.set_failed(error_message)
                     return
@@ -265,13 +265,13 @@ class UploadContextAction(BaseAction):
                 return
 
             # Create S3 client
-            client = MagicS3Client(Region=self.params.region)
+            client = MagicS3Client(Region=self.spec.region)
 
             # Delete each uploaded file
             for file_key in uploaded_files:
                 try:
-                    client.delete_object(Bucket=self.params.bucket_name, Key=file_key)
-                    log.debug(f"Deleted file: s3://{self.params.bucket_name}/{file_key}")
+                    client.delete_object(Bucket=self.spec.bucket_name, Key=file_key)
+                    log.debug(f"Deleted file: s3://{self.spec.bucket_name}/{file_key}")
                 except Exception as e:
                     log.warning(f"Failed to delete file {file_key}: {str(e)}")
 
@@ -293,15 +293,15 @@ class UploadContextAction(BaseAction):
 
         try:
             # Render template variables
-            self.params.account = self.renderer.render_string(self.params.account, self.context)
-            self.params.bucket_name = self.renderer.render_string(self.params.bucket_name, self.context)
-            self.params.region = self.renderer.render_string(self.params.region, self.context)
-            self.params.prefix = self.renderer.render_string(self.params.prefix, self.context)
+            self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+            self.spec.bucket_name = self.renderer.render_string(self.spec.bucket_name, self.context)
+            self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+            self.spec.prefix = self.renderer.render_string(self.spec.prefix, self.context)
 
             # Clean up prefix (remove leading/trailing slashes)
-            self.params.prefix = self.params.prefix.strip("/")
+            self.spec.prefix = self.spec.prefix.strip("/")
 
-            log.debug(f"Resolved context upload to s3://{self.params.bucket_name}/{self.params.prefix}/")
+            log.debug(f"Resolved context upload to s3://{self.spec.bucket_name}/{self.spec.prefix}/")
 
         except Exception as e:
             error_message = f"Failed to resolve template variables: {str(e)}"

@@ -19,7 +19,6 @@ def create_action(
     action_resource: ActionResource,
     context: dict,
     deployment_details: DeploymentDetails,
-    parent_action_name: str = None,
 ) -> BaseAction:
     """Create action instance based on ActionResource.
 
@@ -30,7 +29,6 @@ def create_action(
         action_resource: Action specification from deployspec.yaml
         context: Jinja2 rendering context with deployment variables
         deployment_details: Client/portfolio/app/branch/build information
-        parent_action_name: Parent action name for lifecycle hooks (enables namespace inheritance)
 
     Returns:
         Fully initialized action instance ready for execution
@@ -42,7 +40,7 @@ def create_action(
         Create lifecycle hook with parent context:
             hook = create_action(hook_resource, context, deployment_details, "parent-action")
     """
-    return ActionFactory.load(action_resource, context, deployment_details, parent_action_name)
+    return ActionFactory.load(action_resource, context, deployment_details)
 
 
 class ActionFactory:
@@ -359,7 +357,6 @@ class ActionFactory:
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str = None,
     ) -> BaseAction:
         """Create and return a fully initialized action instance.
 
@@ -378,8 +375,6 @@ class ActionFactory:
             Template rendering context with deployment variables and outputs
         deployment_details : DeploymentDetails
             Deployment context and metadata for the action
-        parent_action_name : str, optional
-            Parent action name for lifecycle hooks (enables namespace inheritance)
 
         Returns
         -------
@@ -486,7 +481,7 @@ class ActionFactory:
         try:
             # Instantiate the action with detailed error handling.
             # Definition param attributes are validated to the action
-            action = klass(definition, context, deployment_details, parent_action_name)
+            action = klass(definition, context, deployment_details)
             log.debug("Successfully created action: {}", definition.action_name)
             return action
 

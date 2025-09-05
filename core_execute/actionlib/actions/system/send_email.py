@@ -66,7 +66,7 @@ class SendEmailActionResource(ActionResource):
         return values
 
 
-class SendEmailAction(BaseAction):
+class SendEmailAction(BaseAction[SendEmailActionSpec]):
     """Send email using SMTP configuration with template rendering."""
 
     def __init__(
@@ -89,9 +89,6 @@ class SendEmailAction(BaseAction):
         self.template_html = None
         self.template_txt = None
 
-        # ✅ Track if this action has been executed this Step Function run
-        self.executed_this_run = False
-
     def can_initialize(self) -> bool:
         """Check if action can be reinitialized for rerun.
 
@@ -109,37 +106,27 @@ class SendEmailAction(BaseAction):
             bool: True if initialization was successful, False otherwise.
 
         """
-        log.debug("Initializing SendEmailAction {} for rerun", self.name)
+        log.debug("Initializing SendEmailAction {} for run", self.name)
 
         # Call super initialize to clear status and outputs
         super().initialize()
 
-        status = self.get_status()
-
-        if self.is_failed():
-            log.debug("Action {} was in a failed state ({}), resetting to pending", self.name, status)
-            self.set_pending("Initialized")
-        else:  # pending or complete or running.  If it was running, we need to run 'check' to update status
-            log.debug("Action {} is in state ({}), leaving status unchanged", self.name, status)
+        # Email can always run each time you start the Step Function with INIT
+        self.set_pending("Initialized")
 
         log.debug("SendEmailAction {} initialized", self.name)
 
         return True
 
     def can_execute(self) -> bool:
-        """Check if action can execute.
+        """
+        Check if action can execute.
 
         Email actions can execute if:
         1. Standard conditions are met
-        2. Haven't been executed this Step Function run yet
-        3. Required parameters are present
+        2. Required parameters are present
         """
         try:
-            # ✅ Check if already executed this Step Function run
-            if self.executed_this_run:
-                log.debug("SendEmailAction {} already executed this Step Function run", self.name)
-                return False
-
             # Call super condition checking
             if not super().can_execute():
                 return False
@@ -217,11 +204,6 @@ class SendEmailAction(BaseAction):
         """Execute email sending operation."""
         log.trace("Executing SendEmailAction")
 
-        # ✅ Mark as executed this Step Function run immediately
-        self.executed_this_run = True
-        execution_marker_key = f"{self.state_namespace}/executed_this_run"
-        self.set_state("executed_this_run", True)
-
         try:
             # Validate required parameters
             if not self.spec.to_email:
@@ -265,7 +247,6 @@ class SendEmailAction(BaseAction):
                         "template_type": self.spec.template_type,
                         "subject": self.spec.subject,
                         "sent_count": current_sent + 1,
-                        "executed_this_run": True,  # ✅ Log execution tracking
                     },
                 )
 

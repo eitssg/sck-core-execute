@@ -56,7 +56,7 @@ class ModifyDbInstanceActionResource(ActionResource):
         return values
 
 
-class ModifyDbInstanceAction(BaseAction):
+class ModifyDbInstanceAction(BaseAction[ModifyDbInstanceActionSpec]):
     """Modify an RDS DB instance and wait until changes are applied.
 
     Calls modify_db_instance, records response metadata, and marks complete
@@ -72,7 +72,7 @@ class ModifyDbInstanceAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate and load action parameters
-        self.params = ModifyDbInstanceActionSpec(**definition.spec)
+        self.spec = ModifyDbInstanceActionSpec(**definition.spec)
 
     def _execute(self):
         """Invoke modify_db_instance and record initial results.
@@ -86,20 +86,20 @@ class ModifyDbInstanceAction(BaseAction):
         """
         # Obtain an RDS client
         rds_client = aws.rds_client(
-            region=self.params.region,
-            role=util.get_provisioning_role_arn(self.params.account),
+            region=self.spec.region,
+            role=util.get_provisioning_role_arn(self.spec.account),
         )
 
         self.set_running("Modifying DB instance")
 
         try:
-            response = rds_client.modify_db_instance(**self.params.api_params)
+            response = rds_client.modify_db_instance(**self.spec.api_params)
             db_instance = response.get("DBInstance", {})
             pending_modified_values = db_instance.get("PendingModifiedValues", {})
 
             # Store state information about the modifications
             self.set_output("ModifiedInstance", db_instance)
-            self.set_output("AppliedApiParams", self.params.api_params)
+            self.set_output("AppliedApiParams", self.spec.api_params)
             self.set_output("ResponseMetadata", response.get("ResponseMetadata", {}))
 
             if not pending_modified_values:
@@ -124,11 +124,11 @@ class ModifyDbInstanceAction(BaseAction):
           ClientError: If describe_db_instances fails.
         """
         rds_client = aws.rds_client(
-            region=self.params.region,
-            role=util.get_provisioning_role_arn(self.params.account),
+            region=self.spec.region,
+            role=util.get_provisioning_role_arn(self.spec.account),
         )
 
-        response = rds_client.describe_db_instances(DBInstanceIdentifier=self.params.api_params["DBInstanceIdentifier"])
+        response = rds_client.describe_db_instances(DBInstanceIdentifier=self.spec.api_params["DBInstanceIdentifier"])
         db_instance = response["DBInstances"][0]
         pending_modified_values = db_instance.get("PendingModifiedValues", {})
 
@@ -147,9 +147,9 @@ class ModifyDbInstanceAction(BaseAction):
 
     def _resolve(self):
         """Render templates for account, region, and api_params."""
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.api_params = self.renderer.render_object(self.params.api_params, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+        self.spec.api_params = self.renderer.render_object(self.spec.api_params, self.context)
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> ModifyDbInstanceActionResource:

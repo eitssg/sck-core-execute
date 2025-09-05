@@ -85,7 +85,7 @@ class DeleteUserActionResource(ActionResource):
         return values
 
 
-class DeleteUserAction(BaseAction):
+class DeleteUserAction(BaseAction[DeleteUserActionSpec]):
     """Delete IAM users and all related IAM resources.
 
     Cleans up access keys, signing certificates, group memberships,
@@ -110,17 +110,17 @@ class DeleteUserAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the parameters
-        self.params = DeleteUserActionSpec(**definition.spec)
+        self.spec = DeleteUserActionSpec(**definition.spec)
 
     def _resolve(self):
         """Render templates for account, region, and user_names."""
         log.trace("Resolving DeleteUserAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
 
-        for i, user_name in enumerate(self.params.user_names):
-            self.params.user_names[i] = self.renderer.render_string(user_name, self.context)
+        for i, user_name in enumerate(self.spec.user_names):
+            self.spec.user_names[i] = self.renderer.render_string(user_name, self.context)
 
         log.trace("DeleteUserAction resolved")
 
@@ -132,29 +132,29 @@ class DeleteUserAction(BaseAction):
         log.trace("Executing DeleteUserAction")
 
         # Validate required parameters
-        if not self.params.user_names:
+        if not self.spec.user_names:
             self.set_failed("UserNames parameter is required and must contain at least one user")
             log.error("UserNames parameter is required and must contain at least one user")
             return
 
         # Set initial state information
-        self.set_state("Account", self.params.account)
-        self.set_state("Region", self.params.region)
-        self.set_state("UserNames", self.params.user_names)
+        self.set_state("Account", self.spec.account)
+        self.set_state("Region", self.spec.region)
+        self.set_state("UserNames", self.spec.user_names)
         self.set_state("DeletionStarted", True)
         self.set_state("StartTime", util.get_current_timestamp())
 
         # Set outputs for other actions to reference
-        self.set_output("Account", self.params.account)
-        self.set_output("Region", self.params.region)
-        self.set_output("UserNames", self.params.user_names)
+        self.set_output("Account", self.spec.account)
+        self.set_output("Region", self.spec.region)
+        self.set_output("UserNames", self.spec.user_names)
         self.set_output("DeletionStarted", True)
 
         # Obtain an IAM client
         try:
             iam_client = aws.iam_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create IAM client: {}", e)
@@ -167,7 +167,7 @@ class DeleteUserAction(BaseAction):
         skipped_users = []
 
         # Process each user
-        for user_name in self.params.user_names:
+        for user_name in self.spec.user_names:
             log.info("Processing user '{}'", user_name)
 
             try:
@@ -230,7 +230,7 @@ class DeleteUserAction(BaseAction):
         if failed_users:
             self.set_state("DeletionResult", "PARTIAL_FAILURE")
             self.set_output("DeletionResult", "PARTIAL_FAILURE")
-            self.set_failed(f"Failed to delete {len(failed_users)} out of {len(self.params.user_names)} users")
+            self.set_failed(f"Failed to delete {len(failed_users)} out of {len(self.spec.user_names)} users")
         else:
             self.set_state("DeletionResult", "SUCCESS")
             self.set_output("DeletionResult", "SUCCESS")
@@ -239,7 +239,7 @@ class DeleteUserAction(BaseAction):
                 self.set_complete(f"All {len(skipped_users)} users were already deleted or did not exist")
             else:
                 self.set_complete(
-                    f"Successfully processed {len(self.params.user_names)} users: {len(deleted_users)} deleted, {len(skipped_users)} skipped"
+                    f"Successfully processed {len(self.spec.user_names)} users: {len(deleted_users)} deleted, {len(skipped_users)} skipped"
                 )
 
         log.trace("DeleteUserAction execution completed")

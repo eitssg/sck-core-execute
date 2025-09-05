@@ -62,7 +62,7 @@ class PutUserActionResource(ActionResource):
         return values
 
 
-class PutUserAction(BaseAction):
+class PutUserAction(BaseAction[PutUserActionSpec]):
     """Create or update IAM users and attach inline assume-role policies.
 
     - Creates users that do not exist; skips existing users
@@ -87,22 +87,22 @@ class PutUserAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the parameters
-        self.params = PutUserActionSpec(**definition.spec)
+        self.spec = PutUserActionSpec(**definition.spec)
 
     def _resolve(self):
         """Render template variables in parameters (account, region, users, roles)."""
         log.trace("Resolving PutUserAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
 
-        if isinstance(self.params.user_names, list):
-            for i, user_name in enumerate(self.params.user_names):
+        if isinstance(self.spec.user_names, list):
+            for i, user_name in enumerate(self.spec.user_names):
                 # If user_names is a list, render each item as a Jinja2 template
-                self.params.user_names[i] = self.renderer.render_string(user_name, self.context)
-        elif isinstance(self.params.user_names, str):
+                self.spec.user_names[i] = self.renderer.render_string(user_name, self.context)
+        elif isinstance(self.spec.user_names, str):
             # If user_names is a string, render it as a Jinja2 template
-            names = self.renderer.render_string(self.params.user_names, self.context)
+            names = self.renderer.render_string(self.spec.user_names, self.context)
 
             # if the user has accidently put [ and ] at the beginning and end of the string,  remove them
             names = names.lstrip("[").rstrip("]").strip()
@@ -113,16 +113,16 @@ class PutUserAction(BaseAction):
                 # We assume the response is formatted as a comma-separated list and if each value is surround with quotes, remove them
                 name = name.lstrip("\"'").rstrip("\"'").strip()
                 names_list.append(name)
-            self.params.user_names = names_list
+            self.spec.user_names = names_list
 
-        if isinstance(self.params.roles, list):
-            for i, role in enumerate(self.params.roles):
+        if isinstance(self.spec.roles, list):
+            for i, role in enumerate(self.spec.roles):
                 # If roles is a list, render each item as a Jinja2 template
-                self.params.roles[i] = self.renderer.render_string(role, self.context)
-        elif isinstance(self.params.roles, str):
+                self.spec.roles[i] = self.renderer.render_string(role, self.context)
+        elif isinstance(self.spec.roles, str):
 
             # If roles is a string, render it as a Jinja2 template
-            roles = self.renderer.render_string(self.params.roles, self.context)
+            roles = self.renderer.render_string(self.spec.roles, self.context)
 
             # if the user has accidently put [ and ] at the beginning and end of the string,  remove them
             roles = roles.lstrip("[").rstrip("]").strip()
@@ -132,7 +132,7 @@ class PutUserAction(BaseAction):
                 # We assume the response is formatted as a comma-separated list and if each value is surround with quotes, remove them
                 role = role.lstrip("\"'").rstrip("\"'").strip()
                 role_list.append(role)
-            self.params.roles = role_list
+            self.spec.roles = role_list
 
         log.trace("PutUserAction resolved")
 
@@ -148,31 +148,31 @@ class PutUserAction(BaseAction):
         log.trace("Executing PutUserAction")
 
         # Validate required parameters
-        if not self.params.user_names:
+        if not self.spec.user_names:
             self.set_failed("UserNames parameter is required and must contain at least one user")
             log.error("UserNames parameter is required and must contain at least one user")
             return
 
         # Set initial state information
-        self.set_state("Account", self.params.account)
-        self.set_state("Region", self.params.region)
-        self.set_state("UserNames", self.params.user_names)
-        self.set_state("AssignedRoles", self.params.roles)  # KEEP ONLY THIS ONE
+        self.set_state("Account", self.spec.account)
+        self.set_state("Region", self.spec.region)
+        self.set_state("UserNames", self.spec.user_names)
+        self.set_state("AssignedRoles", self.spec.roles)  # KEEP ONLY THIS ONE
         self.set_state("PutStarted", True)
         self.set_state("StartTime", util.get_current_timestamp())
 
         # Set outputs for other actions to reference
-        self.set_output("Account", self.params.account)
-        self.set_output("Region", self.params.region)
-        self.set_output("UserNames", self.params.user_names)
-        self.set_output("AssignedRoles", self.params.roles)  # KEEP ONLY THIS ONE
+        self.set_output("Account", self.spec.account)
+        self.set_output("Region", self.spec.region)
+        self.set_output("UserNames", self.spec.user_names)
+        self.set_output("AssignedRoles", self.spec.roles)  # KEEP ONLY THIS ONE
         self.set_output("PutStarted", True)
 
         # Obtain an IAM client
         try:
             iam_client = aws.iam_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create IAM client: {}", e)
@@ -187,7 +187,7 @@ class PutUserAction(BaseAction):
         final_policies = {}  # ADD THIS - Track final policies per user
 
         # Process each user
-        for user_name in self.params.user_names:
+        for user_name in self.spec.user_names:
             log.info("Processing user '{}'", user_name)
 
             # create the user
@@ -220,7 +220,7 @@ class PutUserAction(BaseAction):
                 skipped_users.append(user_name)
 
             # Attach policies to the user
-            if not self.params.roles:
+            if not self.spec.roles:
                 log.warning(
                     "No roles specified for user '{}', skipping role attachment",
                     user_name,
@@ -228,14 +228,14 @@ class PutUserAction(BaseAction):
                 continue
 
             # Ensure roles is a list
-            if isinstance(self.params.roles, str):
-                self.params.roles = [self.params.roles]
+            if isinstance(self.spec.roles, str):
+                self.spec.roles = [self.spec.roles]
 
             log.info("Creating and attaching inline policy for user '{}'", user_name)
 
             try:
                 # Create and attach inline policy that allows assuming the specified roles
-                policy_name, policy_document = self._attach_inline_policy_to_user(iam_client, user_name, self.params.roles)
+                policy_name, policy_document = self._attach_inline_policy_to_user(iam_client, user_name, self.spec.roles)
                 log.info(
                     "Successfully attached/updated role assumption policy for user '{}'",
                     user_name,
@@ -315,7 +315,7 @@ class PutUserAction(BaseAction):
                 self.set_complete(f"All {len(skipped_users)} users already existed")
             else:
                 self.set_complete(
-                    f"Successfully processed {len(self.params.user_names)} users: {len(created_users)} created, {len(skipped_users)} skipped"
+                    f"Successfully processed {len(self.spec.user_names)} users: {len(created_users)} created, {len(skipped_users)} skipped"
                 )
 
         log.trace("PutUserAction execution completed")
@@ -399,9 +399,9 @@ class PutUserAction(BaseAction):
                 new_role_arns.add(role)
             else:
                 # If it's just a role name, convert it to ARN format
-                if not self.params.account:
+                if not self.spec.account:
                     raise ValueError("Account ID is required to create role ARNs")
-                role_arn = f"arn:aws:iam::{self.params.account}:role/{role}"
+                role_arn = f"arn:aws:iam::{self.spec.account}:role/{role}"
                 new_role_arns.add(role_arn)
 
         log.debug("Processing inline policy '{}' for user '{}'", policy_name, user_name)
@@ -570,7 +570,7 @@ class PutUserAction(BaseAction):
         # Convert role names to ARNs
         role_arns = set()
         for role in roles:
-            role_arn = f"arn:aws:iam::{self.params.account}:role/{role}"
+            role_arn = f"arn:aws:iam::{self.spec.account}:role/{role}"
             role_arns.add(role_arn)
 
         return self._create_policy_with_role_arns(role_arns)

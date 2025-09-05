@@ -49,7 +49,7 @@ class SetVariablesActionResource(ActionResource):
         return values
 
 
-class SetVariablesAction(BaseAction):
+class SetVariablesAction(BaseAction[SetVariablesActionSpec]):
     """Set variables in memory and in your state
 
     This action will set variables in memory and in your state.  The action will return the variables set.
@@ -86,13 +86,13 @@ class SetVariablesAction(BaseAction):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.params = SetVariablesActionSpec(**definition.spec)
+        self.spec = SetVariablesActionSpec(**definition.spec)
 
     def _execute(self):
 
         log.trace("SetVariablesAction._execute()")
 
-        for key, value in self.params.variables.items():
+        for key, value in self.spec.variables.items():
             self.set_output(key, value)
             self.set_state(key, value)
 
@@ -118,8 +118,8 @@ class SetVariablesAction(BaseAction):
 
         log.trace("SetVariablesAction._resolve()")
 
-        for key in self.params.variables:
-            value = self.params.variables[key]
+        for key in self.spec.variables:
+            value = self.spec.variables[key]
             if isinstance(value, str):
                 # Render the string using Jinja2 context
                 result = self.renderer.render_string(value, self.context)
@@ -130,7 +130,7 @@ class SetVariablesAction(BaseAction):
                 except ValueError:
                     pass
 
-                self.params.variables[key] = result
+                self.spec.variables[key] = result
 
         log.trace("SetVariablesAction._resolve()")
 

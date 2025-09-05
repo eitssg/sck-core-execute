@@ -58,7 +58,7 @@ class ApplyChangeSetActionResource(ActionResource):
         return values
 
 
-class ApplyChangeSetAction(BaseAction):
+class ApplyChangeSetAction(BaseAction[ApplyChangeSetActionSpec]):
     """Apply a CloudFormation change set to a stack.
 
     - Supports cross-account execution via role assumption
@@ -82,16 +82,16 @@ class ApplyChangeSetAction(BaseAction):
         """Initialize the action and validate parameters."""
         super().__init__(definition, context, deployment_details)
 
-        self.params = ApplyChangeSetActionSpec(**definition.spec)
+        self.spec = ApplyChangeSetActionSpec(**definition.spec)
 
     def _resolve(self):
         """Render templates for account, region, stack_name, and change_set_name."""
         log.trace("Resolving ApplyChangeSetAction")
 
-        self.params.account = self.renderer.render_string(self.params.account, self.context)
-        self.params.region = self.renderer.render_string(self.params.region, self.context)
-        self.params.stack_name = self.renderer.render_string(self.params.stack_name, self.context)
-        self.params.change_set_name = self.renderer.render_string(self.params.change_set_name, self.context)
+        self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+        self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+        self.spec.stack_name = self.renderer.render_string(self.spec.stack_name, self.context)
+        self.spec.change_set_name = self.renderer.render_string(self.spec.change_set_name, self.context)
 
         log.trace("ApplyChangeSetAction resolved")
 
@@ -103,12 +103,12 @@ class ApplyChangeSetAction(BaseAction):
         log.trace("Executing ApplyChangeSetAction")
 
         # Validate required parameters
-        if not self.params.stack_name or self.params.stack_name == "":
+        if not self.spec.stack_name or self.spec.stack_name == "":
             self.set_failed("StackName parameter is required")
             log.error("StackName parameter is required")
             return
 
-        if not self.params.change_set_name or self.params.change_set_name == "":
+        if not self.spec.change_set_name or self.spec.change_set_name == "":
             self.set_failed("ChangeSetName parameter is required")
             log.error("ChangeSetName parameter is required")
             return
@@ -117,29 +117,29 @@ class ApplyChangeSetAction(BaseAction):
         if self.get_state("ChangeSetApplicationStarted") and self.get_state("StackId"):
             log.info(
                 "Change set application already in progress for {}",
-                self.params.change_set_name,
+                self.spec.change_set_name,
             )
-            self.set_running(f"Change set application already in progress for {self.params.change_set_name}")
+            self.set_running(f"Change set application already in progress for {self.spec.change_set_name}")
             return
 
         # Set initial state information
-        self.set_state("ChangeSetName", self.params.change_set_name)
-        self.set_state("StackName", self.params.stack_name)
-        self.set_state("Region", self.params.region)
-        self.set_state("Account", self.params.account)
+        self.set_state("ChangeSetName", self.spec.change_set_name)
+        self.set_state("StackName", self.spec.stack_name)
+        self.set_state("Region", self.spec.region)
+        self.set_state("Account", self.spec.account)
         self.set_state("ChangeSetApplicationStarted", True)
         self.set_state("StartTime", util.get_current_timestamp())
 
         # Set outputs for other actions to reference
-        self.set_output("ChangeSetName", self.params.change_set_name)
-        self.set_output("StackName", self.params.stack_name)
-        self.set_output("Region", self.params.region)
+        self.set_output("ChangeSetName", self.spec.change_set_name)
+        self.set_output("StackName", self.spec.stack_name)
+        self.set_output("Region", self.spec.region)
 
         # Obtain a CloudFormation client
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -149,18 +149,18 @@ class ApplyChangeSetAction(BaseAction):
         # Verify change set exists and get its details
         try:
             change_set_response = cfn_client.describe_change_set(
-                StackName=self.params.stack_name,
-                ChangeSetName=self.params.change_set_name,
+                StackName=self.spec.stack_name,
+                ChangeSetName=self.spec.change_set_name,
             )
 
             if change_set_response["Status"] != "CREATE_COMPLETE":
                 log.error(
                     "Change set '{}' is not in CREATE_COMPLETE status: {}",
-                    self.params.change_set_name,
+                    self.spec.change_set_name,
                     change_set_response["Status"],
                 )
                 self.set_failed(
-                    f"Change set '{self.params.change_set_name}' is not ready for execution: {change_set_response['Status']}"
+                    f"Change set '{self.spec.change_set_name}' is not ready for execution: {change_set_response['Status']}"
                 )
                 return
 
@@ -181,42 +181,42 @@ class ApplyChangeSetAction(BaseAction):
             if error_code == "ChangeSetNotFoundException":
                 log.error(
                     "Change set '{}' not found for stack '{}'",
-                    self.params.change_set_name,
-                    self.params.stack_name,
+                    self.spec.change_set_name,
+                    self.spec.stack_name,
                 )
-                self.set_failed(f"Change set '{self.params.change_set_name}' not found for stack '{self.params.stack_name}'")
+                self.set_failed(f"Change set '{self.spec.change_set_name}' not found for stack '{self.spec.stack_name}'")
             else:
                 log.error(
                     "Error describing change set '{}': {} - {}",
-                    self.params.change_set_name,
+                    self.spec.change_set_name,
                     error_code,
                     error_message,
                 )
-                self.set_failed(f"Failed to describe change set '{self.params.change_set_name}': {error_message}")
+                self.set_failed(f"Failed to describe change set '{self.spec.change_set_name}': {error_message}")
             return
 
         except Exception as e:
             log.error(
                 "Unexpected error describing change set '{}': {}",
-                self.params.change_set_name,
+                self.spec.change_set_name,
                 e,
             )
-            self.set_failed(f"Unexpected error describing change set '{self.params.change_set_name}': {e}")
+            self.set_failed(f"Unexpected error describing change set '{self.spec.change_set_name}': {e}")
             return
 
         # Apply the change set
-        self.set_running(f"Executing change set '{self.params.change_set_name}' on stack '{self.params.stack_name}'")
+        self.set_running(f"Executing change set '{self.spec.change_set_name}' on stack '{self.spec.stack_name}'")
 
         try:
             log.info(
                 "Executing change set {} on stack {}",
-                self.params.change_set_name,
-                self.params.stack_name,
+                self.spec.change_set_name,
+                self.spec.stack_name,
             )
 
             cfn_client.execute_change_set(
-                StackName=self.params.stack_name,
-                ChangeSetName=self.params.change_set_name,
+                StackName=self.spec.stack_name,
+                ChangeSetName=self.spec.change_set_name,
             )
 
             # Update state with execution info
@@ -224,7 +224,7 @@ class ApplyChangeSetAction(BaseAction):
             self.set_state("ExecutionTime", util.get_current_timestamp())
             self.set_state("StackStatus", "UPDATE_IN_PROGRESS")
 
-            log.info("Change set execution initiated for stack {}", self.params.stack_name)
+            log.info("Change set execution initiated for stack {}", self.spec.stack_name)
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -232,23 +232,23 @@ class ApplyChangeSetAction(BaseAction):
 
             log.error(
                 "Error executing change set '{}': {} - {}",
-                self.params.change_set_name,
+                self.spec.change_set_name,
                 error_code,
                 error_message,
             )
             self.set_state("ApplicationResult", "FAILED")
             self.set_state("FailureReason", f"{error_code}: {error_message}")
-            self.set_failed(f"Failed to execute change set '{self.params.change_set_name}': {error_message}")
+            self.set_failed(f"Failed to execute change set '{self.spec.change_set_name}': {error_message}")
 
         except Exception as e:
             log.error(
                 "Unexpected error executing change set '{}': {}",
-                self.params.change_set_name,
+                self.spec.change_set_name,
                 e,
             )
             self.set_state("ApplicationResult", "FAILED")
             self.set_state("FailureReason", str(e))
-            self.set_failed(f"Unexpected error executing change set '{self.params.change_set_name}': {e}")
+            self.set_failed(f"Unexpected error executing change set '{self.spec.change_set_name}': {e}")
 
         log.trace("ApplyChangeSetAction execution completed")
 
@@ -266,8 +266,8 @@ class ApplyChangeSetAction(BaseAction):
         # Obtain a CloudFormation client
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -279,8 +279,8 @@ class ApplyChangeSetAction(BaseAction):
             response = cfn_client.describe_stacks(StackName=stack_id)
 
             if not response.get("Stacks"):
-                log.error("Stack '{}' not found", self.params.stack_name)
-                self.set_failed(f"Stack '{self.params.stack_name}' not found")
+                log.error("Stack '{}' not found", self.spec.stack_name)
+                self.set_failed(f"Stack '{self.spec.stack_name}' not found")
                 return
 
             stack_info = response["Stacks"][0]
@@ -320,12 +320,12 @@ class ApplyChangeSetAction(BaseAction):
 
                 total_resources = len(resources_created) + len(resources_updated) + len(resources_deleted)
                 self.set_complete(
-                    f"Change set {self.params.change_set_name} applied successfully. {total_resources} resources affected."
+                    f"Change set {self.spec.change_set_name} applied successfully. {total_resources} resources affected."
                 )
                 log.info(
                     "Change set {} applied successfully to stack {}",
-                    self.params.change_set_name,
-                    self.params.stack_name,
+                    self.spec.change_set_name,
+                    self.spec.stack_name,
                 )
 
             elif stack_status in [
@@ -334,7 +334,7 @@ class ApplyChangeSetAction(BaseAction):
                 "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS",
             ]:
                 # Still applying
-                self.set_running(f"Change set {self.params.change_set_name} application in progress")
+                self.set_running(f"Change set {self.spec.change_set_name} application in progress")
 
             elif stack_status in [
                 "UPDATE_FAILED",
@@ -355,15 +355,15 @@ class ApplyChangeSetAction(BaseAction):
             else:
                 # Unknown status
                 log.warning("Unknown stack status: {}", stack_status)
-                self.set_running(f"Stack {self.params.stack_name} in status: {stack_status}")
+                self.set_running(f"Stack {self.spec.stack_name} in status: {stack_status}")
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
 
             if error_code == "StackNotFoundException":
-                log.error("Stack {} not found", self.params.stack_name)
-                self.set_failed(f"Stack {self.params.stack_name} not found")
+                log.error("Stack {} not found", self.spec.stack_name)
+                self.set_failed(f"Stack {self.spec.stack_name} not found")
             else:
                 log.error("Error checking stack status: {} - {}", error_code, error_message)
                 self.set_failed(f"Error checking stack status: {error_message}")
@@ -389,8 +389,8 @@ class ApplyChangeSetAction(BaseAction):
         # Obtain a CloudFormation client
         try:
             cfn_client = aws.cfn_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -402,9 +402,9 @@ class ApplyChangeSetAction(BaseAction):
             response = cfn_client.describe_stacks(StackName=stack_id)
 
             if not response.get("Stacks"):
-                log.info("Stack '{}' no longer exists", self.params.stack_name)
+                log.info("Stack '{}' no longer exists", self.spec.stack_name)
                 self.set_state("RollbackResult", "STACK_NOT_FOUND")
-                self.set_complete(f"Stack '{self.params.stack_name}' no longer exists")
+                self.set_complete(f"Stack '{self.spec.stack_name}' no longer exists")
                 return
 
             stack_info = response["Stacks"][0]
@@ -414,7 +414,7 @@ class ApplyChangeSetAction(BaseAction):
 
             if stack_status in ["UPDATE_IN_PROGRESS", "CREATE_IN_PROGRESS"]:
                 # Cancel the in-progress update
-                log.info("Canceling in-progress stack update: {}", self.params.stack_name)
+                log.info("Canceling in-progress stack update: {}", self.spec.stack_name)
 
                 cfn_client.cancel_update_stack(StackName=stack_id)
 
@@ -422,42 +422,42 @@ class ApplyChangeSetAction(BaseAction):
                 self.set_state("RollbackTime", util.get_current_timestamp())
                 self.set_state("RollbackResult", "CANCEL_INITIATED")
 
-                self.set_complete(f"Stack update cancellation initiated for {self.params.stack_name}")
-                log.info("Stack update cancellation initiated for {}", self.params.stack_name)
+                self.set_complete(f"Stack update cancellation initiated for {self.spec.stack_name}")
+                log.info("Stack update cancellation initiated for {}", self.spec.stack_name)
 
             elif stack_status in ["UPDATE_COMPLETE", "CREATE_COMPLETE"]:
                 # Stack update completed, attempt rollback (manual)
                 log.warning("Stack rollback for completed updates requires manual intervention or reverse change set")
 
                 self.set_state("RollbackResult", "MANUAL_INTERVENTION_REQUIRED")
-                self.set_complete(f"Stack {self.params.stack_name} rollback requires manual intervention")
+                self.set_complete(f"Stack {self.spec.stack_name} rollback requires manual intervention")
 
             elif stack_status in ["UPDATE_ROLLBACK_COMPLETE", "ROLLBACK_COMPLETE"]:
                 # Already rolled back
                 log.info(
                     "Stack {} is already in rollback complete state",
-                    self.params.stack_name,
+                    self.spec.stack_name,
                 )
                 self.set_state("RollbackResult", "ALREADY_ROLLED_BACK")
-                self.set_complete(f"Stack {self.params.stack_name} is already rolled back")
+                self.set_complete(f"Stack {self.spec.stack_name} is already rolled back")
 
             else:
                 log.warning(
                     "Stack {} is in status {} - rollback may not be applicable",
-                    self.params.stack_name,
+                    self.spec.stack_name,
                     stack_status,
                 )
                 self.set_state("RollbackResult", f"NOT_APPLICABLE_{stack_status}")
-                self.set_complete(f"Stack {self.params.stack_name} rollback not applicable for status: {stack_status}")
+                self.set_complete(f"Stack {self.spec.stack_name} rollback not applicable for status: {stack_status}")
 
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
 
             if error_code == "StackNotFoundException":
-                log.info("Stack {} not found during rollback", self.params.stack_name)
+                log.info("Stack {} not found during rollback", self.spec.stack_name)
                 self.set_state("RollbackResult", "STACK_NOT_FOUND")
-                self.set_complete(f"Stack {self.params.stack_name} not found during rollback")
+                self.set_complete(f"Stack {self.spec.stack_name} not found during rollback")
             else:
                 log.error("Error during stack rollback: {} - {}", error_code, error_message)
                 self.set_state("RollbackResult", "FAILED")

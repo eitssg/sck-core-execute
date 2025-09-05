@@ -62,7 +62,7 @@ class UnprotectELBActionResource(ActionResource):
         return values
 
 
-class UnprotectELBAction(BaseAction):
+class UnprotectELBAction(BaseAction[UnprotectELBActionSpec]):
     """Disable deletion protection on an AWS Elastic Load Balancer.
 
     Commonly used before stack teardown or ELB replacement so the LB can be deleted.
@@ -85,7 +85,7 @@ class UnprotectELBAction(BaseAction):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.params = UnprotectELBActionSpec(**definition.spec)
+        self.spec = UnprotectELBActionSpec(**definition.spec)
 
     def _execute(self):
         """Disable deletion protection on the specified load balancer.
@@ -100,7 +100,7 @@ class UnprotectELBAction(BaseAction):
 
         try:
             # Check if load balancer is "none" - skip operation
-            if self.params.load_balancer.lower() == "none":
+            if self.spec.load_balancer.lower() == "none":
                 log.info("Load balancer ARN is 'none' - skipping unprotection operation")
                 self.set_state("status", "skipped")
                 self.set_state("load_balancer_arn", "none")
@@ -110,36 +110,36 @@ class UnprotectELBAction(BaseAction):
 
             # Create ELBv2 client
             elbv2_client = aws.elbv2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
 
-            log.debug(f"Removing deletion protection from load balancer: {self.params.load_balancer}")
+            log.debug(f"Removing deletion protection from load balancer: {self.spec.load_balancer}")
 
             # Get current load balancer details for output
-            describe_response = elbv2_client.describe_load_balancers(LoadBalancerArns=[self.params.load_balancer])
+            describe_response = elbv2_client.describe_load_balancers(LoadBalancerArns=[self.spec.load_balancer])
 
             if not describe_response.get("LoadBalancers"):
-                raise Exception(f"Load balancer not found: {self.params.load_balancer}")
+                raise Exception(f"Load balancer not found: {self.spec.load_balancer}")
 
             lb_details = describe_response["LoadBalancers"][0]
 
             # Remove deletion protection
             elbv2_client.modify_load_balancer_attributes(
-                LoadBalancerArn=self.params.load_balancer,
+                LoadBalancerArn=self.spec.load_balancer,
                 Attributes=[{"Key": "deletion_protection.enabled", "Value": "false"}],
             )
 
             # Record successful operation and load balancer details
             self.set_state("status", "success")
-            self.set_state("load_balancer_arn", self.params.load_balancer)
+            self.set_state("load_balancer_arn", self.spec.load_balancer)
             self.set_state("deletion_protection_disabled", True)
             self.set_state("load_balancer_name", lb_details.get("LoadBalancerName"))
             self.set_state("load_balancer_type", lb_details.get("Type"))
             self.set_state("load_balancer_scheme", lb_details.get("Scheme"))
             self.set_state("load_balancer_state", lb_details.get("State", {}).get("Code"))
 
-            success_message = f"Successfully removed deletion protection from load balancer: {self.params.load_balancer}"
+            success_message = f"Successfully removed deletion protection from load balancer: {self.spec.load_balancer}"
             log.info(success_message)
             self.set_complete(success_message)
 
@@ -159,19 +159,19 @@ class UnprotectELBAction(BaseAction):
 
         try:
             # Skip check if load balancer is "none"
-            if self.params.load_balancer.lower() == "none":
+            if self.spec.load_balancer.lower() == "none":
                 log.debug("Skipping check - load balancer ARN is 'none'")
                 self.set_complete("Check skipped - no load balancer to verify")
                 return
 
             # Create ELBv2 client
             elbv2_client = aws.elbv2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Get current load balancer attributes
-            response = elbv2_client.describe_load_balancer_attributes(LoadBalancerArn=self.params.load_balancer)
+            response = elbv2_client.describe_load_balancer_attributes(LoadBalancerArn=self.spec.load_balancer)
 
             # Check deletion protection status
             deletion_protection_enabled = False
@@ -202,7 +202,7 @@ class UnprotectELBAction(BaseAction):
 
         try:
             # Skip if load balancer was "none" or operation was skipped
-            if self.params.load_balancer.lower() == "none":
+            if self.spec.load_balancer.lower() == "none":
                 log.debug("Skipping unexecute - load balancer ARN is 'none'")
                 return
 
@@ -213,17 +213,17 @@ class UnprotectELBAction(BaseAction):
 
             # Create ELBv2 client
             elbv2_client = aws.elbv2_client(
-                region=self.params.region,
-                role=util.get_provisioning_role_arn(self.params.account),
+                region=self.spec.region,
+                role=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Re-enable deletion protection
             elbv2_client.modify_load_balancer_attributes(
-                LoadBalancerArn=self.params.load_balancer,
+                LoadBalancerArn=self.spec.load_balancer,
                 Attributes=[{"Key": "deletion_protection.enabled", "Value": "true"}],
             )
 
-            log.info(f"Successfully re-enabled deletion protection for load balancer: {self.params.load_balancer}")
+            log.info(f"Successfully re-enabled deletion protection for load balancer: {self.spec.load_balancer}")
 
         except Exception as e:
             log.warning(f"Failed to re-enable deletion protection during unexecute: {str(e)}")
@@ -241,11 +241,11 @@ class UnprotectELBAction(BaseAction):
 
         try:
             # Render template variables
-            self.params.account = self.renderer.render_string(self.params.account, self.context)
-            self.params.region = self.renderer.render_string(self.params.region, self.context)
-            self.params.load_balancer = self.renderer.render_string(self.params.load_balancer, self.context)
+            self.spec.account = self.renderer.render_string(self.spec.account, self.context)
+            self.spec.region = self.renderer.render_string(self.spec.region, self.context)
+            self.spec.load_balancer = self.renderer.render_string(self.spec.load_balancer, self.context)
 
-            log.debug(f"Resolved ELB unprotection for load balancer: {self.params.load_balancer}")
+            log.debug(f"Resolved ELB unprotection for load balancer: {self.spec.load_balancer}")
 
         except Exception as e:
             error_message = f"Failed to resolve template variables: {str(e)}"
