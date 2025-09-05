@@ -74,10 +74,9 @@ class DeleteStackAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str | None = None,
     ):
         """Initialize the action and validate parameters."""
-        super().__init__(definition, context, deployment_details, parent_action_name)
+        super().__init__(definition, context, deployment_details)
 
         # Validate and set the parameters
         self.params = DeleteStackActionSpec(**definition.spec)
@@ -111,7 +110,7 @@ class DeleteStackAction(BaseAction):
         """
         log.info("Initializing DeleteStackAction {} for teardown rerun", self.name)
 
-        # Call parent to clear basic state
+        # Call super to clear basic state
         super().initialize()
 
         # Clear delete-specific state but keep stack identification

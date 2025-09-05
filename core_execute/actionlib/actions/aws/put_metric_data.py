@@ -164,10 +164,9 @@ class PutMetricDataAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str | None = None,
     ):
         """Initialize the action and validate parameters."""
-        super().__init__(definition, context, deployment_details, parent_action_name)
+        super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
         self.params = PutMetricDataActionSpec(**definition.spec)

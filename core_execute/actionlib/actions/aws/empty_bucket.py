@@ -66,7 +66,6 @@ class EmptyBucketAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str | None = None,
     ):
         """Initialize the action and validate parameters.
 
@@ -74,9 +73,9 @@ class EmptyBucketAction(BaseAction):
           definition: Action resource containing metadata and spec.
           context: Rendering context for template variables.
           deployment_details: Deployment metadata (portfolio/app/branch/build).
-          parent_action_name: Optional parent action name.
+
         """
-        super().__init__(definition, context, deployment_details, parent_action_name)
+        super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
         self.params = EmptyBucketActionSpec(**definition.spec)

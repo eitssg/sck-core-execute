@@ -146,7 +146,6 @@ class CreateGrantsAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str | None = None,
     ):
         """Initialize the KMS grant action and load parameters.
 
@@ -155,7 +154,7 @@ class CreateGrantsAction(BaseAction):
           context: Template rendering context.
           deployment_details: Deployment metadata for this run.
         """
-        super().__init__(definition, context, deployment_details, parent_action_name)
+        super().__init__(definition, context, deployment_details)
 
         self.params = CreateGrantsActionSpec(**definition.spec)
 

@@ -153,10 +153,9 @@ class CreateStackAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str | None = None,
     ):
         """Initialize CreateStackAction with validated parameters."""
-        super().__init__(definition, context, deployment_details, parent_action_name)
+        super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
         self.params = CreateStackActionSpec(**definition.spec)
@@ -186,7 +185,7 @@ class CreateStackAction(BaseAction):
         """
         log.info("Initializing CreateStackAction {} for rerun", self.name)
 
-        # Call parent to clear basic state
+        # Call super to clear basic state
         super().initialize()
 
         # Clear CloudFormation-specific state

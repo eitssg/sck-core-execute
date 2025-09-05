@@ -77,7 +77,6 @@ class GetStackReferencesAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str | None = None,
     ):
         """Initialize the action and validate parameters.
 
@@ -85,9 +84,9 @@ class GetStackReferencesAction(BaseAction):
           definition: Action resource with metadata/spec.
           context: Rendering context for templates.
           deployment_details: Deployment metadata.
-          parent_action_name: Optional parent action name.
+
         """
-        super().__init__(definition, context, deployment_details, parent_action_name)
+        super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
         self.params = GetStackReferencesActionSpec(**definition.spec)

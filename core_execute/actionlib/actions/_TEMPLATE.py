@@ -66,9 +66,8 @@ class ActionNameGoesHereAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details, parent_action_name)
+        super().__init__(definition, context, deployment_details)
 
         self.params = ActionNameGoesHereActionSpec(**definition.spec)
 

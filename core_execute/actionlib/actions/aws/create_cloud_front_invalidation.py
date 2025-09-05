@@ -69,7 +69,7 @@ class CreateCloudFrontInvalidationAction(BaseAction):
       definition: The action specification containing configuration.
       context: Jinja2 rendering context for template variables.
       deployment_details: Deployment metadata for this run.
-      parent_action_name: Optional parent action name.
+
     """
 
     def __init__(
@@ -77,9 +77,8 @@ class CreateCloudFrontInvalidationAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str | None = None,
     ):
-        super().__init__(definition, context, deployment_details, parent_action_name)
+        super().__init__(definition, context, deployment_details)
 
         # Validate the action definition parameters
         self.params = CreateCloudFrontInvalidationActionSpec(**definition.spec)

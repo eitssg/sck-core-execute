@@ -59,24 +59,19 @@ class Helper:
 
     def _load_actions(self, resources: List[ActionResource]) -> Dict[str, BaseAction]:
 
-        def load_and_validate_actions(resources: List[ActionResource], parent_action: BaseAction = None) -> List[ActionResource]:
-            for action_resource in resources:
-                try:
+        for action_resource in resources:
+            try:
 
-                    parent_action_name = parent_action.name if parent_action else None
-                    action: BaseAction = create_action(
-                        action_resource,
-                        self.context_state,
-                        self.task_payload.deployment_details,
-                        parent_action_name,
-                    )
-                    self.actions[action_resource.action_key] = action
-                    self._initialize_actions(action)
+                action: BaseAction = create_action(
+                    action_resource,
+                    self.context_state,
+                    self.task_payload.deployment_details,
+                )
+                self.actions[action_resource.action_key] = action
+                self._initialize_actions(action)
 
-                except Exception as e:
-                    log.error("Failed to load action {}: {}", action_resource.action_name, e)
-
-        load_and_validate_actions(resources)
+            except Exception as e:
+                log.error("Failed to load action {}: {}", action_resource.action_name, e)
 
     @staticmethod
     def _calculate_optimal_workers(action_resources: List[ActionResource]) -> int:

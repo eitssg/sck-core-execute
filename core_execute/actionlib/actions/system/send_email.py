@@ -74,10 +74,9 @@ class SendEmailAction(BaseAction):
         definition: ActionResource,
         context: dict[str, Any],
         deployment_details: DeploymentDetails,
-        parent_action_name: str | None = None,
     ):
         """Initialize SendEmailAction with validated parameters."""
-        super().__init__(definition, context, deployment_details, parent_action_name)
+        super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
         self.spec = SendEmailActionSpec(**definition.spec)
@@ -112,7 +111,7 @@ class SendEmailAction(BaseAction):
         """
         log.debug("Initializing SendEmailAction {} for rerun", self.name)
 
-        # Call parent initialize to clear status and outputs
+        # Call super initialize to clear status and outputs
         super().initialize()
 
         status = self.get_status()
@@ -141,7 +140,7 @@ class SendEmailAction(BaseAction):
                 log.debug("SendEmailAction {} already executed this Step Function run", self.name)
                 return False
 
-            # Call parent condition checking
+            # Call super condition checking
             if not super().can_execute():
                 return False
 
