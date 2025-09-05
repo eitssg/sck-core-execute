@@ -1,5 +1,6 @@
-from core_framework.models import DeploymentDetails
-from .hook import ActionHook, HookResource
+from core_framework.models import DeploymentDetails, HookResource
+
+from .hook import ActionHook
 from .status import StatusHook
 
 

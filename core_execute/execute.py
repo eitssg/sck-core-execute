@@ -283,6 +283,10 @@ def load_state(task_payload: TaskPayload) -> dict:
         else:
             raise Exception(f"State file unknown content type: {content_type}")
 
+        if not state:
+            log.trace("State file was empty or null, initializing empty state")
+            state = {}
+
         log.debug("Loaded State Content Type: {}", content_type)
         log.debug("Loaded State Data: ", details=state)
 

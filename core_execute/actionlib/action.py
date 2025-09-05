@@ -19,20 +19,11 @@ from core_renderer import Jinja2Renderer
 
 from core_framework.constants import SCOPE_BUILD, SCOPE_COMPONENT
 from core_framework.status import RELEASE_IN_PROGRESS
+from core_framework.models import HookResource
 
 from core_db.dbhelper import update_status, update_item
 
-from .hooks import ActionHook, HookFactory, HookResource
-
-# ACT_NAME = "Name"
-# ACT_KIND = "Kind"
-# ACT_CONDITION = "Condition"
-# ACT_BEFORE = "Before"
-# ACT_AFTER = "After"
-# ACT_LIFECYCLE_HOOKS = "LifecycleHooks"
-# ACT_SAVE_OUTPUTS = "SaveOutputs"
-# ACT_DEPENDS_ON = "DependsOn"
-# ACT_STATUS_HOOOK = "StatusHook"
+from .hooks import ActionHook, HookFactory
 
 STATUS_CODE = "StatusCode"
 STATUS_REASON = "StatusReason"

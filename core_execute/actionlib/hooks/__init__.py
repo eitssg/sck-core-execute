@@ -1,4 +1,4 @@
-from .hook import ActionHook, HookResource
+from .hook import ActionHook
 from .factory import HookFactory
 
-__all__ = ["ActionHook", "HookResource", "HookFactory"]
+__all__ = ["ActionHook", "HookFactory"]

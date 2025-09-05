@@ -9,10 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails
+from core_framework.models import DeploymentDetails, HookResource, HookResourceParameters
 from core_db.event import EventActions, EventItem
 
-from .hook import BasehookParameters, HookResource, ActionHook
+from .hook import ActionHook
 
 
 class StatusHookStateParamters(BaseModel):
@@ -45,7 +45,7 @@ class StatusHookStateParamters(BaseModel):
         return super().model_dump(**kwargs)
 
 
-class StatusHookParameters(BasehookParameters):
+class StatusHookParameters(HookResourceParameters):
     """Top-level parameters for the status hook.
 
     Inherits per-state fields (OnRunning/OnComplete/OnFailed) from BasehookParameters
