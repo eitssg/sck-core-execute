@@ -11,9 +11,21 @@ You can now access your dashboard and start building your cloud infrastructure. 
 🔐 ACCOUNT INFORMATION
 ======================
 Email: {{user_name}}
-Login: {{temp_password}}
 
-For security reasons, we recommend changing your password after your first login.
+{% if verification_url %}
+✅ VERIFY YOUR EMAIL ADDRESS
+===========================
+{% if is_resend %}
+This is a reminder to verify your email address.
+{% endif %}
+To secure your account and enable full access, please confirm your email address by visiting this link:
+
+{{verification_url}}
+
+{% if verification_expires_minutes %}
+Note: This link expires in {{verification_expires_minutes}} minutes. If it expires, you can request a new verification email from the login page.
+{% endif %}
+{% endif %}
 
 🌟 PLATFORM FEATURES
 ====================

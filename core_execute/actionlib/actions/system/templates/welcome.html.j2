@@ -161,17 +161,27 @@
                 <p>You can now access your dashboard and start building your cloud infrastructure. Our platform provides everything you need to deploy, manage, and scale your applications.</p>
             </div>
 
-            {% if temp_password %}
-            <div class="credentials">
-                <h3>🔐 Account Information</h3>
-                <p><strong>Email:</strong> {{ user_name }}</p>
-                <p><strong>Temporary Password:</strong> <code>{{ temp_password }}</code></p>
-                <p><em>For security reasons, we recommend changing your password after your first login.</em></p>
-            </div>
-            {% else %}
+            
+
+            {% if verification_url %}
             <div class="info-box">
-                <h3>🔐 Set Your Password</h3>
-                <p>Please use the "Forgot Password" link on the login page to set your password securely.</p>
+                <h3>✅ Verify Your Email Address</h3>
+                {% if is_resend %}
+                <p style="margin-top:0;color:#6c757d;">This is a reminder to verify your email address.</p>
+                {% endif %}
+                <p>To secure your account and enable full access, please confirm your email address by clicking the button below.</p>
+                <div style="text-align: center;">
+                    <a href="{{ verification_url }}" class="button">Verify Email Address</a>
+                </div>
+                <p style="font-size:14px;color:#6c757d;margin-top:10px;">
+                    If the button doesn't work, copy and paste this link into your browser:<br />
+                    <span style="word-break: break-all;"><code>{{ verification_url }}</code></span>
+                </p>
+                {% if verification_expires_minutes %}
+                <p style="font-size:12px;color:#6c757d;margin-top:6px;">
+                    This link expires in {{ verification_expires_minutes }} minutes. If it expires, you can request a new verification email from the login page.
+                </p>
+                {% endif %}
             </div>
             {% endif %}
 
