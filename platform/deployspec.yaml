@@ -1,18 +1,16 @@
-{# 
+--- 
 
-aws cloudformation deploy \
-  --template-file core_execute_cf.yaml \
-  --stack-name core-execute-stack \
-  --parameter-overrides \
-    Client=myclient \
-    Environment=prod \
-    AlertEmail=ops@company.com \
-    PipelineProvisioningRoleArn=arn:aws:iam::123456789012:role/pipeline-role \
-    LambdaCodeBucket=my-lambda-bucket \
-    LambdaCodeKey=core-execute-1.0.0.zip \
-  --capabilities CAPABILITY_NAMED_IAM 
-  
-  #}
+# aws cloudformation deploy \
+#   --template-file core_execute_cf.yaml \
+#   --stack-name core-execute-stack \
+#   --parameter-overrides \
+#     Client=myclient \
+#     Environment=prod \
+#     AlertEmail=ops@company.com \
+#     PipelineProvisioningRoleArn=arn:aws:iam::123456789012:role/pipeline-role \
+#     LambdaCodeBucket=my-lambda-bucket \
+#     LambdaCodeKey=core-execute-1.0.0.zip \
+#   --capabilities CAPABILITY_NAMED_IAM 
 
 - apiVersion: v1
   kind: create-stack

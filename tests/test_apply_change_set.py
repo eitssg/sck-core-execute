@@ -1,6 +1,4 @@
-from typing import Any
 import traceback
-from unittest import mock
 import pytest
 from unittest.mock import MagicMock
 from datetime import datetime, timezone
@@ -20,7 +18,7 @@ from .aws_fixtures import *
 
 # Scope this so it's created fresh for each test
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -54,7 +52,7 @@ def deploy_spec():
 
     validate_params = ApplyChangeSetActionSpec(**params)
 
-    action_resource = ApplyChangeSetActionResource(**{"params": validate_params.model_dump()})
+    action_resource = ApplyChangeSetActionResource(**{"name": "test-one", "spec": validate_params.model_dump()})
 
     return DeploySpec(actions=[action_resource])
 

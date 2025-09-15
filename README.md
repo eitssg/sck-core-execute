@@ -1,5 +1,7 @@
 # Core-Execute
 
+> Copilot: See [local instructions](.github/copilot-instructions.md) and [root guidance](../../.github/copilot-instructions.md) for precedence and module rules.
+
 The execute is a module responsible for executing functios as defined by the "&lt;task&gt;.actions"
 file which contains Action Definitions.
 
