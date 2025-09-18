@@ -49,10 +49,10 @@ Parameters:
     AllowedPattern: '^([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})?$'
     ConstraintDescription: 'Must be a valid email address or empty'
 
- Conditions:
-   HasScope: !Not [!Equals [!Ref Scope, '']]
-   IsProduction: !Equals [!Ref Environment, 'prod']
-   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+Conditions:
+  HasScope: !Not [!Equals [!Ref Scope, '']]
+  IsProduction: !Equals [!Ref Environment, 'prod']
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
 
 Resources:
   # IAM Role for Step Functions
@@ -187,42 +187,42 @@ Resources:
                   - xray:PutTelemetryRecords
                 Resource: '*'
 
-   # Lambda Function
-   CoreExecuteLambda:
-     Type: AWS::Lambda::Function
-     Properties:
-       FunctionName: !If
-         - HasScope
-         - !Sub '${Scope}${Client}-core-execute-lambda'
-         - !Sub '${Client}-core-execute-lambda'
-       Runtime: python3.12
-       Handler: core_execute.handler.handler
-       Role: !GetAtt CoreExecuteLambdaRole.Arn
-       Code:
-         S3Bucket: !Ref LambdaCodeBucket
-         S3Key: !Ref LambdaCodeKey
-       Timeout: 900  # 15 minutes max
-       MemorySize: !If [IsProduction, 1024, 512]
-       ReservedConcurrencyLimit: !If [IsProduction, 10, 2]
-       Environment:
-         Variables:
-           SCOPE: !Ref Scope
-           CLIENT: !Ref Client
-           REGION: !Ref AWS::Region
-           ENVIRONMENT: !Ref Environment
-           LOG_LEVEL: !If [IsProduction, 'INFO', 'DEBUG']
-       Description: 'Core Execute Lambda for processing automation actions'
-       DeadLetterConfig:
-         TargetArn: !GetAtt CoreExecuteDeadLetterQueue.Arn
-       TracingConfig:
-         Mode: Active
-       Tags:
-         - Key: Client
-           Value: !Ref Client
-         - Key: Environment  
-           Value: !Ref Environment
-         - Key: Component
-           Value: 'core-execute'
+    # Lambda Function
+  CoreExecuteLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !If
+        - HasScope
+        - !Sub '${Scope}${Client}-core-execute-lambda'
+        - !Sub '${Client}-core-execute-lambda'
+      Runtime: python3.12
+      Handler: core_execute.handler.handler
+      Role: !GetAtt CoreExecuteLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Timeout: 900  # 15 minutes max
+      MemorySize: !If [IsProduction, 1024, 512]
+      ReservedConcurrencyLimit: !If [IsProduction, 10, 2]
+      Environment:
+        Variables:
+          SCOPE: !Ref Scope
+          CLIENT: !Ref Client
+          REGION: !Ref AWS::Region
+          ENVIRONMENT: !Ref Environment
+          LOG_LEVEL: !If [IsProduction, 'INFO', 'DEBUG']
+      Description: 'Core Execute Lambda for processing automation actions'
+      DeadLetterConfig:
+        TargetArn: !GetAtt CoreExecuteDeadLetterQueue.Arn
+      TracingConfig:
+        Mode: Active
+      Tags:
+        - Key: Client
+          Value: !Ref Client
+        - Key: Environment  
+          Value: !Ref Environment
+        - Key: Component
+          Value: 'core-execute'
 
   # Dead Letter Queue for Lambda
   CoreExecuteDeadLetterQueue:
