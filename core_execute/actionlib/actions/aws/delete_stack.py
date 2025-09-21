@@ -95,7 +95,10 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
         """Return True if the action can be reinitialized (no deletion in progress)."""
         stack_status = self.get_state("CurrentStackStatus") or self.get_state("InitialStackStatus")
         if stack_status and "DELETE_IN_PROGRESS" in stack_status:
-            log.warning("Cannot reinitialize DeleteStackAction - stack deletion in progress: {}", stack_status)
+            log.warning(
+                "Cannot reinitialize DeleteStackAction - stack deletion in progress: {}",
+                stack_status,
+            )
             return False
 
         return True
@@ -211,7 +214,10 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
             self.set_output("DeletionCompleted", True)
             self.set_output("DeletionResult", "ALREADY_DELETED")
 
-            log.info("Stack '{}' does not exist - already deleted (common in teardown)", self.spec.stack_name)
+            log.info(
+                "Stack '{}' does not exist - already deleted (common in teardown)",
+                self.spec.stack_name,
+            )
             self.set_complete(f"Stack '{self.spec.stack_name}' already deleted")
             return
 
@@ -225,7 +231,11 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
         self.set_output("StackId", stack_id)
         self.set_output("StackStatus", stack_status)
 
-        log.info("Found stack '{}' with status '{}' for teardown", self.spec.stack_name, stack_status)
+        log.info(
+            "Found stack '{}' with status '{}' for teardown",
+            self.spec.stack_name,
+            stack_status,
+        )
 
         if stack_status == "DELETE_COMPLETE":
             # Stack already deleted
@@ -249,7 +259,11 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
             self.set_running(f"Stack '{self.spec.stack_name}' deletion already in progress")
             return
 
-        elif stack_status in ["CREATE_FAILED", "ROLLBACK_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"]:
+        elif stack_status in [
+            "CREATE_FAILED",
+            "ROLLBACK_COMPLETE",
+            "UPDATE_ROLLBACK_COMPLETE",
+        ]:
             # Stack is in a failed state - can still be deleted
             log.info(
                 "Stack '{}' is in failed state '{}' - proceeding with deletion",
@@ -292,7 +306,10 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
             # Handle common teardown errors gracefully
             if error_code == "ValidationError" and "does not exist" in error_message:
                 # Stack was deleted between status check and delete call
-                log.info("Stack '{}' no longer exists (deleted during execution)", self.spec.stack_name)
+                log.info(
+                    "Stack '{}' no longer exists (deleted during execution)",
+                    self.spec.stack_name,
+                )
                 self.set_state("DeletionCompleted", True)
                 self.set_state("DeletionResult", "ALREADY_DELETED")
                 self.set_complete(f"Stack '{self.spec.stack_name}' already deleted")

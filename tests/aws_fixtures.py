@@ -61,9 +61,7 @@ def mock_session_credentials(mock_credentials):
     mock_frozen_credentials.token = mock_credentials["SessionToken"]
 
     mock_session_credentials = MagicMock()
-    mock_session_credentials.get_frozen_credentials.return_value = (
-        mock_frozen_credentials
-    )
+    mock_session_credentials.get_frozen_credentials.return_value = mock_frozen_credentials
 
     return mock_session_credentials
 

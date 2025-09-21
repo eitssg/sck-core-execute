@@ -494,7 +494,11 @@ class ActionFactory:
                 "input_data": definition.params,
                 "error_count": e.error_count(),
             }
-            log.error("Parameter validation failed for action '{}': {}", definition.action_name, e)
+            log.error(
+                "Parameter validation failed for action '{}': {}",
+                definition.action_name,
+                e,
+            )
             log.debug("Detailed validation errors: ", details=error_details)
 
             # Create a comprehensive error message

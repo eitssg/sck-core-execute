@@ -167,7 +167,11 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
         """Return True if the action can be reinitialized (no CFN operation in progress)."""
         # Check if we're in middle of a critical operation
         stack_status = self.get_state("StackStatus")
-        if stack_status in ["DELETE_IN_PROGRESS", "CREATE_IN_PROGRESS", "UPDATE_IN_PROGRESS"]:
+        if stack_status in [
+            "DELETE_IN_PROGRESS",
+            "CREATE_IN_PROGRESS",
+            "UPDATE_IN_PROGRESS",
+        ]:
             log.warning(
                 "Cannot reinitialize CreateStackAction - stack operation in progress: {}",
                 stack_status,
@@ -226,7 +230,12 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             if key.startswith(f"{self.name}/") and not key.endswith("/StatusCode"):
                 # Check if it looks like a CloudFormation output
                 base_key = key.replace(f"{self.name}/", "")
-                if base_key not in cf_state_keys and not base_key in ["Account", "Region", "StackName", "TemplateUrl"]:
+                if base_key not in cf_state_keys and not base_key in [
+                    "Account",
+                    "Region",
+                    "StackName",
+                    "TemplateUrl",
+                ]:
                     output_keys_to_clear.append(key)
 
         for key in output_keys_to_clear:
@@ -367,9 +376,16 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             if "does not exist" in e.response["Error"]["Message"]:
                 stack_exists = False
                 self.set_state("StackExists", False)
-                log.info("Stack '{}' does not exist - will create new stack", self.spec.stack_name)
+                log.info(
+                    "Stack '{}' does not exist - will create new stack",
+                    self.spec.stack_name,
+                )
             else:
-                log.error("Error describing stack '{}': {}", self.spec.stack_name, e.response["Error"]["Message"])
+                log.error(
+                    "Error describing stack '{}': {}",
+                    self.spec.stack_name,
+                    e.response["Error"]["Message"],
+                )
                 self.set_failed(f"Failed to describe stack '{self.spec.stack_name}': {e.response['Error']['Message']}")
                 return
         except Exception as e:
@@ -445,7 +461,10 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
 
             # Handle specific CloudFormation errors
             if error_code == "AlreadyExistsException":
-                log.warning("Stack '{}' already exists, will attempt update", self.spec.stack_name)
+                log.warning(
+                    "Stack '{}' already exists, will attempt update",
+                    self.spec.stack_name,
+                )
                 self.set_state("StackExists", True)
                 self.set_failed(f"Stack '{self.spec.stack_name}' already exists")
             elif error_code == "InsufficientCapabilitiesException":
@@ -516,7 +535,10 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
                 changes = change_set_details.get("Changes", [])
                 if not changes:
                     # No changes detected
-                    log.debug("No changes detected in change set for stack '{}'", self.spec.stack_name)
+                    log.debug(
+                        "No changes detected in change set for stack '{}'",
+                        self.spec.stack_name,
+                    )
 
                     # Delete the empty change set
                     cfn_client.delete_change_set(StackName=stack_id, ChangeSetName=change_set_name)
@@ -563,7 +585,12 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             error_message = e.response["Error"]["Message"]
-            log.error("Error updating stack '{}': {} - {}", self.spec.stack_name, error_code, error_message)
+            log.error(
+                "Error updating stack '{}': {} - {}",
+                self.spec.stack_name,
+                error_code,
+                error_message,
+            )
             self.set_failed(f"Failed to update stack '{self.spec.stack_name}': {error_message}")
         except Exception as e:
             log.error("Unexpected error updating stack '{}': {}", self.spec.stack_name, e)
@@ -608,7 +635,11 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             self.set_output("StackStatus", stack_status)
 
             # Status classification
-            creation_complete_states = ["CREATE_COMPLETE", "UPDATE_COMPLETE", "IMPORT_COMPLETE"]
+            creation_complete_states = [
+                "CREATE_COMPLETE",
+                "UPDATE_COMPLETE",
+                "IMPORT_COMPLETE",
+            ]
             creation_failed_states = [
                 "CREATE_FAILED",
                 "UPDATE_FAILED",
@@ -681,7 +712,11 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
                 self.set_running(f"Stack in unknown state: {stack_status}")
 
         except ClientError as e:
-            log.error("Failed to describe stack '{}': {}", stack_id, e.response["Error"]["Message"])
+            log.error(
+                "Failed to describe stack '{}': {}",
+                stack_id,
+                e.response["Error"]["Message"],
+            )
             self.set_failed(f"Failed to describe stack '{stack_id}': {e.response['Error']['Message']}")
             return
         except Exception as e:
@@ -719,7 +754,11 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             self.set_running(f"Deleting stack '{self.spec.stack_name}'")
 
         except ClientError as e:
-            log.error("Failed to delete stack '{}': {}", stack_id, e.response["Error"]["Message"])
+            log.error(
+                "Failed to delete stack '{}': {}",
+                stack_id,
+                e.response["Error"]["Message"],
+            )
             self.set_failed(f"Failed to delete stack '{stack_id}': {e.response['Error']['Message']}")
         except Exception as e:
             log.error("Unexpected error deleting stack '{}': {}", stack_id, e)
@@ -750,7 +789,11 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             if "No updates are currently in progress" in e.response["Error"]["Message"]:
                 self.set_complete("No stack operation in progress to cancel")
             else:
-                log.warning("Failed to cancel stack operation '{}': {}", stack_id, e.response["Error"]["Message"])
+                log.warning(
+                    "Failed to cancel stack operation '{}': {}",
+                    stack_id,
+                    e.response["Error"]["Message"],
+                )
                 self.set_complete("Stack operation cancellation failed")
         except Exception as e:
             log.warning("Unexpected error cancelling stack operation '{}': {}", stack_id, e)
@@ -833,7 +876,12 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
 
                 if output_key and output_value is not None:
                     self.set_output(output_key, output_value)
-                    log.trace("Saved stack output: {} = {} ({})", output_key, output_value, output_description)
+                    log.trace(
+                        "Saved stack output: {} = {} ({})",
+                        output_key,
+                        output_value,
+                        output_description,
+                    )
 
             self.set_state("StackOutputCount", output_count)
             self.set_output("StackOutputCount", output_count)
@@ -888,7 +936,11 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             self.set_state("StackResourceTypes", resource_counts)
             self.set_output("StackResourceCount", len(resources))
 
-            log.debug("Stack contains {} resources across {} types", len(resources), len(resource_counts))
+            log.debug(
+                "Stack contains {} resources across {} types",
+                len(resources),
+                len(resource_counts),
+            )
 
         except Exception as e:
             log.warning("Failed to capture resource summary: {}", e)

@@ -9,7 +9,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import core_logging as log
 
-from core_framework.models import DeploymentDetails, HookResource, HookResourceParameters
+from core_framework.models import (
+    DeploymentDetails,
+    HookResource,
+    HookResourceParameters,
+)
 from core_db.event import EventActions, EventItem
 
 from .hook import ActionHook
@@ -76,7 +80,14 @@ class StatusHookParameters(HookResourceParameters):
         if not isinstance(values, dict):
             return values
 
-        for state_key in ["on_running", "OnRunning", "on_complete", "OnComplete", "on_failed", "OnFailed"]:
+        for state_key in [
+            "on_running",
+            "OnRunning",
+            "on_complete",
+            "OnComplete",
+            "on_failed",
+            "OnFailed",
+        ]:
             state_params = values.get(state_key)
             if isinstance(state_params, dict):
                 values[state_key] = StatusHookStateParamters.model_validate(state_params)

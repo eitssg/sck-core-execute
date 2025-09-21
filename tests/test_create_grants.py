@@ -7,7 +7,9 @@ import core_framework as util
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.kms.create_grants import CreateGrantsActionResource
+from core_execute.actionlib.actions.aws.kms.create_grants import (
+    CreateGrantsActionResource,
+)
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
