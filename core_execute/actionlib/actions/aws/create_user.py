@@ -225,7 +225,10 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
 
             # Attach policies to the user
             if not self.spec.roles:
-                log.warning("No roles specified for user '{}', skipping role attachment", user_name)
+                log.warning(
+                    "No roles specified for user '{}', skipping role attachment",
+                    user_name,
+                )
                 continue
 
             if isinstance(self.spec.roles, str):
@@ -235,7 +238,10 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
 
             try:
                 policy_name, policy_document = self._attach_inline_policy_to_user(iam_client, user_name, self.spec.roles)
-                log.info("Successfully attached/updated role assumption policy for user '{}'", user_name)
+                log.info(
+                    "Successfully attached/updated role assumption policy for user '{}'",
+                    user_name,
+                )
                 users_with_policies.append(user_name)
 
                 # ADD THIS - Store the final policy for this user
@@ -263,7 +269,11 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
                 )
                 continue
             except Exception as e:
-                log.error("Unexpected error attaching/updating policy for user '{}': {}", user_name, e)
+                log.error(
+                    "Unexpected error attaching/updating policy for user '{}': {}",
+                    user_name,
+                    e,
+                )
                 failed_users.append(
                     {
                         "UserName": user_name,
@@ -409,7 +419,10 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
 
             except ClientError as e:
                 if e.response["Error"]["Code"] == "NoSuchEntity":
-                    log.debug("No existing policy found for user '{}', will create new one", user_name)
+                    log.debug(
+                        "No existing policy found for user '{}', will create new one",
+                        user_name,
+                    )
                     existing_policy = None
                 else:
                     raise
@@ -434,12 +447,21 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
                 PolicyDocument=util.to_json(policy_document),
             )
 
-            log.info("Successfully set inline policy '{}' for user '{}'", policy_name, user_name)
+            log.info(
+                "Successfully set inline policy '{}' for user '{}'",
+                policy_name,
+                user_name,
+            )
 
             return policy_name, policy_document
 
         except ClientError as e:
-            log.error("Failed to set inline policy '{}' for user '{}': {}", policy_name, user_name, e)
+            log.error(
+                "Failed to set inline policy '{}' for user '{}': {}",
+                policy_name,
+                user_name,
+                e,
+            )
             raise
 
     def _replace_assume_role_resources(self, existing_policy: dict, new_role_arns: set) -> dict:
@@ -480,7 +502,10 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
                 log.debug("Replaced sts:AssumeRole resources in existing statement")
             else:
                 updated_policy["Statement"].append(statement)
-                log.debug("Preserved non-AssumeRole statement: {}", statement.get("Effect", "Unknown"))
+                log.debug(
+                    "Preserved non-AssumeRole statement: {}",
+                    statement.get("Effect", "Unknown"),
+                )
 
         if not assume_role_statement_found:
             new_statement = {

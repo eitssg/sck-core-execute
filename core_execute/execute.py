@@ -54,7 +54,11 @@ def timeout_imminent(context: Any | None = None) -> bool:
     is_imminent = remaining_time_in_millis < timeout_threshold_ms
 
     if is_imminent:
-        log.debug("Timeout imminent: {} ms remaining (threshold: {} ms)", remaining_time_in_millis, timeout_threshold_ms)
+        log.debug(
+            "Timeout imminent: {} ms remaining (threshold: {} ms)",
+            remaining_time_in_millis,
+            timeout_threshold_ms,
+        )
 
     return is_imminent
 

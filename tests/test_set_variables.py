@@ -3,7 +3,9 @@ import pytest
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.system.set_variables import SetVariablesActionResource
+from core_execute.actionlib.actions.system.set_variables import (
+    SetVariablesActionResource,
+)
 from core_execute.handler import handler as execute_handler
 
 from core_execute.execute import save_state, save_actions, load_state

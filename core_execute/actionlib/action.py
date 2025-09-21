@@ -833,7 +833,11 @@ class BaseAction(Generic[SpecType]):
             hook_type: Lifecycle hook type (e.g., "running", "complete", "failed")
             reason: Reason for the lifecycle event
         """
-        log.trace("Executing lifecycle hooks of type '{}' for action '{}'", hook_type, self.name)
+        log.trace(
+            "Executing lifecycle hooks of type '{}' for action '{}'",
+            hook_type,
+            self.name,
+        )
 
         all_success = True
         for hook_resource in self.lifecycle_hooks:

@@ -38,7 +38,9 @@ class SendEmailActionSpec(ActionSpec):
     subject: str = Field(..., description="Email subject", alias="Subject")
     template_type: str = Field(..., description="Type of email template", alias="TemplateType")
     template_data: Dict[str, Any] = Field(
-        default_factory=dict, description="Data to populate the email template", alias="TemplateData"
+        default_factory=dict,
+        description="Data to populate the email template",
+        alias="TemplateData",
     )
 
 
@@ -137,7 +139,10 @@ class SendEmailAction(BaseAction[SendEmailActionSpec]):
                 return False
 
             if not self.spec.template_type:
-                log.debug("SendEmailAction {} missing required template_type parameter", self.name)
+                log.debug(
+                    "SendEmailAction {} missing required template_type parameter",
+                    self.name,
+                )
                 return False
 
             return True
@@ -172,7 +177,10 @@ class SendEmailAction(BaseAction[SendEmailActionSpec]):
 
             # Check if at least one template was rendered
             if not self.template_html and not self.template_txt:
-                log.error("No templates could be rendered for template_type: {}", template_name)
+                log.error(
+                    "No templates could be rendered for template_type: {}",
+                    template_name,
+                )
                 self.set_failed(f"No templates available for template_type: {template_name}")
                 return
 

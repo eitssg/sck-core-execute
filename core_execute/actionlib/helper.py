@@ -112,7 +112,10 @@ class Helper:
                     initialized = False
 
                 if not initialized:
-                    log.debug("Action {} cannot be (re)initialized, keeping existing status", action.action_name)
+                    log.debug(
+                        "Action {} cannot be (re)initialized, keeping existing status",
+                        action.action_name,
+                    )
 
             status = action.get_status()
             if status == StatusCode.PENDING:
@@ -124,7 +127,11 @@ class Helper:
             elif status == StatusCode.FAILED:
                 self.number_failed += 1
 
-            log.debug("Action {} loaded with status: {}", action.action_name, action.get_status())
+            log.debug(
+                "Action {} loaded with status: {}",
+                action.action_name,
+                action.get_status(),
+            )
 
     def is_action_complete(self, action_resource: ActionResource) -> bool:
         """Check if action is complete."""
@@ -169,18 +176,28 @@ class Helper:
             Number of actions submitted for execution
         """
         if not self._dependents_complete(action_resource):
-            log.debug("Action {} blocked by incomplete dependencies", action_resource.action_name)
+            log.debug(
+                "Action {} blocked by incomplete dependencies",
+                action_resource.action_name,
+            )
             return
 
         action = self.actions.get(action_resource.action_key)
 
         if not action.can_execute():
-            log.debug("Action {} cannot be executed in its current state: {}", action_resource.action_name, action.get_status())
+            log.debug(
+                "Action {} cannot be executed in its current state: {}",
+                action_resource.action_name,
+                action.get_status(),
+            )
             return
 
         if not self.slots.acquire(blocking=False):
             # pool “full” – defer submission
-            log.debug("Execution slots full, deferring execution of action {}", action_resource.action_name)
+            log.debug(
+                "Execution slots full, deferring execution of action {}",
+                action_resource.action_name,
+            )
             return
 
         if self.use_threading:
@@ -188,7 +205,10 @@ class Helper:
                 future = self.executor.submit(self._execute_action_wrapper, action)
                 future.add_done_callback(lambda f: self.slots.release())
                 self.running_futures[action.action_name] = future
-                log.debug("Submitted action {} to thread pool (worker thread)", action.action_name)
+                log.debug(
+                    "Submitted action {} to thread pool (worker thread)",
+                    action.action_name,
+                )
         else:
             self._execute_action_wrapper(action)
             self.slots.release()
@@ -203,13 +223,21 @@ class Helper:
         for resource in action_resource.depends_on or []:
             action = self.actions.get(resource)
             if action is None or action.get_status() != StatusCode.COMPLETE:
-                log.debug("Action {} blocked by dependency {}", action_resource.action_name, resource)
+                log.debug(
+                    "Action {} blocked by dependency {}",
+                    action_resource.action_name,
+                    resource,
+                )
                 return False
 
         for resource in action_resource.after or []:
             action = self.actions.get(resource)
             if action is None or action.get_status() != StatusCode.COMPLETE:
-                log.debug("Action {} blocked by after dependency {}", action_resource.action_name, resource)
+                log.debug(
+                    "Action {} blocked by after dependency {}",
+                    action_resource.action_name,
+                    resource,
+                )
                 return False
 
         return True
