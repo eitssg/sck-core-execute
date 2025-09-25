@@ -185,7 +185,7 @@ class ShareImageAction(BaseAction[ShareImageActionSpec]):
             # Obtain an EC2 client
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
 
             log.debug(f"Finding AMI image with name '{self.spec.image_name}'")
@@ -262,7 +262,7 @@ class ShareImageAction(BaseAction[ShareImageActionSpec]):
             # Obtain an EC2 client
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Remove launch permissions

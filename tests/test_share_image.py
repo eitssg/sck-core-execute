@@ -16,9 +16,11 @@ from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
 
+action_name = "action-aws-shareimage-name"
+
 
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -33,58 +35,83 @@ def task_payload():
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     """
-    validated_params = ShareImageActionSpec(
-        **{
-            "Account": "1234567890123",
-            "Region": util.get_region(),
-            "ImageName": "ami-1234567890abcdef0",
-            "AccountsToShare": ["123456789012", "098765432109"],
-            "Siblings": ["123456789012", "098765432109"],
-            "Tags": {"Environment": "production", "Project": "test-project"},
-        }
-    )
+    params = {
+        "Account": "1234567890123",
+        "Region": util.get_region(),
+        "ImageName": "ami-1234567890abcdef0",
+        "AccountsToShare": ["123456789012", "098765432109"],
+        "Siblings": ["123456789012", "098765432109"],
+        "Tags": {"Environment": "production", "Project": "test-project"},
+    }
+    spec = ShareImageActionSpec.model_validate(params)
 
-    action_resource = ShareImageActionResource(Spec=validated_params.model_dump())
+    action_resource = ShareImageActionResource(name=action_name, spec=spec)
 
     return DeploySpec(actions=[action_resource])
+
+
+def mock_the_client(mock_client):
+    mock_client.describe_images.return_value = {
+        "Images": [
+            {
+                "ImageId": "ami-1234567890abcdef0",
+                "Name": "ami-1234567890abcdef0",
+                "State": "available",
+                "OwnerId": "1234567890123",
+            }
+        ]
+    }
+
+    # Mock modify_image_attribute to simulate successful permission modification
+    mock_client.modify_image_attribute.return_value = {
+        "ResponseMetadata": {
+            "RequestId": "test-request-id-123",
+            "HTTPStatusCode": 200,
+        }
+    }
 
 
 def test_share_image(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the share image action successful execution."""
     try:
         # Create mock EC2 client with proper method implementations
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            "ec2",
+            client_type="source",
+            aws_account_id="1234567890123",
+            region_name=util.get_region(),
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("1234567890123")),
+        )
+        mock_the_client(mock_client)
+
+        mock_client_1 = mock_session().client(
+            "ec2",
+            client_type="target1",
+            aws_account_id="123456789012",
+            region_name=util.get_region(),
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
+        mock_the_client(mock_client_1)
+
+        mock_client_2 = mock_session().client(
+            "ec2",
+            client_type="target2",
+            aws_account_id="098765432109",
+            region_name=util.get_region(),
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("098765432109")),
+        )
+        mock_the_client(mock_client_2)
 
         # Mock describe_images to return a found AMI
-        mock_client.describe_images.return_value = {
-            "Images": [
-                {
-                    "ImageId": "ami-1234567890abcdef0",
-                    "Name": "ami-1234567890abcdef0",
-                    "State": "available",
-                    "OwnerId": "1234567890123",
-                }
-            ]
-        }
-
-        # Mock modify_image_attribute to simulate successful permission modification
-        mock_client.modify_image_attribute.return_value = {
-            "ResponseMetadata": {
-                "RequestId": "test-request-id-123",
-                "HTTPStatusCode": 200,
-            }
-        }
-
-        mock_session.client.return_value = mock_client
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -103,8 +130,6 @@ def test_share_image(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_se
 
         # Load the saved state to verify completion
         state = load_state(updated_payload)
-
-        namespace = "share-image"
 
         # Verify EC2 describe_images was called correctly
         mock_client.describe_images.assert_called_once_with(Filters=[{"Name": "name", "Values": ["ami-1234567890abcdef0"]}])
@@ -129,11 +154,11 @@ def test_share_image(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_se
 
         # Verify state tracking
         assert state is not None, "State should not be None"
-        assert state.get(f"{namespace}/status") == "success", "Action should have completed successfully"
-        assert state.get(f"{namespace}/image_id") == "ami-1234567890abcdef0", "Should track the shared image ID"
+        assert state.get(f"var/{action_name}/status") == "success", "Action should have completed successfully"
+        assert state.get(f"var/{action_name}/image_id") == "ami-1234567890abcdef0", "Should track the shared image ID"
 
         # Verify shared accounts are tracked
-        shared_accounts = state.get(f"{namespace}/shared_accounts")
+        shared_accounts = state.get(f"var/{action_name}/shared_accounts")
         assert shared_accounts is not None, "Should track shared accounts"
         assert len(shared_accounts) == 2, "Should have shared with 2 accounts"
         assert "123456789012" in shared_accounts
@@ -146,14 +171,20 @@ def test_share_image(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_se
 
 def test_share_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the share image action when AMI is not found."""
+    reset()
+
     try:
         # Create mock EC2 client
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            "ec2",
+            client_type="target",
+            aws_account_id="1234567890123",
+            region_name=util.get_region(),
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("1234567890123")),
+        )
 
         # Mock describe_images to return no images (image not found)
         mock_client.describe_images.return_value = {"Images": []}
-
-        mock_session.client.return_value = mock_client
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -168,12 +199,13 @@ def test_share_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySpe
 
         # Load state
         state = load_state(updated_payload)
-        namespace = "share-image"
 
         # Verify behavior when image not found
-        assert state.get(f"{namespace}/status") == "skipped", "Should skip when image not found"
-        assert f"{namespace}/error_message" in state, "Should have error message"
-        assert "does not exist" in state.get(f"{namespace}/error_message", ""), "Error message should mention image doesn't exist"
+        assert state.get(f"var/{action_name}/status") == "skipped", "Should skip when image not found"
+        assert f"var/{action_name}/error_message" in state, "Should have error message"
+        assert "does not exist" in state.get(
+            f"var/{action_name}/error_message", ""
+        ), "Error message should mention image doesn't exist"
 
         # Verify modify_image_attribute was NOT called
         mock_client.modify_image_attribute.assert_not_called()

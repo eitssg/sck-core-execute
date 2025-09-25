@@ -111,7 +111,7 @@ class UnprotectELBAction(BaseAction[UnprotectELBActionSpec]):
             # Create ELBv2 client
             elbv2_client = aws.elbv2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
 
             log.debug(f"Removing deletion protection from load balancer: {self.spec.load_balancer}")
@@ -167,7 +167,7 @@ class UnprotectELBAction(BaseAction[UnprotectELBActionSpec]):
             # Create ELBv2 client
             elbv2_client = aws.elbv2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Get current load balancer attributes
@@ -214,7 +214,7 @@ class UnprotectELBAction(BaseAction[UnprotectELBActionSpec]):
             # Create ELBv2 client
             elbv2_client = aws.elbv2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Re-enable deletion protection

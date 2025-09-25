@@ -116,7 +116,7 @@ class GetStackReferencesAction(BaseAction[GetStackReferencesActionSpec]):
         # Obtain a CloudFormation client
         cfn_client = aws.cfn_client(
             region=self.spec.region,
-            role=util.get_provisioning_role_arn(self.spec.account),
+            role_arn=util.get_provisioning_role_arn(self.spec.account),
         )
 
         try:

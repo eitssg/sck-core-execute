@@ -87,7 +87,7 @@ class ModifyDbInstanceAction(BaseAction[ModifyDbInstanceActionSpec]):
         # Obtain an RDS client
         rds_client = aws.rds_client(
             region=self.spec.region,
-            role=util.get_provisioning_role_arn(self.spec.account),
+            role_arn=util.get_provisioning_role_arn(self.spec.account),
         )
 
         self.set_running("Modifying DB instance")
@@ -125,7 +125,7 @@ class ModifyDbInstanceAction(BaseAction[ModifyDbInstanceActionSpec]):
         """
         rds_client = aws.rds_client(
             region=self.spec.region,
-            role=util.get_provisioning_role_arn(self.spec.account),
+            role_arn=util.get_provisioning_role_arn(self.spec.account),
         )
 
         response = rds_client.describe_db_instances(DBInstanceIdentifier=self.spec.api_params["DBInstanceIdentifier"])

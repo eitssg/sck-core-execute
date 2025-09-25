@@ -1,6 +1,9 @@
 import traceback
+from webbrowser import get
 import pytest
 from unittest.mock import MagicMock
+
+from botocore.exceptions import ClientError
 
 import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
@@ -15,9 +18,11 @@ from core_execute.handler import handler as execute_handler
 
 from .aws_fixtures import *
 
+action_name = "test-get-stack-references"
+
 
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -36,7 +41,7 @@ def task_payload():
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a sample deploy spec for get stack references testing.
     """
@@ -45,15 +50,9 @@ def deploy_spec():
         "Region": "us-east-1",
         "StackName": "test-stack-name",
     }
-    action_resource = GetStackReferencesActionResource(
-        **{
-            "name": "test-get-stack-references",
-            "kind": "AWS::GetStackReferences",
-            "params": params,
-            "scope": "build",
-        }
-    )
-    return DeploySpec(**{"actions": [action_resource]})
+    spec = GetStackReferencesActionSpec.model_validate(params)
+    action_resource = GetStackReferencesActionResource(name=action_name, spec=spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_get_stack_references_action_with_references(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
@@ -61,10 +60,13 @@ def test_get_stack_references_action_with_references(task_payload: TaskPayload, 
 
     try:
         # Mock CloudFormation client
-        mock_cfn_client = MagicMock()
-
-        # Configure the mock chain for CloudFormation
-        mock_session.client.return_value = mock_cfn_client
+        mock_cfn_client = mock_session().client(
+            "cloudformation",
+            client_type="target",
+            aws_account_id="123456789012",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
 
         # Mock the list_imports response with sample importing stacks
         mock_list_imports_response = {"Imports": ["importing-stack-1", "importing-stack-2", "importing-stack-3"]}
@@ -141,12 +143,17 @@ def test_get_stack_references_action_with_references(task_payload: TaskPayload, 
 def test_get_stack_references_action_export_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the get stack references action when export doesn't exist."""
 
+    reset()
+
     try:
         # Mock CloudFormation client
-        mock_cfn_client = MagicMock()
-
-        # Configure the mock chain
-        mock_session.client.return_value = mock_cfn_client
+        mock_cfn_client = mock_session().client(
+            "cloudformation",
+            client_type="target",
+            aws_account_id="123456789012",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
 
         # Mock ClientError for non-existent export
         from botocore.exceptions import ClientError
@@ -205,15 +212,17 @@ def test_get_stack_references_action_export_not_found(task_payload: TaskPayload,
 def test_get_stack_references_action_no_references(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the get stack references action when export exists but has no references."""
 
+    reset()
+
     try:
         # Mock CloudFormation client
-        mock_cfn_client = MagicMock()
-
-        # Configure the mock chain
-        mock_session.client.return_value = mock_cfn_client
-
-        # Mock ClientError for export not being imported
-        from botocore.exceptions import ClientError
+        mock_cfn_client = mock_session().client(
+            "cloudformation",
+            client_type="target",
+            aws_account_id="123456789012",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
 
         error_response = {
             "Error": {
@@ -269,6 +278,8 @@ def test_get_stack_references_action_no_references(task_payload: TaskPayload, de
 def test_get_stack_references_action_custom_output_name(task_payload: TaskPayload, mock_session):
     """Test the get stack references action with custom output name."""
 
+    reset()
+
     try:
         # Create deploy spec with custom output name
         params = {
@@ -277,21 +288,19 @@ def test_get_stack_references_action_custom_output_name(task_payload: TaskPayloa
             "StackName": "test-stack-name",
             "OutputName": "CustomExport",
         }
-        action_resource = GetStackReferencesActionResource(
-            **{
-                "name": "test-get-stack-references-custom",
-                "kind": "AWS::GetStackReferences",
-                "params": params,
-                "scope": "build",
-            }
-        )
-        deploy_spec = DeploySpec(**{"actions": [action_resource]})
+        spec = GetStackReferencesActionSpec.model_validate(params)
+        action_resource = GetStackReferencesActionResource(name="test-get-stack-references-custom", spec=spec)
+
+        deploy_spec = DeploySpec(actions=[action_resource])
 
         # Mock CloudFormation client
-        mock_cfn_client = MagicMock()
-
-        # Configure the mock chain for CloudFormation
-        mock_session.client.return_value = mock_cfn_client
+        mock_cfn_client = mock_session().client(
+            "cloudformation",
+            client_type="target",
+            aws_account_id="123456789012",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
 
         # Mock the list_imports response with one importing stack
         mock_list_imports_response = {"Imports": ["importing-stack-custom"]}

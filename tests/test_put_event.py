@@ -14,6 +14,9 @@ from core_execute.execute import save_state, save_actions, load_state
 from core_execute.handler import handler as execute_handler
 
 
+action_name = "event-namespace:action/test-put-event"
+
+
 @pytest.fixture
 def task_payload():
     """
@@ -30,11 +33,11 @@ def task_payload():
             "DataCenter": "zone-1",
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
@@ -47,17 +50,12 @@ def deploy_spec():
     }
 
     # validate the params here before we run the action
-    validated_params = PutEventActionSpec(**params)
+    validated_params = PutEventActionSpec.model_validate(params)
 
     # Define the action specification
-    action_resource = PutEventActionResource(
-        Name="event-namespace:action/test-put-event",
-        Kind="AWS::PutEvent",
-        Spec=validated_params.model_dump(),
-        Scope="build",
-    )
+    action_resource = PutEventActionResource(name=action_name, spec=validated_params)
 
-    return DeploySpec(Actions=[action_resource])
+    return DeploySpec(actions=[action_resource])
 
 
 def test_put_event_action_success(task_payload: TaskPayload, deploy_spec: DeploySpec):
@@ -180,6 +178,8 @@ def test_put_event_action_database_error(task_payload: TaskPayload, deploy_spec:
 def test_put_event_action_invalid_type(task_payload: TaskPayload):
     """Test the put event action with invalid event type."""
 
+    action_name = "event-namespace:action/test-put-event"
+
     try:
         # Create deploy spec with invalid event type
         params = {
@@ -188,16 +188,9 @@ def test_put_event_action_invalid_type(task_payload: TaskPayload):
             "Message": "Test message",
             "Identity": "prn:my-portfolio:my-app",
         }
-
-        action_resource = PutEventActionResource(
-            **{
-                "name": "test-put-event-invalid",
-                "kind": "AWS::PutEvent",
-                "params": params,
-                "scope": "build",
-            }
-        )
-        deploy_spec = DeploySpec(**{"actions": [action_resource]})
+        spec = PutEventActionSpec.model_validate(params)
+        action_resource = PutEventActionResource(name=action_name, spec=spec)
+        deploy_spec = DeploySpec(actions=[action_resource])
 
         # Mock the EventActions.create method (shouldn't be called for real.  No DynamoDB is running)
         with patch("core_db.event.actions.EventActions.create") as mock_create:
@@ -251,6 +244,8 @@ def test_put_event_action_invalid_type(task_payload: TaskPayload):
 def test_put_event_action_different_types(task_payload: TaskPayload):
     """Test the put event action with different event types."""
 
+    action_name = "event-namespace:action/test-put-event"
+
     event_types = ["STATUS", "DEBUG", "INFO", "WARN", "ERROR"]
 
     for event_type in event_types:
@@ -262,16 +257,9 @@ def test_put_event_action_different_types(task_payload: TaskPayload):
                 "Message": f"Test {event_type.lower()} message",
                 "Identity": "prn:my-portfolio:my-app",
             }
-
-            action_resource = PutEventActionResource(
-                **{
-                    "name": f"test-put-event-{event_type.lower()}",
-                    "kind": "AWS::PutEvent",
-                    "params": params,
-                    "scope": "build",
-                }
-            )
-            deploy_spec = DeploySpec(**{"actions": [action_resource]})
+            spec = PutEventActionSpec.model_validate(params)
+            action_resource = PutEventActionResource(name=action_name, spec=spec)
+            deploy_spec = DeploySpec(actions=[action_resource])
 
             # Mock the EventActions.create method
             with patch("core_db.event.actions.EventActions.create") as mock_create:

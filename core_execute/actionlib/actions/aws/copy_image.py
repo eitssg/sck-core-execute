@@ -125,7 +125,7 @@ class CopyImageAction(BaseAction[CopyImageActionSpec]):
         try:
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)
@@ -216,7 +216,7 @@ class CopyImageAction(BaseAction[CopyImageActionSpec]):
         try:
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)

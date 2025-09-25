@@ -45,15 +45,10 @@ class DeleteImageActionResource(ActionResource):
         if not isinstance(values, dict):
             return values
 
-        values.pop("kind", None)
-        values.pop("Kind", None)
-        values["kind"] = "AWS::DeleteImage"
+        if "Kind" in values:
+            del values["Kind"]
 
-        spec = values.pop("spec", None) or values.pop("Spec", None)
-        if isinstance(spec, dict):
-            values["spec"] = spec
-        elif isinstance(spec, DeleteImageActionSpec):
-            values["spec"] = spec.model_dump()
+        values["kind"] = "AWS::DeleteImage"
 
         return values
 
@@ -126,7 +121,7 @@ class DeleteImageAction(BaseAction[DeleteImageActionSpec]):
         try:
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)

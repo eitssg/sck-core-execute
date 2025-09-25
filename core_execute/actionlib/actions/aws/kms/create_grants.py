@@ -31,23 +31,12 @@ class CreateGrantsActionResource(ActionResource):
         Returns:
           Normalized resource dict with name/kind/scope/params defaults.
         """
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-kms-creategrants-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::KMS::CreateGrants"
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "region": "",
-                "kms_key_id": "",
-                "grantee_principals": [],
-                "operations": [],
-                "ignore_failed_grants": "false",  # String default
-            }
+
+        if "Kind" in values:
+            del values["Kind"]
+
+        values["kind"] = "AWS::KMS::CreateGrants"
+
         return values
 
 
@@ -179,7 +168,7 @@ class CreateGrantsAction(BaseAction[CreateGrantsActionSpec]):
             ignore_failures = self._string_to_bool(self.ignore_failed_grants)
 
             # Obtain a KMS client
-            kms_client = aws.kms_client(region=self.region, role=util.get_provisioning_role_arn(self.account))
+            kms_client = aws.kms_client(region=self.region, role_arn=util.get_provisioning_role_arn(self.account))
 
             # Create the grants
             self.set_running("Creating grants for KMS key '{}' in account '{}'".format(self.kms_key_id, self.account))
@@ -335,7 +324,7 @@ class CreateGrantsAction(BaseAction[CreateGrantsActionSpec]):
                 return
 
             # Obtain a KMS client
-            kms_client = aws.kms_client(region=self.region, role=util.get_provisioning_role_arn(self.account))
+            kms_client = aws.kms_client(region=self.region, role_arn=util.get_provisioning_role_arn(self.account))
 
             self.set_running(f"Checking status of {len(created_grants)} grants")
 
@@ -390,7 +379,7 @@ class CreateGrantsAction(BaseAction[CreateGrantsActionSpec]):
                 return
 
             # Obtain a KMS client
-            kms_client = aws.kms_client(region=self.region, role=util.get_provisioning_role_arn(self.account))
+            kms_client = aws.kms_client(region=self.region, role_arn=util.get_provisioning_role_arn(self.account))
 
             self.set_running(f"Retiring {len(created_grants)} grants")
 

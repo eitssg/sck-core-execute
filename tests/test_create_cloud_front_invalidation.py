@@ -16,6 +16,8 @@ from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
 
+action_name = "create-cloudfront-invalidation-test"
+
 
 @pytest.fixture
 def task_payload():
@@ -44,27 +46,39 @@ def deploy_spec():
     Parameters are for: CopyImCreateCloudFrontInvalidationActionSpecageActionSpec
     """
 
-    # create params for CreateCloudFrontInvalidationActionSpec
-    spec: dict[str, Any] = {
-        "Name": "action-aws-createcloudfrontinvalidation-name",
-        "Spec": {
-            "Account": "123456789012",  # Example AWS account ID
-            "Region": "us-east-1",  # Example AWS region
-            "DistributionId": "E1234567890ABC",  # Example CloudFront distribution ID
-            "Paths": ["/path/to/invalidate/*"],  # Example paths to invalidate
-        },
+    spec_params = {
+        "Account": "123456789012",  # Example AWS account ID
+        "Region": "us-east-1",  # Example AWS region
+        "DistributionId": "E1234567890ABC",  # Example CloudFront distribution ID
+        "Paths": ["/path/to/invalidate/*"],  # Example paths to invalidate
     }
 
-    action_resource = CreateCloudFrontInvalidationActionResource(**spec)
+    spec = CreateCloudFrontInvalidationActionSpec.model_validate(spec_params)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
+    action_resource = CreateCloudFrontInvalidationActionResource(name=action_name, spec=spec)
 
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     try:
-        mock_cloudfront_client = MagicMock()
+
+        mock_cloudfront_client = mock_session().client(
+            'cloudfront',
+            client_type="role",
+            region_name="us-east-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("123456789012"),
+            ),
+        )
+
+        mock_cloudfront_client.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "MOCKCLOUDRONTTEST",
+                "SecretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+                "SessionToken": "FwoGZXIvYXdzE...",
+            }
+        }
 
         # Create datetime objects for the mock response
         create_time = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
@@ -97,9 +111,6 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
             }
         }
 
-        # Set the mock session to return our CloudFront client
-        mock_session.client.return_value = mock_cloudfront_client
-
         save_actions(task_payload, deploy_spec.actions)  # Fixed: should be .actions not .actions
         save_state(task_payload, {})
 
@@ -124,41 +135,38 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
         assert call_args[1]["DistributionId"] == "E1234567890ABC"
         assert call_args[1]["InvalidationBatch"]["Paths"]["Items"] == ["/path/to/invalidate/*"]
 
-        # Validate state outputs that should be set by the action
-        action_name = "action-aws-createcloudfrontinvalidation-name"
-
         # Verify basic distribution and path information
-        assert f"{action_name}/DistributionId" in state, "DistributionId should be in state"
-        assert state[f"{action_name}/DistributionId"] == "E1234567890ABC", "DistributionId should match expected value"
+        assert f"var/{action_name}/DistributionId" in state, "DistributionId should be in state"
+        assert state[f"var/{action_name}/DistributionId"] == "E1234567890ABC", "DistributionId should match expected value"
 
-        assert f"{action_name}/InvalidationPaths" in state, "InvalidationPaths should be in state"
-        assert state[f"{action_name}/InvalidationPaths"] == [
+        assert f"var/{action_name}/InvalidationPaths" in state, "InvalidationPaths should be in state"
+        assert state[f"var/{action_name}/InvalidationPaths"] == [
             "/path/to/invalidate/*"
         ], "InvalidationPaths should match expected value"
 
-        assert f"{action_name}/Region" in state, "Region should be in state"
-        assert state[f"{action_name}/Region"] == "us-east-1", "Region should match expected value"
+        assert f"var/{action_name}/Region" in state, "Region should be in state"
+        assert state[f"var/{action_name}/Region"] == "us-east-1", "Region should match expected value"
 
         # Verify invalidation creation results
-        assert f"{action_name}/InvalidationId" in state, "InvalidationId should be in state"
-        assert state[f"{action_name}/InvalidationId"] == "I2J3K4L5M6N7O8P9Q0", "InvalidationId should match mock response"
+        assert f"var/{action_name}/InvalidationId" in state, "InvalidationId should be in state"
+        assert state[f"var/{action_name}/InvalidationId"] == "I2J3K4L5M6N7O8P9Q0", "InvalidationId should match mock response"
 
-        assert f"{action_name}/InvalidationStatus" in state, "InvalidationStatus should be in state"
-        assert state[f"{action_name}/InvalidationStatus"] in [
+        assert f"var/{action_name}/InvalidationStatus" in state, "InvalidationStatus should be in state"
+        assert state[f"var/{action_name}/InvalidationStatus"] in [
             "InProgress",
             "Completed",
         ], "InvalidationStatus should be valid"
 
-        assert f"{action_name}/InvalidationStarted" in state, "InvalidationStarted should be in state"
-        assert state[f"{action_name}/InvalidationStarted"] is True, "InvalidationStarted should be True"
+        assert f"var/{action_name}/InvalidationStarted" in state, "InvalidationStarted should be in state"
+        assert state[f"var/{action_name}/InvalidationStarted"] is True, "InvalidationStarted should be True"
 
         # Verify timestamp fields exist and are valid
-        assert f"{action_name}/CreationTime" in state, "CreationTime should be in state"
-        creation_time_str = state[f"{action_name}/CreationTime"]
+        assert f"var/{action_name}/CreationTime" in state, "CreationTime should be in state"
+        creation_time_str = state[f"var/{action_name}/CreationTime"]
         assert creation_time_str == create_time, "CreationTime should be in ISO format"
 
-        assert f"{action_name}/CallerReference" in state, "CallerReference should be in state"
-        caller_reference = state[f"{action_name}/CallerReference"]
+        assert f"var/{action_name}/CallerReference" in state, "CallerReference should be in state"
+        caller_reference = state[f"var/{action_name}/CallerReference"]
         assert caller_reference is not None, "CallerReference should not be None"
         assert isinstance(caller_reference, str), "CallerReference should be a string"
 
@@ -174,18 +182,18 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
         assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
 
         # Optional: Verify account information if it's being tracked
-        if f"{action_name}/Account" in state:
-            account = state[f"{action_name}/Account"]
+        if f"var/{action_name}/Account" in state:
+            account = state[f"var/{action_name}/Account"]
             assert account is not None, "Account should not be None if present"
             assert isinstance(account, str), "Account should be a string if present"
 
         # Optional: If completion tracking is implemented
-        if f"{action_name}/InvalidationCompleted" in state:
-            assert isinstance(state[f"{action_name}/InvalidationCompleted"], bool), "InvalidationCompleted should be boolean"
+        if f"var/{action_name}/InvalidationCompleted" in state:
+            assert isinstance(state[f"var/{action_name}/InvalidationCompleted"], bool), "InvalidationCompleted should be boolean"
 
         print(f"✅ All state validations passed. Found {len(state)} state items.")
         print(
-            f"📊 Key state items: InvalidationId={state.get(f'{action_name}/InvalidationId')}, Status={state.get(f'{action_name}/InvalidationStatus')}"
+            f"📊 Key state items: InvalidationId={state.get(f'var/{action_name}/InvalidationId')}, Status={state.get(f'var/{action_name}/InvalidationStatus')}"
         )
 
     except Exception as e:

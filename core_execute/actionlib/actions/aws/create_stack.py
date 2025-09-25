@@ -112,15 +112,10 @@ class CreateStackActionResource(ActionResource):
         if not isinstance(values, dict):
             return values
 
-        values.pop("kind", None)
-        values.pop("Kind", None)
-        values["kind"] = "AWS::CreateStack"
+        if "Kind" in values:
+            del values["Kind"]
 
-        spec = values.pop("spec", None) or values.pop("Spec", None)
-        if isinstance(spec, dict):
-            values["spec"] = spec
-        elif isinstance(spec, CreateStackActionSpec):
-            values["spec"] = spec.model_dump()
+        values["kind"] = "AWS::CreateStack"
 
         return values
 
@@ -261,7 +256,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
         try:
             aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
             return True
         except Exception as e:
@@ -330,7 +325,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -611,7 +606,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client for status check: {}", e)
@@ -739,7 +734,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client for rollback: {}", e)
@@ -776,7 +771,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
 
             cfn_client.cancel_update_stack(StackName=stack_id)
@@ -916,7 +911,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
 
             stack_id = self.get_state("StackId")

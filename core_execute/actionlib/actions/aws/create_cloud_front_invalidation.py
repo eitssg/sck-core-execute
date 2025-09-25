@@ -127,7 +127,7 @@ class CreateCloudFrontInvalidationAction(BaseAction[CreateCloudFrontInvalidation
         try:
             cloudfront_client = aws.cloudfront_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFront client: {}", e)
@@ -189,7 +189,7 @@ class CreateCloudFrontInvalidationAction(BaseAction[CreateCloudFrontInvalidation
         try:
             cloudfront_client = aws.cloudfront_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFront client for status check: {}", e)

@@ -17,6 +17,8 @@ from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
 
+action_name = "action-aws-createstack-name"
+
 
 @pytest.fixture
 def task_payload():
@@ -44,23 +46,21 @@ def deploy_spec():
     This can be used to mock the deployspec in tests.
     Parameters are fore: CreateStackActionSpec
     """
-    spec: dict[str, Any] = {
-        "Spec": {
-            "Account": "154798051514",
-            "Region": "ap-southeast-1",
-            "StackName": "my-application-stack",
-            "TemplateUrl": "s3://my-bucket/my-template.yaml",
-            "StackParameters": {"Build": "ver1.0", "Environment": "production"},
-            "Tags": {"App": "My application", "Environment": "production"},
-            "TimeoutInMinutes": 15,
-        }
+    spec_params = {
+        "Account": "154798051514",
+        "Region": "ap-southeast-1",
+        "StackName": "my-application-stack",
+        "TemplateUrl": "s3://my-bucket/my-template.yaml",
+        "StackParameters": {"Build": "ver1.0", "Environment": "production"},
+        "Tags": {"App": "My application", "Environment": "production"},
+        "TimeoutInMinutes": 15,
     }
 
-    action_resource = CreateStackActionResource(**spec)
+    spec = CreateStackActionSpec.model_validate(spec_params)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
+    action_resource = CreateStackActionResource(name=action_name, spec=spec)
 
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
@@ -69,7 +69,14 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
 
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            'cloudformation',
+            client_type="role",
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
         # Mock describe_stacks with a 3-call sequence to simulate the state machine flow
         mock_client.describe_stacks.side_effect = [
@@ -226,8 +233,6 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
             }
         }
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -265,90 +270,87 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         mock_client.list_stack_resources.assert_called_once()
         mock_client.detect_stack_drift.assert_called_once()
 
-        # Validate state outputs that should be set by the action
-        action_name = "action-aws-createstack-name"
-
         # Check basic parameters are stored in state
-        assert f"{action_name}/StackName" in state
-        assert state[f"{action_name}/StackName"] == "my-application-stack"
+        assert f"var/{action_name}/StackName" in state
+        assert state[f"var/{action_name}/StackName"] == "my-application-stack"
 
-        assert f"{action_name}/TemplateUrl" in state
-        assert state[f"{action_name}/TemplateUrl"] == "s3://my-bucket/my-template.yaml"
+        assert f"var/{action_name}/TemplateUrl" in state
+        assert state[f"var/{action_name}/TemplateUrl"] == "s3://my-bucket/my-template.yaml"
 
-        assert f"{action_name}/Region" in state
-        assert state[f"{action_name}/Region"] == "ap-southeast-1"
+        assert f"var/{action_name}/Region" in state
+        assert state[f"var/{action_name}/Region"] == "ap-southeast-1"
 
-        assert f"{action_name}/Account" in state
-        assert state[f"{action_name}/Account"] == "154798051514"
+        assert f"var/{action_name}/Account" in state
+        assert state[f"var/{action_name}/Account"] == "154798051514"
 
         # Check stack creation results
-        assert f"{action_name}/StackId" in state
-        assert "arn:aws:cloudformation" in state[f"{action_name}/StackId"]
+        assert f"var/{action_name}/StackId" in state
+        assert "arn:aws:cloudformation" in state[f"var/{action_name}/StackId"]
 
-        assert f"{action_name}/StackOperation" in state
-        assert state[f"{action_name}/StackOperation"] == "CREATE"
+        assert f"var/{action_name}/StackOperation" in state
+        assert state[f"var/{action_name}/StackOperation"] == "CREATE"
 
-        assert f"{action_name}/StackStatus" in state
-        assert state[f"{action_name}/StackStatus"] == "CREATE_COMPLETE"
+        assert f"var/{action_name}/StackStatus" in state
+        assert state[f"var/{action_name}/StackStatus"] == "CREATE_COMPLETE"
 
-        assert f"{action_name}/StackOperationCompleted" in state
-        assert state[f"{action_name}/StackOperationCompleted"] is True
+        assert f"var/{action_name}/StackOperationCompleted" in state
+        assert state[f"var/{action_name}/StackOperationCompleted"] is True
 
-        assert f"{action_name}/StackCreationStarted" in state
-        assert state[f"{action_name}/StackCreationStarted"] is True
+        assert f"var/{action_name}/StackCreationStarted" in state
+        assert state[f"var/{action_name}/StackCreationStarted"] is True
 
         # Check stack outputs are captured
-        assert f"{action_name}/StackOutputCount" in state
-        assert state[f"{action_name}/StackOutputCount"] == 2
+        assert f"var/{action_name}/StackOutputCount" in state
+        assert state[f"var/{action_name}/StackOutputCount"] == 2
 
-        assert f"{action_name}/MyOutput" in state
-        assert state[f"{action_name}/MyOutput"] == "OutputValue"
+        assert f"var/{action_name}/MyOutput" in state
+        assert state[f"var/{action_name}/MyOutput"] == "OutputValue"
 
-        assert f"{action_name}/ApplicationUrl" in state
-        assert state[f"{action_name}/ApplicationUrl"] == "https://my-app.example.com"
+        assert f"var/{action_name}/ApplicationUrl" in state
+        assert state[f"var/{action_name}/ApplicationUrl"] == "https://my-app.example.com"
 
         # Check resource summary
-        assert f"{action_name}/StackResourceCount" in state
-        assert state[f"{action_name}/StackResourceCount"] == 3
+        assert f"var/{action_name}/StackResourceCount" in state
+        assert state[f"var/{action_name}/StackResourceCount"] == 3
 
-        assert f"{action_name}/StackResourceTypes" in state
-        resource_types = state[f"{action_name}/StackResourceTypes"]
+        assert f"var/{action_name}/StackResourceTypes" in state
+        resource_types = state[f"var/{action_name}/StackResourceTypes"]
         assert resource_types["AWS::S3::Bucket"] == 1
         assert resource_types["AWS::Lambda::Function"] == 1
         assert resource_types["AWS::ApiGateway::RestApi"] == 1
 
         # Check drift detection
-        assert f"{action_name}/DriftDetectionId" in state
-        assert state[f"{action_name}/DriftDetectionId"] == "drift-detection-123456"
+        assert f"var/{action_name}/DriftDetectionId" in state
+        assert state[f"var/{action_name}/DriftDetectionId"] == "drift-detection-123456"
 
         # Check metadata
-        assert f"{action_name}/StackDescription" in state
-        assert state[f"{action_name}/StackDescription"] == "My application stack"
+        assert f"var/{action_name}/StackDescription" in state
+        assert state[f"var/{action_name}/StackDescription"] == "My application stack"
 
         assert f"{action_name}/StatusCode" in state
         assert state[f"{action_name}/StatusCode"] == "complete"
 
         # Check stack exists flag
-        assert f"{action_name}/StackExists" in state
-        assert state[f"{action_name}/StackExists"] is False  # Was False initially, then created
+        assert f"var/{action_name}/StackExists" in state
+        assert state[f"var/{action_name}/StackExists"] is False  # Was False initially, then created
 
         # Verify events were captured - THIS SHOULD NOW WORK
-        assert f"{action_name}/StackEventsCount" in state
-        assert state[f"{action_name}/StackEventsCount"] == 3  # We have 3 events in our mock
+        assert f"var/{action_name}/StackEventsCount" in state
+        assert state[f"var/{action_name}/StackEventsCount"] == 3  # We have 3 events in our mock
 
         # Check that the latest event was captured
-        assert f"{action_name}/LatestStackEvent" in state
-        latest_event = state[f"{action_name}/LatestStackEvent"]
+        assert f"var/{action_name}/LatestStackEvent" in state
+        latest_event = state[f"var/{action_name}/LatestStackEvent"]
         assert latest_event["ResourceType"] == "AWS::CloudFormation::Stack"
         assert latest_event["ResourceStatus"] == "CREATE_COMPLETE"
 
         print("✅ All CloudFormation stack creation validations passed")
-        print(f"📊 Stack ID: {state.get(f'{action_name}/StackId')}")
-        print(f"📊 Operation: {state.get(f'{action_name}/StackOperation')}")
-        print(f"📊 Status: {state.get(f'{action_name}/StackStatus')}")
-        print(f"📊 Resource Count: {state.get(f'{action_name}/StackResourceCount')}")
-        print(f"📊 Output Count: {state.get(f'{action_name}/StackOutputCount')}")
-        print(f"📊 Events Count: {state.get(f'{action_name}/StackEventsCount')}")
+        print(f"📊 Stack ID: {state.get(f'var/{action_name}/StackId')}")
+        print(f"📊 Operation: {state.get(f'var/{action_name}/StackOperation')}")
+        print(f"📊 Status: {state.get(f'var/{action_name}/StackStatus')}")
+        print(f"📊 Resource Count: {state.get(f'var/{action_name}/StackResourceCount')}")
+        print(f"📊 Output Count: {state.get(f'var/{action_name}/StackOutputCount')}")
+        print(f"📊 Events Count: {state.get(f'var/{action_name}/StackEventsCount')}")
 
     except Exception as e:
         traceback.print_exc()

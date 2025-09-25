@@ -43,105 +43,117 @@ def deploy_spec():
     This can be used to mock the deployspec in tests.
     Parameters are fore: CopyImageActionSpec
     """
-    spec: dict[str, Any] = {
-        "Spec": {
-            "Account": "234567890123",
-            "ImageName": "test-image",
-            "DestinationImageName": "test-image-copy",
-            "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/abcd1234-56ef-78gh-90ij-klmnopqrstuv",
-            "Region": "us-east-1",
-            "Tags": {
-                "Environment": "test",
-                "Project": "test-project",
-            },
-        }
+    spec_params = {
+        "Account": "234567890123",
+        "ImageName": "test-image",
+        "DestinationImageName": "test-image-copy",
+        "KmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/abcd1234-56ef-78gh-90ij-klmnopqrstuv",
+        "Region": "us-east-1",
+        "Tags": {
+            "Environment": "test",
+            "Project": "test-project",
+        },
     }
 
-    action_resource = CopyImageActionResource(**spec)
+    spec = CopyImageActionSpec.model_validate(spec_params)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
+    action_resource = CopyImageActionResource(name="copy-image-test", spec=spec)
 
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_resource])
+
+
+def setup_mock_ec2_client(mock_client):
+    """
+    Setup a mock EC2 client for testing.
+    This can be used to mock the boto3 EC2 client in tests.
+    """
+    # Mock for finding the source image
+    mock_client.describe_images.side_effect = [
+        # First call - finding source image by name
+        {
+            "Images": [
+                {
+                    "ImageId": "ami-source123",
+                    "Name": "test-image",
+                    "State": "available",
+                    "BlockDeviceMappings": [
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {
+                                "SnapshotId": "snap-source123",
+                                "VolumeSize": 8,
+                                "VolumeType": "gp3",
+                                "Encrypted": False,
+                            },
+                        }
+                    ],
+                }
+            ]
+        },
+        # Second call - checking copied image status
+        {
+            "Images": [
+                {
+                    "ImageId": "ami-12345678",
+                    "Name": "test-image-copy",
+                    "State": "available",
+                    "Size": 8,
+                    "Architecture": "x86_64",
+                    "Platform": "Linux",
+                    "Description": "Copy of test-image",
+                    "CreationDate": "2024-01-15T10:30:00.000Z",
+                    "BlockDeviceMappings": [
+                        {
+                            "DeviceName": "/dev/sda1",
+                            "Ebs": {
+                                "SnapshotId": "snap-12345678",
+                                "VolumeSize": 8,
+                                "VolumeType": "gp3",
+                                "Encrypted": True,
+                            },
+                        },
+                        {
+                            "DeviceName": "/dev/sdb",
+                            "Ebs": {
+                                "SnapshotId": "snap-87654321",
+                                "VolumeSize": 20,
+                                "VolumeType": "gp3",
+                                "Encrypted": True,
+                            },
+                        },
+                    ],
+                }
+            ]
+        },
+    ]
+
+    mock_client.copy_image.return_value = {
+        "ImageId": "ami-12345678",
+        "RequestId": "req-12345678",
+    }
+
+    mock_client.create_tags.return_value = {
+        "ResponseMetadata": {
+            "RequestId": "req-12345678",
+            "HTTPStatusCode": 200,
+        }
+    }
 
 
 def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
-        mock_client = MagicMock()
-
-        # Mock for finding the source image
-        mock_client.describe_images.side_effect = [
-            # First call - finding source image by name
-            {
-                "Images": [
-                    {
-                        "ImageId": "ami-source123",
-                        "Name": "test-image",
-                        "State": "available",
-                        "BlockDeviceMappings": [
-                            {
-                                "DeviceName": "/dev/sda1",
-                                "Ebs": {
-                                    "SnapshotId": "snap-source123",
-                                    "VolumeSize": 8,
-                                    "VolumeType": "gp3",
-                                    "Encrypted": False,
-                                },
-                            }
-                        ],
-                    }
-                ]
-            },
-            # Second call - checking copied image status
-            {
-                "Images": [
-                    {
-                        "ImageId": "ami-12345678",
-                        "Name": "test-image-copy",
-                        "State": "available",
-                        "Size": 8,
-                        "Architecture": "x86_64",
-                        "Platform": "Linux",
-                        "Description": "Copy of test-image",
-                        "CreationDate": "2024-01-15T10:30:00.000Z",
-                        "BlockDeviceMappings": [
-                            {
-                                "DeviceName": "/dev/sda1",
-                                "Ebs": {
-                                    "SnapshotId": "snap-12345678",
-                                    "VolumeSize": 8,
-                                    "VolumeType": "gp3",
-                                    "Encrypted": True,
-                                },
-                            },
-                            {
-                                "DeviceName": "/dev/sdb",
-                                "Ebs": {
-                                    "SnapshotId": "snap-87654321",
-                                    "VolumeSize": 20,
-                                    "VolumeType": "gp3",
-                                    "Encrypted": True,
-                                },
-                            },
-                        ],
-                    }
-                ]
-            },
-        ]
-
-        mock_client.copy_image.return_value = {
-            "ImageId": "ami-12345678",
-            "RequestId": "req-12345678",
-        }
-
-        mock_client.create_tags.return_value = {
-            "ResponseMetadata": {
-                "RequestId": "req-12345678",
-                "HTTPStatusCode": 200,
-            }
-        }
-        mock_session.client.return_value = mock_client
+        # Target account credentials
+        mock_client = mock_session().client(
+            'ec2',
+            client_type="target_role",
+            region_name="us-east-1",  # The test Spec says to copy to us-east-1
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("234567890123"),
+            ),
+        )
+        setup_mock_ec2_client(mock_client)
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -157,6 +169,10 @@ def test_copy_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, m
 
         # Validate the flow control in the task payload
         assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"
+
+        stat = load_state(task_payload)
+        assert stat is not None, "State should not be None"
+        assert isinstance(stat, dict), "State should be a dictionary"
 
         # Validate that create_tags was called for both image and snapshots
         expected_calls = [

@@ -17,6 +17,8 @@ from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
 
+action_name = "create-change-set-test"
+
 
 # Scope this so it's created fresh for each test
 @pytest.fixture
@@ -45,18 +47,17 @@ def deploy_spec():
     This can be used to mock the deployspec in tests.
     Parameters are fore: CreateChangeSetActionSpec
     """
-    spec: dict[str, Any] = {
-        "Spec": {
-            "Account": "154798051514",
-            "Region": "ap-southeast-1",
-            "StackName": "my-stack",
-            "ChangeSetName": "my-changeset",
-            "TemplateUrl": "s3://my-bucket/portfolio/my-template.yaml",
-            "StackParameters": {"InstanceType": "t2.micro"},
-        }
+    spec_prams = {
+        "Account": "154798051514",
+        "Region": "ap-southeast-1",
+        "StackName": "my-stack",
+        "ChangeSetName": "my-changeset",
+        "TemplateUrl": "s3://my-bucket/portfolio/my-template.yaml",
+        "StackParameters": {"InstanceType": "t2.micro"},
     }
+    spec = CreateChangeSetActionSpec.model_validate(spec_prams)
 
-    action_resource = CreateChangeSetActionResource(**spec)
+    action_resource = CreateChangeSetActionResource(name=action_name, spec=spec)
 
     return DeploySpec(actions=[action_resource])
 
@@ -67,8 +68,13 @@ def test_create_change_set_action(task_payload: TaskPayload, deploy_spec: Deploy
 
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        mock_client = MagicMock()
-
+        mock_client = mock_session().client(
+            'cloudformation',
+            client_type="role",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
         # Mock CloudFormation client methods for create_change_set action
 
         # Mock describe_stacks - called to check if stack exists
@@ -157,8 +163,6 @@ def test_create_change_set_action(task_payload: TaskPayload, deploy_spec: Deploy
         mock_client.describe_stacks.side_effect = describe_stacks_side_effect
         mock_client.describe_change_set.side_effect = describe_change_set_side_effect
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -193,11 +197,11 @@ def test_create_change_set_action(task_payload: TaskPayload, deploy_spec: Deploy
         assert create_call_args[1]["Parameters"][0]["ParameterValue"] == "t2.micro"
 
         # Validate state was set correctly
-        assert "action-aws-createchangeset-name/ChangeSetArn" in state
-        assert "action-aws-createchangeset-name/ChangeSetId" in state
-        assert "action-aws-createchangeset-name/StackId" in state
-        assert "action-aws-createchangeset-name/CreationResult" in state
-        assert state["action-aws-createchangeset-name/CreationResult"] == "SUCCESS"
+        assert f"var/{action_name}/ChangeSetArn" in state
+        assert f"var/{action_name}/ChangeSetId" in state
+        assert f"var/{action_name}/StackId" in state
+        assert f"var/{action_name}/CreationResult" in state
+        assert state[f"var/{action_name}/CreationResult"] == "SUCCESS"
 
     except Exception as e:
         print(f"An error occurred: {e}")

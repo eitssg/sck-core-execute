@@ -3,9 +3,11 @@ import pytest
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.system.no_op import NoOpActionResource
+from core_execute.actionlib.actions.system.no_op import NoOpActionResource, NoOpActionSpec
 from core_execute.actionlib.factory import ActionFactory
 from core_execute.handler import handler as execute_handler
+
+from core_execute.execute import save_state, save_actions
 
 
 @pytest.fixture
@@ -18,8 +20,11 @@ def mock_aws(pytestconfig):
     return pytestconfig.getoption("--mock-aws")
 
 
+action_name = "noop-action-test"
+
+
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -34,11 +39,11 @@ def task_payload():
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
@@ -47,17 +52,14 @@ def deploy_spec():
         "Account": "1234567890123",  # Example AWS account ID
         "Region": "us-east-1",  # Example AWS region
     }
-
+    spec = NoOpActionSpec.model_validate(params)
     # Define the action specifications with the no-op action
-    action_resource = NoOpActionResource(**{"params": params})
+    action_resource = NoOpActionResource(name=action_name, spec=spec)
 
     # Please note that "DeploySpec" is NOT part of sck-core-execute.  However, the model is defined within the core framework
     # and is intantiated here only to be illustrative.  Plus, if you wanted to test multiple actions in the array, the
     # DeploySpec model does have a validator that inspects all actions.
-    return DeploySpec(**{"actions": [action_resource]})
-
-
-from core_execute.execute import save_state, save_actions
+    return DeploySpec(actions=[action_resource])
 
 
 def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):

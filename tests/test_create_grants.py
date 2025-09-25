@@ -9,11 +9,14 @@ from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.kms.create_grants import (
     CreateGrantsActionResource,
+    CreateGrantsActionSpec,
 )
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
+
+action_name = "kms-creategrants-test"
 
 
 @pytest.fixture
@@ -41,22 +44,19 @@ def deploy_spec():
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     """
-    spec: dict[str, Any] = {
-        "Spec": {
-            "Account": "1234567890123",  # Example AWS account ID
-            "Region": util.get_region(),  # Example AWS region
-            "KmsKeyId": "kms-key-id-1234567890abcdef",  # Example KMS Key ID
-            "GranteePrincipals": ["arn:aws:iam::123456789012:role/ExampleRole"],
-            "Operations": ["Decrypt", "Encrypt", "GenerateDataKey"],
-            "IgnoreFailedGrants": "false",  # Set to True to ignore failed grants
-        }
+    spec_params = {
+        "Account": "1234567890123",  # Example AWS account ID
+        "Region": util.get_region(),  # Example AWS region
+        "KmsKeyId": "kms-key-id-1234567890abcdef",  # Example KMS Key ID
+        "GranteePrincipals": ["arn:aws:iam::123456789012:role/ExampleRole"],
+        "Operations": ["Decrypt", "Encrypt", "GenerateDataKey"],
+        "IgnoreFailedGrants": "false",  # Set to True to ignore failed grants
     }
+    spec = CreateGrantsActionSpec.model_validate(spec_params)
 
-    action_resource = CreateGrantsActionResource(**spec)
+    action_resource = CreateGrantsActionResource(name=action_name, spec=spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
-
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
@@ -64,11 +64,15 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
     try:
 
         # update the mock_session fixtures such that its client() returns a new mock kms client with the create_grants() function return value set appropraitely
-        mock_kms_client = MagicMock()
-        mock_kms_client.create_grant.return_value = {
-            "GrantToken": "example-grant-token",
-            "GrantId": "example-grant-id",
-        }
+        mock_kms_client = mock_session().client(
+            'kms',
+            client_type="role",
+            region_name=util.get_region(),
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("1234567890123"),
+            ),
+        )
+
         # Add list_grants mock for the _check method
         mock_kms_client.list_grants.return_value = {
             "Grants": [
@@ -82,11 +86,13 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
                 }
             ]
         }
+        mock_kms_client.create_grant.return_value = {
+            "GrantId": "example-grant-id",
+            "GrantToken": "example-grant-token",
+        }
 
         # Add retire_grant mock for the _unexecute method (if needed)
         mock_kms_client.retire_grant.return_value = {}
-
-        mock_session.client.return_value = mock_kms_client
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -109,22 +115,18 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
 
         assert state is not None, "Expected state to be loaded successfully"
 
-        assert "action-aws-kms-creategrants-name/GrantIds" in state, "Expected GrantId to be set in state"
+        assert f"var/{action_name}/GrantIds" in state, "Expected GrantId to be set in state"
+
+        assert "example-grant-id" in state[f"var/{action_name}/GrantIds"], "Expected GrantIds to be ['example-grant-id']"
+
+        assert f"var/{action_name}/GrantTokens" in state, "Expected GrantTokens to be set in state"
+
+        assert "example-grant-token" in state[f"var/{action_name}/GrantTokens"], "Expected GrantToken to be ['example-grant-token']"
+
+        assert f"var/{action_name}/KmsKeyId" in state, "Expected KeyId to be set in state"
 
         assert (
-            "example-grant-id" in state["action-aws-kms-creategrants-name/GrantIds"]
-        ), "Expected GrantIds to be ['example-grant-id']"
-
-        assert "action-aws-kms-creategrants-name/GrantTokens" in state, "Expected GrantTokens to be set in state"
-
-        assert (
-            "example-grant-token" in state["action-aws-kms-creategrants-name/GrantTokens"]
-        ), "Expected GrantToken to be ['example-grant-token']"
-
-        assert "action-aws-kms-creategrants-name/KmsKeyId" in state, "Expected KeyId to be set in state"
-
-        assert (
-            state["action-aws-kms-creategrants-name/KmsKeyId"] == "kms-key-id-1234567890abcdef"
+            state[f"var/{action_name}/KmsKeyId"] == "kms-key-id-1234567890abcdef"
         ), "Expected KeyId to be 'kms-key-id-1234567890abcdef'"
 
     except Exception as e:

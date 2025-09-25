@@ -17,6 +17,8 @@ from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
 
+action_name = "deletechangeset-test"
+
 
 # Scope this so it's created fresh for each test
 @pytest.fixture
@@ -39,26 +41,23 @@ def task_payload():
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     Parameters are fore: DeleteChangeSetActionSpec
     """
-    spec: dict[str, Any] = {
-        "Spec": {
-            "Account": "154798051514",
-            "Region": "ap-southeast-1",
-            "StackName": "my-stack",
-            "ChangeSetName": "my-changeset",
-        }
+    spec_params = {
+        "Account": "154798051514",
+        "Region": "ap-southeast-1",
+        "StackName": "my-stack",
+        "ChangeSetName": "my-changeset",
     }
+    spec = DeleteChangeSetActionSpec.model_validate(spec_params)
 
-    action_resource = DeleteChangeSetActionResource(**spec)
+    action_resource = DeleteChangeSetActionResource(name=action_name, spec=spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
-
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_delete_change_set_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
@@ -67,7 +66,14 @@ def test_delete_change_set_action(task_payload: TaskPayload, deploy_spec: Deploy
 
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            'cloudformation',
+            client_type="role",
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
         # Mock CloudFormation client methods for delete_change_set action
 
@@ -134,8 +140,6 @@ def test_delete_change_set_action(task_payload: TaskPayload, deploy_spec: Deploy
         mock_client.describe_change_set.side_effect = describe_change_set_side_effect
         mock_client.delete_change_set.side_effect = delete_change_set_side_effect
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -166,17 +170,17 @@ def test_delete_change_set_action(task_payload: TaskPayload, deploy_spec: Deploy
         assert delete_call_args[1]["ChangeSetName"] == "my-changeset"
 
         # Validate state was set correctly
-        assert "action-aws-deletechangeset-name/ChangeSetName" in state
-        assert "action-aws-deletechangeset-name/StackName" in state
-        assert "action-aws-deletechangeset-name/DeletionResult" in state
-        assert state["action-aws-deletechangeset-name/DeletionResult"] == "SUCCESS"
-        assert "action-aws-deletechangeset-name/DeletionCompleted" in state
-        assert state["action-aws-deletechangeset-name/DeletionCompleted"] == True
-        assert "action-aws-deletechangeset-name/ChangeSetExists" in state
-        assert state["action-aws-deletechangeset-name/ChangeSetExists"] == True
+        assert f"var/{action_name}/ChangeSetName" in state
+        assert f"var/{action_name}/StackName" in state
+        assert f"var/{action_name}/DeletionResult" in state
+        assert state[f"var/{action_name}/DeletionResult"] == "SUCCESS"
+        assert f"var/{action_name}/DeletionCompleted" in state
+        assert state[f"var/{action_name}/DeletionCompleted"] == True
+        assert f"var/{action_name}/ChangeSetExists" in state
+        assert state[f"var/{action_name}/ChangeSetExists"] == True
 
         # Validate output variables
-        outputs = [key for key in state.keys() if key.startswith("action-aws-deletechangeset-name/") and not key.endswith("/state")]
+        outputs = [key for key in state.keys() if key.startswith(f"var/{action_name}/") and not key.endswith("/state")]
         assert len(outputs) > 0, "Should have output variables set"
 
     except Exception as e:

@@ -54,12 +54,6 @@ class DeleteSecurityGroupEnisActionResource(ActionResource):
         values.pop("Kind", None)
         values["kind"] = "AWS::DeleteSecurityGroupEnis"
 
-        spec = values.pop("spec", None) or values.pop("Spec", None)
-        if isinstance(spec, dict):
-            values["spec"] = spec
-        elif isinstance(spec, DeleteSecurityGroupEnisActionSpec):
-            values["spec"] = spec.model_dump()
-
         return values
 
 
@@ -167,7 +161,7 @@ class DeleteSecurityGroupEnisAction(BaseAction[DeleteSecurityGroupEnisActionSpec
         try:
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)

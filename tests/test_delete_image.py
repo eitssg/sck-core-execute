@@ -1,6 +1,7 @@
 from typing import Any
 import traceback
 from unittest import mock
+from webbrowser import get
 import pytest
 from unittest.mock import MagicMock
 from datetime import datetime, timezone
@@ -17,10 +18,12 @@ from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
 
+action_name = "deleteimage-test"
+
 
 # Scope this so it's created fresh for each test
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -39,25 +42,23 @@ def task_payload():
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     Parameters are fore: DeleteImageActionSpec
     """
-    spec: dict[str, Any] = {
-        "Spec": {
-            "Account": "154798051514",
-            "Region": "ap-southeast-1",
-            "ImageName": "my-image-name",
-        }
+    spec_params = {
+        "Account": "154798051514",
+        "Region": "ap-southeast-1",
+        "ImageName": "my-image-name",
     }
 
-    action_resource = DeleteImageActionResource(**spec)
+    spec = DeleteImageActionSpec.model_validate(spec_params)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
+    action_resource = DeleteImageActionResource(name=action_name, spec=spec)
 
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
@@ -66,7 +67,13 @@ def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
 
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            'ec2',
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
         # Mock describe_images - returns image info before deletion
         mock_client.describe_images.return_value = {
@@ -130,8 +137,6 @@ def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
             }
         }
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -161,86 +166,83 @@ def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert "snap-1234567890abcdef0" in snapshot_ids
         assert "snap-0987654321fedcba0" in snapshot_ids
 
-        # Validate state outputs that should be set by the action
-        action_name = "action-aws-deleteimage-name"
-
         # Check basic parameters are stored in state
-        assert f"{action_name}/ImageName" in state
-        assert state[f"{action_name}/ImageName"] == "my-image-name"
+        assert f"var/{action_name}/ImageName" in state
+        assert state[f"var/{action_name}/ImageName"] == "my-image-name"
 
-        assert f"{action_name}/Region" in state
-        assert state[f"{action_name}/Region"] == "ap-southeast-1"
+        assert f"var/{action_name}/Region" in state
+        assert state[f"var/{action_name}/Region"] == "ap-southeast-1"
 
-        assert f"{action_name}/Account" in state
-        assert state[f"{action_name}/Account"] == "154798051514"
+        assert f"var/{action_name}/Account" in state
+        assert state[f"var/{action_name}/Account"] == "154798051514"
 
         # Check deletion operation tracking
-        assert f"{action_name}/DeletionStarted" in state
-        assert state[f"{action_name}/DeletionStarted"] is True
+        assert f"var/{action_name}/DeletionStarted" in state
+        assert state[f"var/{action_name}/DeletionStarted"] is True
 
-        assert f"{action_name}/DeletionCompleted" in state
-        assert state[f"{action_name}/DeletionCompleted"] is True
+        assert f"var/{action_name}/DeletionCompleted" in state
+        assert state[f"var/{action_name}/DeletionCompleted"] is True
 
-        assert f"{action_name}/DeletionResult" in state
-        assert state[f"{action_name}/DeletionResult"] == "SUCCESS"
+        assert f"var/{action_name}/DeletionResult" in state
+        assert state[f"var/{action_name}/DeletionResult"] == "SUCCESS"
 
-        assert f"{action_name}/ImageExists" in state
-        assert state[f"{action_name}/ImageExists"] is True
+        assert f"var/{action_name}/ImageExists" in state
+        assert state[f"var/{action_name}/ImageExists"] is True
 
         # Check image metadata captured before deletion
-        assert f"{action_name}/ImageId" in state
-        assert state[f"{action_name}/ImageId"] == "ami-1234567890abcdef0"
+        assert f"var/{action_name}/ImageId" in state
+        assert state[f"var/{action_name}/ImageId"] == "ami-1234567890abcdef0"
 
-        assert f"{action_name}/ImageDescription" in state
-        assert state[f"{action_name}/ImageDescription"] == "My custom AMI image"
+        assert f"var/{action_name}/ImageDescription" in state
+        assert state[f"var/{action_name}/ImageDescription"] == "My custom AMI image"
 
-        assert f"{action_name}/ImageArchitecture" in state
-        assert state[f"{action_name}/ImageArchitecture"] == "x86_64"
+        assert f"var/{action_name}/ImageArchitecture" in state
+        assert state[f"var/{action_name}/ImageArchitecture"] == "x86_64"
 
-        assert f"{action_name}/ImageState" in state
-        assert state[f"{action_name}/ImageState"] == "available"
+        assert f"var/{action_name}/ImageState" in state
+        assert state[f"var/{action_name}/ImageState"] == "available"
 
-        assert f"{action_name}/ImageCreationDate" in state
-        assert state[f"{action_name}/ImageCreationDate"] == creation_time
+        assert f"var/{action_name}/ImageCreationDate" in state
+        assert state[f"var/{action_name}/ImageCreationDate"] == creation_time
 
         # Check image deregistration
-        assert f"{action_name}/ImageDeregistered" in state
-        assert state[f"{action_name}/ImageDeregistered"] is True
+        assert f"var/{action_name}/ImageDeregistered" in state
+        assert state[f"var/{action_name}/ImageDeregistered"] is True
 
         # Check snapshot information
-        assert f"{action_name}/SnapshotIds" in state
-        snapshot_ids_state = state[f"{action_name}/SnapshotIds"]
+        assert f"var/{action_name}/SnapshotIds" in state
+        snapshot_ids_state = state[f"var/{action_name}/SnapshotIds"]
         assert "snap-1234567890abcdef0" in snapshot_ids_state
         assert "snap-0987654321fedcba0" in snapshot_ids_state
 
-        assert f"{action_name}/SnapshotCount" in state
-        assert state[f"{action_name}/SnapshotCount"] == 2
+        assert f"var/{action_name}/SnapshotCount" in state
+        assert state[f"var/{action_name}/SnapshotCount"] == 2
 
-        assert f"{action_name}/DeletedSnapshots" in state
-        deleted_snapshots = state[f"{action_name}/DeletedSnapshots"]
+        assert f"var/{action_name}/DeletedSnapshots" in state
+        deleted_snapshots = state[f"var/{action_name}/DeletedSnapshots"]
         assert len(deleted_snapshots) == 2
         assert "snap-1234567890abcdef0" in deleted_snapshots
         assert "snap-0987654321fedcba0" in deleted_snapshots
 
-        assert f"{action_name}/DeletedSnapshotCount" in state
-        assert state[f"{action_name}/DeletedSnapshotCount"] == 2
+        assert f"var/{action_name}/DeletedSnapshotCount" in state
+        assert state[f"var/{action_name}/DeletedSnapshotCount"] == 2
 
-        assert f"{action_name}/FailedSnapshotCount" in state
-        assert state[f"{action_name}/FailedSnapshotCount"] == 0
+        assert f"var/{action_name}/FailedSnapshotCount" in state
+        assert state[f"var/{action_name}/FailedSnapshotCount"] == 0
 
         # Check timing information
-        assert f"{action_name}/StartTime" in state
-        assert f"{action_name}/CompletionTime" in state
+        assert f"var/{action_name}/StartTime" in state
+        assert f"var/{action_name}/CompletionTime" in state
 
         # Check status
         assert f"{action_name}/StatusCode" in state
         assert state[f"{action_name}/StatusCode"] == "complete"
 
         print("✅ All AMI image deletion validations passed")
-        print(f"📊 Image: {state.get(f'{action_name}/ImageName')}")
-        print(f"📊 Image ID: {state.get(f'{action_name}/ImageId')}")
-        print(f"📊 Deletion Result: {state.get(f'{action_name}/DeletionResult')}")
-        print(f"📊 Snapshots Deleted: {state.get(f'{action_name}/DeletedSnapshotCount')}")
+        print(f"📊 Image: {state.get(f'var/{action_name}/ImageName')}")
+        print(f"📊 Image ID: {state.get(f'var/{action_name}/ImageId')}")
+        print(f"📊 Deletion Result: {state.get(f'var/{action_name}/DeletionResult')}")
+        print(f"📊 Snapshots Deleted: {state.get(f'var/{action_name}/DeletedSnapshotCount')}")
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -251,15 +253,22 @@ def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
 def test_delete_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test deletion of an image that doesn't exist."""
 
+    reset()
+
     try:
 
         # if mock_session.client mock already has a describe_images method, then update its
         # return value else we creeate a describe_images mock method
 
-        mock_client = MagicMock()
-        mock_client.describe_images.return_value = {"Images": []}
+        mock_client = mock_session().client(
+            'ec2',
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
-        mock_session.client.return_value = mock_client
+        mock_client.describe_images.return_value = {"Images": []}
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -275,20 +284,15 @@ def test_delete_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySp
 
         state = load_state(task_payload)
 
-        # Verify that describe was called but deregister was not
-        # mock_session.client.describe_images.assert_called_once()
-
-        action_name = "action-aws-deleteimage-name"
-
         # Check that image was marked as not existing
-        assert f"{action_name}/ImageExists" in state
-        assert state[f"{action_name}/ImageExists"] is False
+        assert f"var/{action_name}/ImageExists" in state
+        assert state[f"var/{action_name}/ImageExists"] is False
 
-        assert f"{action_name}/DeletionResult" in state
-        assert state[f"{action_name}/DeletionResult"] == "NOT_FOUND"
+        assert f"var/{action_name}/DeletionResult" in state
+        assert state[f"var/{action_name}/DeletionResult"] == "NOT_FOUND"
 
-        assert f"{action_name}/DeletionCompleted" in state
-        assert state[f"{action_name}/DeletionCompleted"] is True
+        assert f"var/{action_name}/DeletionCompleted" in state
+        assert state[f"var/{action_name}/DeletionCompleted"] is True
 
         print("✅ Image not found test passed")
 
@@ -301,9 +305,18 @@ def test_delete_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySp
 def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test image deregistration failure scenario."""
 
+    reset()
+
     try:
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
-        mock_client = MagicMock()
+
+        mock_client = mock_session().client(
+            'ec2',
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
         # Mock describe_images - image exists
         mock_client.describe_images.return_value = {
@@ -340,8 +353,6 @@ def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spe
             operation_name="DeregisterImage",
         )
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -356,17 +367,15 @@ def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spe
 
         state = load_state(task_payload)
 
-        action_name = "action-aws-deleteimage-name"
-
         # Check that image was found but deregistration failed
-        assert f"{action_name}/ImageExists" in state
-        assert state[f"{action_name}/ImageExists"] is True
+        assert f"var/{action_name}/ImageExists" in state
+        assert state[f"var/{action_name}/ImageExists"] is True
 
-        assert f"{action_name}/ImageDeregistrationFailed" in state
-        assert state[f"{action_name}/ImageDeregistrationFailed"] is True
+        assert f"var/{action_name}/ImageDeregistrationFailed" in state
+        assert state[f"var/{action_name}/ImageDeregistrationFailed"] is True
 
-        assert f"{action_name}/DeregistrationFailureReason" in state
-        assert "UnauthorizedOperation" in state[f"{action_name}/DeregistrationFailureReason"]
+        assert f"var/{action_name}/DeregistrationFailureReason" in state
+        assert "UnauthorizedOperation" in state[f"var/{action_name}/DeregistrationFailureReason"]
 
         print("✅ Image deregistration error test passed")
 

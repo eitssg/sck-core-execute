@@ -140,7 +140,7 @@ class EmptyBucketAction(BaseAction[EmptyBucketActionSpec]):
         # Obtain an S3 resource with assumed role
         s3_resource = aws.s3_resource(
             region=self.spec.region,
-            role=util.get_provisioning_role_arn(self.spec.account),
+            role_arn=util.get_provisioning_role_arn(self.spec.account),
         )
 
         try:

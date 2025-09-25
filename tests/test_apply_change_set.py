@@ -1,3 +1,4 @@
+from importlib.util import spec_from_file_location
 import traceback
 import pytest
 from unittest.mock import MagicMock
@@ -5,6 +6,7 @@ from datetime import datetime, timezone
 from botocore.exceptions import ClientError
 
 from core_framework.models import TaskPayload, DeploySpec
+import core_framework as util
 
 from core_execute.actionlib.actions.aws.apply_change_set import (
     ApplyChangeSetActionSpec,
@@ -14,6 +16,8 @@ from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
+
+action_name = "apply-change-set-test"
 
 
 # Scope this so it's created fresh for each test
@@ -37,22 +41,22 @@ def task_payload() -> TaskPayload:
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     Parameters are fore: ApplyChangeSetActionSpec
     """
-    params = {
+    spec_params = {
         "Account": "154798051514",
         "Region": "ap-southeast-1",
         "StackName": "my-stack",
         "ChangeSetName": "my-changeset",
     }
 
-    validate_params = ApplyChangeSetActionSpec(**params)
+    spec = ApplyChangeSetActionSpec.model_validate(spec_params)
 
-    action_resource = ApplyChangeSetActionResource(**{"name": "test-one", "spec": validate_params.model_dump()})
+    action_resource = ApplyChangeSetActionResource(name=action_name, spec=spec)
 
     return DeploySpec(actions=[action_resource])
 
@@ -60,13 +64,18 @@ def deploy_spec():
 def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
-
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        mock_client = MagicMock()
+        # Mock boto3 client for the target RoleArn used in the action
+        mock_client = mock_session().client(
+            'cloudformation',
+            client_type="role",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
         # Mock CloudFormation client methods for apply_change_set action
-
         # Mock describe_change_set - called in _execute() to verify change set exists and is ready
         mock_client.describe_change_set.return_value = {
             "ChangeSetId": "12345678-1234-1234-1234-123456789012",
@@ -156,6 +165,12 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
         # Mock cancel_update_stack - called in _unexecute() for rollback scenarios
         mock_client.cancel_update_stack.return_value = {}
 
+        # Mock for change set not ready scenarios
+        def describe_change_set_not_ready(*args, **kwargs):
+            response = mock_client.describe_change_set.return_value.copy()
+            response["Status"] = "CREATE_IN_PROGRESS"
+            return response
+
         # Mock for error scenarios - change set not found case
         def describe_change_set_side_effect(*args, **kwargs):
             if "ChangeSetName" in kwargs and "non-existent" in str(kwargs["ChangeSetName"]):
@@ -167,6 +182,8 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
                 }
                 raise ClientError(error_response, "DescribeChangeSet")
             return mock_client.describe_change_set.return_value
+
+        mock_client.describe_change_set.side_effect = describe_change_set_side_effect
 
         # Mock for stack not found error scenarios
         def describe_stacks_side_effect(*args, **kwargs):
@@ -180,17 +197,7 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
                 raise ClientError(error_response, "DescribeStacks")
             return mock_client.describe_stacks.return_value
 
-        # Mock for change set not ready scenarios
-        def describe_change_set_not_ready(*args, **kwargs):
-            response = mock_client.describe_change_set.return_value.copy()
-            response["Status"] = "CREATE_IN_PROGRESS"
-            return response
-
-        # Apply side effects for error testing
-        mock_client.describe_change_set.side_effect = describe_change_set_side_effect
         mock_client.describe_stacks.side_effect = describe_stacks_side_effect
-
-        mock_session.client.return_value = mock_client
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -225,17 +232,17 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
         mock_client.describe_stacks.assert_called()
 
         # Validate state was set correctly
-        assert "action-aws-applychangeset-name/ChangeSetName" in state
-        assert "action-aws-applychangeset-name/StackName" in state
-        assert "action-aws-applychangeset-name/ApplicationResult" in state
-        assert state["action-aws-applychangeset-name/ApplicationResult"] == "SUCCESS"
-        assert "action-aws-applychangeset-name/ResourcesCreated" in state
-        assert "action-aws-applychangeset-name/ResourcesUpdated" in state
-        assert "action-aws-applychangeset-name/StackOutputs" in state
+        assert f"var/{action_name}/ChangeSetName" in state
+        assert f"var/{action_name}/StackName" in state
+        assert f"var/{action_name}/ApplicationResult" in state
+        assert state[f"var/{action_name}/ApplicationResult"] == "SUCCESS"
+        assert f"var/{action_name}/ResourcesCreated" in state
+        assert f"var/{action_name}/ResourcesUpdated" in state
+        assert f"var/{action_name}/StackOutputs" in state
 
         # Validate output variables
-        assert state["action-aws-applychangeset-name/StackOutputs"] is not None
-        assert len(state["action-aws-applychangeset-name/StackOutputs"]) == 2
+        assert state[f"var/{action_name}/StackOutputs"] is not None
+        assert len(state[f"var/{action_name}/StackOutputs"]) == 2
 
     except Exception as e:
         print(f"An error occurred: {e}")

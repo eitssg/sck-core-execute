@@ -1,8 +1,8 @@
+from argparse import Namespace
+from os import name
 import traceback
 import pytest
 from unittest.mock import MagicMock
-
-from datetime import datetime, timezone
 
 import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
@@ -17,9 +17,13 @@ from core_execute.handler import handler as execute_handler
 
 from .aws_fixtures import *
 
+action_name = "put-metric-data-test"
+namespace = "event-namespace"
+label = f"{namespace}:action/{action_name}"
+
 
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -34,11 +38,11 @@ def task_payload():
             "DataCenter": "zone-1",
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
@@ -72,15 +76,10 @@ def deploy_spec():
     }
 
     # validate the params here before we run the action
-    validated_params = PutMetricDataActionSpec(**params)
+    spec = PutMetricDataActionSpec.model_validate(params)
 
     # Define the action specification
-    action_resource = PutMetricDataActionResource(
-        Name="event-namespace:action/test-put-metric",
-        Kind="AWS::PutMetricData",
-        Spec=validated_params.model_dump(),
-        Scope="build",
-    )
+    action_resource = PutMetricDataActionResource(label=label, spec=spec)
 
     return DeploySpec(Actions=[action_resource])
 
@@ -90,7 +89,13 @@ def test_put_metric_data_action(task_payload: TaskPayload, deploy_spec: DeploySp
 
     try:
         # Mock the CloudWatch client
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            "cloudwatch",
+            client_type="target",
+            aws_account_id="123456789012",
+            region_name="us-west-2",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
 
         # Configure the CloudWatch put_metric_data method
         mock_client.put_metric_data.return_value = {
@@ -99,8 +104,6 @@ def test_put_metric_data_action(task_payload: TaskPayload, deploy_spec: DeploySp
                 "HTTPStatusCode": 200,
             }
         }
-
-        mock_session.client.return_value = mock_client
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -153,12 +156,12 @@ def test_put_metric_data_action(task_payload: TaskPayload, deploy_spec: DeploySp
         assert state is not None, "State should not be None"
 
         # Check that the action completed successfully
-        assert state.get("event-namespace:var/test-put-metric/status") == "success", "Action should have completed successfully"
-        assert state.get("event-namespace:var/test-put-metric/total_metrics_sent") == 2, "Should have sent 2 metrics"
+        assert state.get(f"{namespace}:var/{action_name}/status") == "success", "Action should have completed successfully"
+        assert state.get(f"{namespace}:var/{action_name}/total_metrics_sent") == 2, "Should have sent 2 metrics"
 
         # Verify completion and error states are properly set
-        assert state.get("event-namespace:var/test-put-metric/metrics_count") == 2, "Should track metrics count"
-        assert state.get("event-namespace:var/test-put-metric/namespace") == "event-namespace", "Should track namespace"
+        assert state.get(f"{namespace}:var/{action_name}/metrics_count") == 2, "Should track metrics count"
+        assert state.get(f"{namespace}:var/{action_name}/namespace") == "event-namespace", "Should track namespace"
 
     except Exception as e:
         traceback.print_exc()

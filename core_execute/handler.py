@@ -112,7 +112,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
             if timeout_imminent(context):
                 log.warning("Execution stopped due to timeout, Step Functions will retry")
 
-            time.sleep(3)
+            time.sleep(1)
 
         # Save state back to S3
         log.debug("Saving state for task: {}", task_payload.task)
@@ -178,7 +178,7 @@ def invoke_execute_handler(task_payload: TaskPayload) -> None:
         aws.invoke_lambda(
             arn=util.get_execute_lambda_arn(),
             request_payload=task_payload.model_dump(),
-            role=util.get_provisioning_role_arn(),
+            role_arn=util.get_provisioning_role_arn(),
             invocation_type="Event",  # Use Event for async execution
         )
 

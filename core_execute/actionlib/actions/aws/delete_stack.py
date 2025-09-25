@@ -49,15 +49,10 @@ class DeleteStackActionResource(ActionResource):
         if not isinstance(values, dict):
             return values
 
-        values.pop("kind", None)
-        values.pop("Kind", None)
-        values["kind"] = "AWS::DeleteStack"
+        if "Kind" in values:
+            del values["Kind"]
 
-        spec = values.pop("spec", None) or values.pop("Spec", None)
-        if isinstance(spec, dict):
-            values["spec"] = spec
-        elif isinstance(spec, DeleteStackActionSpec):
-            values["spec"] = spec.model_dump()
+        values["kind"] = "AWS::DeleteStack"
 
         return values
 
@@ -156,7 +151,7 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Quick connectivity test
@@ -193,7 +188,7 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -343,7 +338,7 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)

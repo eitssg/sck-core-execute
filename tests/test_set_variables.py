@@ -1,3 +1,4 @@
+from os import name
 import traceback
 import pytest
 
@@ -5,6 +6,7 @@ from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.system.set_variables import (
     SetVariablesActionResource,
+    SetVariablesActionSpec,
 )
 from core_execute.handler import handler as execute_handler
 
@@ -23,8 +25,11 @@ def mock_aws(pytestconfig):
     return pytestconfig.getoption("--mock-aws")
 
 
+action_name = "action-system-set-variables-name"
+
+
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -39,11 +44,11 @@ def task_payload():
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
-def deploy_spec(task_payload: dict):
+def deploy_spec(task_payload: TaskPayload) -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
@@ -60,10 +65,11 @@ def deploy_spec(task_payload: dict):
         },
     }
 
+    spec = SetVariablesActionSpec.model_validate(data)
     # Define the action specifications with the no-op action
-    set_variables_action = SetVariablesActionResource(**{"Spec": data})
+    set_variables_action = SetVariablesActionResource(name=action_name, spec=spec)
 
-    return DeploySpec(**{"actions": [set_variables_action]})
+    return DeploySpec(actions=[set_variables_action])
 
 
 def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):
@@ -92,14 +98,14 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):
         state = load_state(task_payload)
 
         assert state is not None, "Expected state to be loaded successfully"
-        assert "action-system-set-variables-name/Name" in state, "Expected variable 'Name' to be set in state"
-        assert state["action-system-set-variables-name/Name"] == "John Smith", "Expected variable 'Name' to be 'John Smith'"
-        assert "action-system-set-variables-name/Age" in state, "Expected variable 'Age' to be set in state"
-        assert state["action-system-set-variables-name/Age"] == 25, "Expected variable 'Age' to be 25"
-        assert "action-system-set-variables-name/Height" in state, "Expected variable 'Height' to be set in state"
-        assert state["action-system-set-variables-name/Height"] == "6'2", "Expected variable 'Height' to be '6'2'"
-        assert "action-system-set-variables-name/Weight" in state, "Expected variable 'Weight' to be set in state"
-        assert state["action-system-set-variables-name/Weight"] == 180, "Expected variable 'Weight' to be 180"
+        assert f"var/{action_name}/Name" in state, "Expected variable 'Name' to be set in state"
+        assert state[f"var/{action_name}/Name"] == "John Smith", "Expected variable 'Name' to be 'John Smith'"
+        assert f"var/{action_name}/Age" in state, "Expected variable 'Age' to be set in state"
+        assert state[f"var/{action_name}/Age"] == 25, "Expected variable 'Age' to be 25"
+        assert f"var/{action_name}/Height" in state, "Expected variable 'Height' to be set in state"
+        assert state[f"var/{action_name}/Height"] == "6'2", "Expected variable 'Height' to be '6'2'"
+        assert f"var/{action_name}/Weight" in state, "Expected variable 'Weight' to be set in state"
+        assert state[f"var/{action_name}/Weight"] == 180, "Expected variable 'Weight' to be 180"
 
     except Exception as e:
         print(traceback.format_exc())

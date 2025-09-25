@@ -277,9 +277,10 @@ class Helper:
             log.error("Action {} failed in worker thread: {}", action.action_name, e)
         finally:
             with self.action_lock:
-                self.number_running -= 1
-                if action.action_name in self.running_futures:
-                    del self.running_futures[action.action_name]
+                if not action.is_running():
+                    self.number_running -= 1
+            if action.action_name in self.running_futures:
+                del self.running_futures[action.action_name]
             log.reset_identity()
 
     def shutdown(self, wait: bool = True) -> None:

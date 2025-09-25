@@ -1,7 +1,9 @@
+from os import name
 import traceback
 import pytest
 from unittest.mock import MagicMock
 from datetime import datetime
+from botocore.exceptions import ClientError
 
 import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
@@ -17,9 +19,11 @@ from core_execute.handler import handler as execute_handler
 
 from .aws_fixtures import *
 
+action_anme = "get-stack-outputs-test"
+
 
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -34,11 +38,11 @@ def task_payload():
             "DataCenter": "zone-1",
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a sample deploy spec for get stack outputs testing.
     """
@@ -47,15 +51,9 @@ def deploy_spec():
         "Region": "us-east-1",
         "StackName": "test-stack-name",
     }
-    action_resource = GetStackOutputsActionResource(
-        **{
-            "name": "test-get-stack-outputs",
-            "kind": "AWS::GetStackOutputs",
-            "params": params,
-            "scope": "build",
-        }
-    )
-    return DeploySpec(**{"actions": [action_resource]})
+    spec = GetStackOutputsActionSpec.model_validate(params)
+    action_resource = GetStackOutputsActionResource(name=action_anme, spec=spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_get_stack_outputs_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
@@ -63,10 +61,13 @@ def test_get_stack_outputs_action(task_payload: TaskPayload, deploy_spec: Deploy
 
     try:
         # Mock CloudFormation client
-        mock_cfn_client = MagicMock()
-
-        # Configure the mock chain for CloudFormation
-        mock_session.client.return_value = mock_cfn_client
+        mock_cfn_client = mock_session().client(
+            "cloudformation",
+            client_type="target",
+            aws_account_id="123456789012",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
 
         # Mock the describe_stacks response with sample outputs
         mock_describe_response = {
@@ -169,15 +170,17 @@ def test_get_stack_outputs_action(task_payload: TaskPayload, deploy_spec: Deploy
 def test_get_stack_outputs_action_stack_not_exists(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the get stack outputs action when stack doesn't exist."""
 
+    reset()
+
     try:
         # Mock CloudFormation client
-        mock_cfn_client = MagicMock()
-
-        # Configure the mock chain
-        mock_session.client.return_value = mock_cfn_client
-
-        # Mock ClientError for non-existent stack
-        from botocore.exceptions import ClientError
+        mock_cfn_client = mock_session().client(
+            "cloudformation",
+            client_type="target",
+            aws_account_id="123456789012",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
 
         error_response = {
             "Error": {
@@ -230,12 +233,17 @@ def test_get_stack_outputs_action_stack_not_exists(task_payload: TaskPayload, de
 def test_get_stack_outputs_action_no_outputs(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the get stack outputs action when stack has no outputs."""
 
+    reset()
+
     try:
         # Mock CloudFormation client
-        mock_cfn_client = MagicMock()
-
-        # Configure the mock chain
-        mock_session.client.return_value = mock_cfn_client
+        mock_cfn_client = mock_session().client(
+            "cloudformation",
+            client_type="target",
+            aws_account_id="123456789012",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
 
         # Mock describe_stacks response with no outputs
         mock_describe_response = {

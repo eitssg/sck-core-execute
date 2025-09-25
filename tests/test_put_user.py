@@ -1,21 +1,23 @@
-from typing import Any
 import traceback
+from datetime import datetime
 import pytest
-from unittest.mock import MagicMock
+from botocore.exceptions import ClientError
 
 import core_framework as util
 
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.put_user import PutUserActionResource
+from core_execute.actionlib.actions.aws.put_user import PutUserActionResource, PutUserActionSpec
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
 
+action_name = "action-aws-putuser-name"
+
 
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -34,34 +36,35 @@ def task_payload():
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     """
-    spec: dict[str, Any] = {
-        "Spec": {
-            "Account": "1234567890123",  # Example AWS account ID
-            "Region": util.get_region(),  # Example AWS region
-            "UserNames": "My Name",  # Example KMS Key ID
-            "Roles": ["Role1", "Role2"],
-        }
+    spec_params = {
+        "Account": "1234567890123",  # Example AWS account ID
+        "Region": util.get_region(),  # Example AWS region
+        "UserNames": "My Name",  # Example KMS Key ID
+        "Roles": ["Role1", "Role2"],
     }
 
-    action_resource = PutUserActionResource(**spec)
+    spec = PutUserActionSpec.model_validate(spec_params)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
+    action_resource = PutUserActionResource(name=action_name, spec=spec)
 
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_put_user(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     try:
         # Create mock IAM client with proper method implementations
-        mock_client = MagicMock()
-
-        # Mock user doesn't exist initially
-        from botocore.exceptions import ClientError
+        mock_client = mock_session().client(
+            "iam",
+            client_type="target",
+            aws_account_id="1234567890123",
+            region_name=util.get_region(),
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("1234567890123")),
+        )
 
         mock_client.get_user.side_effect = ClientError(
             error_response={
@@ -103,8 +106,6 @@ def test_put_user(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_sessi
             }
         }
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -119,12 +120,12 @@ def test_put_user(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_sessi
         action_name = "action-aws-putuser-name"
 
         # Verify existing state keys
-        created_users = state[f"{action_name}/CreatedUsers"]
-        failed_users = state[f"{action_name}/FailedUsers"]
-        skipped_users = state[f"{action_name}/SkippedUsers"]
-        users_with_policies = state[f"{action_name}/UsersWithPolicies"]
-        assigned_roles = state[f"{action_name}/AssignedRoles"]
-        final_policies = state[f"{action_name}/FinalPolicies"]
+        created_users = state[f"var/{action_name}/CreatedUsers"]
+        failed_users = state[f"var/{action_name}/FailedUsers"]
+        skipped_users = state[f"var/{action_name}/SkippedUsers"]
+        users_with_policies = state[f"var/{action_name}/UsersWithPolicies"]
+        assigned_roles = state[f"var/{action_name}/AssignedRoles"]
+        final_policies = state[f"var/{action_name}/FinalPolicies"]
 
         assert created_users == ["My Name"]
         assert failed_users == []

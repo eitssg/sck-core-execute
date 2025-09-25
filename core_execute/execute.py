@@ -79,33 +79,29 @@ def run_state_machine(helper: Helper) -> str:
     """
     log.trace("Entering enhanced run_state_machine (threading={})", helper.use_threading)
 
-    ran_something = False
-
-    def check_action(action: ActionResource) -> None:
-        global ran_something
+    def check_action(action: ActionResource) -> bool:
 
         if helper.is_action_complete(action):
             log.debug("Action {} complete.", action.action_name)
-            return
+            return False
 
         if helper.is_action_failed(action):
             log.debug("Action {} failed.", action.action_name)
-            return
+            return False
 
         if helper.is_action_running(action):
             log.debug("Action {} is running", action.action_name)
             helper.run_action_execute(action)
-            ran_something = True
-            return
+            return True
 
         if helper.is_action_pending(action):
             log.debug("Action {} is pending", action.action_name)
             helper.run_action_execute(action)
-            ran_something = True
-            return
+            return True
 
-    for action in helper.actions_resources:
-        check_action(action)
+        return False
+
+    ran_something = any(check_action(action) for action in helper.actions_resources)
 
     if ran_something:
         return "execute"

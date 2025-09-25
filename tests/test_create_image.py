@@ -1,3 +1,4 @@
+from os import name
 from typing import Any
 import traceback
 from unittest import mock
@@ -15,6 +16,8 @@ from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
+
+action_name = "createimage-name-test"
 
 
 @pytest.fixture
@@ -43,28 +46,33 @@ def deploy_spec():
     This can be used to mock the deployspec in tests.
     Parameters are fore: CreateImageActionSpec
     """
-    spec: dict[str, Any] = {
-        "Spec": {
-            "Account": "123456789012",
-            "Region": "ap-southeast-1",
-            "InstanceId": "i-1234567890abcdef0",
-            "ImageName": "My-Image-Name",
-            "Tags": {"Environment": "production", "Project": "my-project"},
-        }
+    spec_params = {
+        "Account": "123456789012",
+        "Region": "ap-southeast-1",
+        "InstanceId": "i-1234567890abcdef0",
+        "ImageName": "My-Image-Name",
+        "Tags": {"Environment": "production", "Project": "my-project"},
     }
 
-    action_resource = CreateImageActionResource(**spec)
+    spec = CreateImageActionSpec.model_validate(spec_params)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
+    action_resource = CreateImageActionResource(name=action_name, spec=spec)
 
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_create_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            'ec2',
+            client_type="role",
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("123456789012"),
+            ),
+        )
 
         # Mock create_image response - this should only return ImageId
         mock_client.create_image.return_value = {"ImageId": "ami-12345678"}
@@ -129,8 +137,6 @@ def test_create_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
             }
         }
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -163,31 +169,28 @@ def test_create_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         ]
         mock_client.create_tags.assert_has_calls(expected_calls, any_order=True)
 
-        # Validate state outputs that should be set by the action
-        action_name = "action-aws-createimage-name"
-
         # Check basic parameters are stored in state
-        assert f"{action_name}/SourceInstanceId" in state
-        assert state[f"{action_name}/SourceInstanceId"] == "i-1234567890abcdef0"
+        assert f"var/{action_name}/SourceInstanceId" in state
+        assert state[f"var/{action_name}/SourceInstanceId"] == "i-1234567890abcdef0"
 
-        assert f"{action_name}/ImageName" in state
-        assert state[f"{action_name}/ImageName"] == "My-Image-Name"
+        assert f"var/{action_name}/ImageName" in state
+        assert state[f"var/{action_name}/ImageName"] == "My-Image-Name"
 
-        assert f"{action_name}/Region" in state
-        assert state[f"{action_name}/Region"] == "ap-southeast-1"
+        assert f"var/{action_name}/Region" in state
+        assert state[f"var/{action_name}/Region"] == "ap-southeast-1"
 
         # Check image creation results
-        assert f"{action_name}/ImageId" in state
-        assert state[f"{action_name}/ImageId"] == "ami-12345678"
+        assert f"var/{action_name}/ImageId" in state
+        assert state[f"var/{action_name}/ImageId"] == "ami-12345678"
 
-        assert f"{action_name}/ImageState" in state
-        assert state[f"{action_name}/ImageState"] == "available"
+        assert f"var/{action_name}/ImageState" in state
+        assert state[f"var/{action_name}/ImageState"] == "available"
 
-        assert f"{action_name}/ImageCreationCompleted" in state
-        assert state[f"{action_name}/ImageCreationCompleted"] is True
+        assert f"var/{action_name}/ImageCreationCompleted" in state
+        assert state[f"var/{action_name}/ImageCreationCompleted"] is True
 
-        assert f"{action_name}/SnapshotIds" in state
-        assert state[f"{action_name}/SnapshotIds"] == ["snap-12345678", "snap-87654321"]
+        assert f"var/{action_name}/SnapshotIds" in state
+        assert state[f"var/{action_name}/SnapshotIds"] == ["snap-12345678", "snap-87654321"]
 
         assert f"{action_name}/StatusCode" in state
         assert state[f"{action_name}/StatusCode"] == "complete"

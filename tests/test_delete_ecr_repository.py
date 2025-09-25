@@ -17,9 +17,11 @@ from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
 
+action_name = "deleteecrrepository-test"
+
 
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -38,25 +40,23 @@ def task_payload():
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     Parameters are fore: DeleteEcrRepositoryActionSpec
     """
-    spec: dict[str, Any] = {
-        "Spec": {
-            "Account": "154798051514",
-            "Region": "ap-southeast-1",
-            "RepositoryName": "my-ecr-repository",
-        }
+    spec_params = {
+        "Account": "154798051514",
+        "Region": "ap-southeast-1",
+        "RepositoryName": "my-ecr-repository",
     }
 
-    action_resource = DeleteEcrRepositoryActionResource(**spec)
+    spec = DeleteEcrRepositoryActionSpec.model_validate(spec_params)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
+    action_resource = DeleteEcrRepositoryActionResource(name=action_name, spec=spec)
 
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_delete_ecr_repository_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
@@ -65,7 +65,14 @@ def test_delete_ecr_repository_action(task_payload: TaskPayload, deploy_spec: De
 
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            'ecr',
+            client_type="role",
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
         # Mock describe_repositories - returns repository info before deletion
         mock_client.describe_repositories.return_value = {
@@ -99,8 +106,6 @@ def test_delete_ecr_repository_action(task_payload: TaskPayload, deploy_spec: De
             }
         }
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -125,58 +130,55 @@ def test_delete_ecr_repository_action(task_payload: TaskPayload, deploy_spec: De
             registryId="154798051514", repositoryName="my-ecr-repository", force=True
         )
 
-        # Validate state outputs that should be set by the action
-        action_name = "action-aws-deleteecrrepository-name"
-
         # Check basic parameters are stored in state
-        assert f"{action_name}/RepositoryName" in state
-        assert state[f"{action_name}/RepositoryName"] == "my-ecr-repository"
+        assert f"var/{action_name}/RepositoryName" in state
+        assert state[f"var/{action_name}/RepositoryName"] == "my-ecr-repository"
 
-        assert f"{action_name}/Region" in state
-        assert state[f"{action_name}/Region"] == "ap-southeast-1"
+        assert f"var/{action_name}/Region" in state
+        assert state[f"var/{action_name}/Region"] == "ap-southeast-1"
 
-        assert f"{action_name}/Account" in state
-        assert state[f"{action_name}/Account"] == "154798051514"
+        assert f"var/{action_name}/Account" in state
+        assert state[f"var/{action_name}/Account"] == "154798051514"
 
         # Check deletion operation tracking
-        assert f"{action_name}/DeletionStarted" in state
-        assert state[f"{action_name}/DeletionStarted"] is True
+        assert f"var/{action_name}/DeletionStarted" in state
+        assert state[f"var/{action_name}/DeletionStarted"] is True
 
-        assert f"{action_name}/DeletionCompleted" in state
-        assert state[f"{action_name}/DeletionCompleted"] is True
+        assert f"var/{action_name}/DeletionCompleted" in state
+        assert state[f"var/{action_name}/DeletionCompleted"] is True
 
-        assert f"{action_name}/DeletionResult" in state
-        assert state[f"{action_name}/DeletionResult"] == "SUCCESS"
+        assert f"var/{action_name}/DeletionResult" in state
+        assert state[f"var/{action_name}/DeletionResult"] == "SUCCESS"
 
-        assert f"{action_name}/RepositoryExisted" in state
-        assert state[f"{action_name}/RepositoryExisted"] is True
+        assert f"var/{action_name}/RepositoryExisted" in state
+        assert state[f"var/{action_name}/RepositoryExisted"] is True
 
         # Check repository metadata captured before deletion
-        assert f"{action_name}/RepositoryUri" in state
-        assert state[f"{action_name}/RepositoryUri"] == "154798051514.dkr.ecr.ap-southeast-1.amazonaws.com/my-ecr-repository"
+        assert f"var/{action_name}/RepositoryUri" in state
+        assert state[f"var/{action_name}/RepositoryUri"] == "154798051514.dkr.ecr.ap-southeast-1.amazonaws.com/my-ecr-repository"
 
-        assert f"{action_name}/ImageCount" in state
-        assert state[f"{action_name}/ImageCount"] == 3
+        assert f"var/{action_name}/ImageCount" in state
+        assert state[f"var/{action_name}/ImageCount"] == 3
 
-        assert f"{action_name}/RepositorySize" in state
-        assert state[f"{action_name}/RepositorySize"] == 1024000
+        assert f"var/{action_name}/RepositorySize" in state
+        assert state[f"var/{action_name}/RepositorySize"] == 1024000
 
-        assert f"{action_name}/CreatedAt" in state
-        assert creation_time == state[f"{action_name}/CreatedAt"]
+        assert f"var/{action_name}/CreatedAt" in state
+        assert creation_time == state[f"var/{action_name}/CreatedAt"]
 
         # Check timing information
-        assert f"{action_name}/StartTime" in state
-        assert f"{action_name}/CompletionTime" in state
+        assert f"var/{action_name}/StartTime" in state
+        assert f"var/{action_name}/CompletionTime" in state
 
         # Check status
         assert f"{action_name}/StatusCode" in state
         assert state[f"{action_name}/StatusCode"] == "complete"
 
         print("✅ All ECR repository deletion validations passed")
-        print(f"📊 Repository: {state.get(f'{action_name}/RepositoryName')}")
-        print(f"📊 Deletion Result: {state.get(f'{action_name}/DeletionResult')}")
-        print(f"📊 Images Deleted: {state.get(f'{action_name}/ImageCount')}")
-        print(f"📊 Size Deleted: {state.get(f'{action_name}/RepositorySize')} bytes")
+        print(f"📊 Repository: {state.get(f'var/{action_name}/RepositoryName')}")
+        print(f"📊 Deletion Result: {state.get(f'var/{action_name}/DeletionResult')}")
+        print(f"📊 Images Deleted: {state.get(f'var/{action_name}/ImageCount')}")
+        print(f"📊 Size Deleted: {state.get(f'var/{action_name}/RepositorySize')} bytes")
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -187,8 +189,17 @@ def test_delete_ecr_repository_action(task_payload: TaskPayload, deploy_spec: De
 def test_delete_ecr_repository_not_found(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test deletion of a repository that doesn't exist."""
 
+    reset()
+
     try:
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            'ecr',
+            client_type="role",
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
         # Mock describe_repositories - repository not found
         mock_client.describe_repositories.side_effect = ClientError(
@@ -200,8 +211,6 @@ def test_delete_ecr_repository_not_found(task_payload: TaskPayload, deploy_spec:
             },
             operation_name="DescribeRepositories",
         )
-
-        mock_session.client.return_value = mock_client
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -221,17 +230,15 @@ def test_delete_ecr_repository_not_found(task_payload: TaskPayload, deploy_spec:
         mock_client.describe_repositories.assert_called_once()
         mock_client.delete_repository.assert_not_called()
 
-        action_name = "action-aws-deleteecrrepository-name"
-
         # Check that repository was marked as not existing
-        assert f"{action_name}/RepositoryExisted" in state
-        assert state[f"{action_name}/RepositoryExisted"] is False
+        assert f"var/{action_name}/RepositoryExisted" in state
+        assert state[f"var/{action_name}/RepositoryExisted"] is False
 
-        assert f"{action_name}/DeletionResult" in state
-        assert state[f"{action_name}/DeletionResult"] == "NOT_FOUND"
+        assert f"var/{action_name}/DeletionResult" in state
+        assert state[f"var/{action_name}/DeletionResult"] == "NOT_FOUND"
 
-        assert f"{action_name}/DeletionCompleted" in state
-        assert state[f"{action_name}/DeletionCompleted"] is True
+        assert f"var/{action_name}/DeletionCompleted" in state
+        assert state[f"var/{action_name}/DeletionCompleted"] is True
 
         print("✅ Repository not found test passed")
 
@@ -244,9 +251,19 @@ def test_delete_ecr_repository_not_found(task_payload: TaskPayload, deploy_spec:
 def test_delete_ecr_repository_deletion_error(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test deletion failure scenario."""
 
+    reset()
+
     try:
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
-        mock_client = MagicMock()
+
+        mock_client = mock_session().client(
+            'ecr',
+            client_type="role",
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
         # Mock describe_repositories - repository exists
         mock_client.describe_repositories.return_value = {
@@ -274,8 +291,6 @@ def test_delete_ecr_repository_deletion_error(task_payload: TaskPayload, deploy_
             operation_name="DeleteRepository",
         )
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -290,17 +305,15 @@ def test_delete_ecr_repository_deletion_error(task_payload: TaskPayload, deploy_
 
         state = load_state(task_payload)
 
-        action_name = "action-aws-deleteecrrepository-name"
-
         # Check that repository was found but deletion failed
-        assert f"{action_name}/RepositoryExisted" in state
-        assert state[f"{action_name}/RepositoryExisted"] is True
+        assert f"var/{action_name}/RepositoryExisted" in state
+        assert state[f"var/{action_name}/RepositoryExisted"] is True
 
-        assert f"{action_name}/DeletionResult" in state
-        assert state[f"{action_name}/DeletionResult"] == "FAILED"
+        assert f"var/{action_name}/DeletionResult" in state
+        assert state[f"var/{action_name}/DeletionResult"] == "FAILED"
 
-        assert f"{action_name}/FailureReason" in state
-        assert "AccessDeniedException" in state[f"{action_name}/FailureReason"]
+        assert f"var/{action_name}/FailureReason" in state
+        assert "AccessDeniedException" in state[f"var/{action_name}/FailureReason"]
 
         print("✅ Repository deletion error test passed")
 

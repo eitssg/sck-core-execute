@@ -57,24 +57,11 @@ class DuplicateImageToAccountActionResource(ActionResource):
     @model_validator(mode="before")
     @classmethod
     def validate_params(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Normalize incoming values and set defaults for kind/spec."""
-        if not (values.get("name") or values.get("Name")):
-            values["name"] = "action-aws-duplicateimagetoaccount-name"
-        if not (values.get("kind") or values.get("Kind")):
-            values["kind"] = "AWS::DuplicateImageToAccount"
-        if not values.get("depends_on", values.get("DependsOn")):  # arrays are falsy if empty
-            values["depends_on"] = []
-        if not (values.get("scope") or values.get("Scope")):
-            values["scope"] = "build"
-        if not (values.get("params") or values.get("Spec")):
-            values["params"] = {
-                "account": "",
-                "region": "",
-                "image_name": "",
-                "accounts_to_share": [],
-                "kms_key_arn": "",
-                "tags": {},
-            }
+
+        if "Kind" in values:
+            del values["Kind"]
+
+        values["kind"] = "AWS::DuplicateImageToAccount"
 
         return values
 
@@ -162,7 +149,7 @@ class DuplicateImageToAccountAction(BaseAction[DuplicateImageToAccountActionSpec
             # Obtain an EC2 client for the source account
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Find the source AMI (only if not already found)
@@ -209,7 +196,7 @@ class DuplicateImageToAccountAction(BaseAction[DuplicateImageToAccountActionSpec
             # Obtain an EC2 client for the source account
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
 
             # Continue processing accounts
@@ -401,13 +388,13 @@ class DuplicateImageToAccountAction(BaseAction[DuplicateImageToAccountActionSpec
             # Step 2: Get client and resource for target account
             target_ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(target_account),
+                role_arn=util.get_provisioning_role_arn(target_account),
             )
 
             target_ec2_resource = aws.get_resource(
                 "ec2",
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(target_account),
+                role_arn=util.get_provisioning_role_arn(target_account),
             )
 
             # Step 3: Copy snapshot in target account (check if already in progress)
@@ -580,7 +567,7 @@ class DuplicateImageToAccountAction(BaseAction[DuplicateImageToAccountActionSpec
                 # Get EC2 client for target account
                 ec2_client = aws.ec2_client(
                     region=self.spec.region,
-                    role=util.get_provisioning_role_arn(target_account),
+                    role_arn=util.get_provisioning_role_arn(target_account),
                 )
 
                 # Check image status
@@ -709,7 +696,7 @@ class DuplicateImageToAccountAction(BaseAction[DuplicateImageToAccountActionSpec
 
         # Use aws.assume_role to get credentials and update the cached session
         credentials = aws.assume_role(
-            role=util.get_provisioning_role_arn(target_account),
+            role_arn=util.get_provisioning_role_arn(target_account),
             session_name=f"ami-copy-session-{target_account}",
             region=self.spec.region,
         )

@@ -5,9 +5,7 @@ from unittest.mock import MagicMock
 import core_framework as util
 from core_framework.models import TaskPayload, DeploySpec
 
-from core_execute.actionlib.actions.aws.rds.modify_db_instance import (
-    ModifyDbInstanceActionResource,
-)
+from core_execute.actionlib.actions.aws.rds.modify_db_instance import ModifyDbInstanceActionResource, ModifyDbInstanceActionSpec
 
 from core_execute.execute import save_state, save_actions
 
@@ -15,9 +13,11 @@ from core_execute.handler import handler as execute_handler
 
 from .aws_fixtures import *
 
+action_name = "modify-db-instance-test"
+
 
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -36,7 +36,7 @@ def task_payload():
 
 
 @pytest.fixture
-def minimal_deploy_spec():
+def minimal_deploy_spec() -> DeploySpec:
     """Minimal parameters for basic modify operation"""
     params = {
         "Account": "test-db-account",
@@ -47,12 +47,13 @@ def minimal_deploy_spec():
             "ApplyImmediately": True,
         },
     }
-    modify_db_instance_action = ModifyDbInstanceActionResource(**{"params": params})
-    return DeploySpec(**{"actions": [modify_db_instance_action]})
+    spec = ModifyDbInstanceActionSpec.model_validate(params)
+    modify_db_instance_action = ModifyDbInstanceActionResource(name=action_name, spec=spec)
+    return DeploySpec(actions=[modify_db_instance_action])
 
 
 @pytest.fixture
-def deploy_spec(task_payload: TaskPayload):
+def deploy_spec(task_payload: TaskPayload) -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
@@ -85,17 +86,24 @@ def deploy_spec(task_payload: TaskPayload):
             ],
         },
     }
-
+    spec = ModifyDbInstanceActionSpec.model_validate(params)
     # Define the action specifications with the modify DB instance action
-    modify_db_instance_action = ModifyDbInstanceActionResource(**{"params": params})
-    return DeploySpec(**{"actions": [modify_db_instance_action]})
+    modify_db_instance_action = ModifyDbInstanceActionResource(name=action_name, spec=spec)
+    return DeploySpec(actions=[modify_db_instance_action])
 
 
 def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
 
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            "rds",
+            client_type="target",
+            aws_account_id="test-db-account",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("test-db-account")),
+        )
+
         # Update the modify_db_instance mock to include sample pending modifications
         mock_client.modify_db_instance.return_value = {
             "DBInstance": {
@@ -117,7 +125,6 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
                 }
             ]
         }
-        mock_session.client.return_value = mock_client
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})

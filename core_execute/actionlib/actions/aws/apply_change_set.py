@@ -45,8 +45,11 @@ class ApplyChangeSetActionResource(ActionResource):
         if not isinstance(values, dict):
             return values
 
-        values.pop("kind", None)
-        values.pop("Kind", None)
+        if "kind" in values:
+            del values["kind"]
+        if "Kind" in values:
+            del values["Kind"]
+
         values["kind"] = "AWS::ApplyChangeSet"
 
         spec = values.pop("spec", None) or values.pop("Spec", None)
@@ -139,7 +142,7 @@ class ApplyChangeSetAction(BaseAction[ApplyChangeSetActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -267,7 +270,7 @@ class ApplyChangeSetAction(BaseAction[ApplyChangeSetActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)
@@ -390,7 +393,7 @@ class ApplyChangeSetAction(BaseAction[ApplyChangeSetActionSpec]):
         try:
             cfn_client = aws.cfn_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create CloudFormation client: {}", e)

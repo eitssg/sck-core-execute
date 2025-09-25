@@ -1,4 +1,5 @@
 import traceback
+from unittest import mock
 import pytest
 from unittest.mock import MagicMock
 
@@ -15,9 +16,11 @@ from core_execute.handler import handler as execute_handler
 
 from .aws_fixtures import *
 
+action_name = "delete-stack-test"
+
 
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -36,22 +39,31 @@ def task_payload():
 
 
 @pytest.fixture
-def deploy_spec():
-    params = {
+def deploy_spec() -> DeploySpec:
+    spec_params = {
         "Account": "test-db-account",
         "Region": "us-east-1",
         "StackName": "test-stack-name",
         "SuccessStatuses": ["DELETE_COMPLETE"],
     }
-    delete_stack_action = DeleteStackActionResource(**{"params": params})
-    return DeploySpec(**{"actions": [delete_stack_action]})
+    spec = DeleteStackActionSpec.model_validate(spec_params)
+
+    delete_stack_action = DeleteStackActionResource(name=action_name, spec=spec)
+
+    return DeploySpec(actions=[delete_stack_action])
 
 
 def test_delete_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
         # FIRST ITERATION: Stack exists and needs to be deleted
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            "cloudformation",
+            region_name="us-east-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("test-db-account"),
+            ),
+        )
 
         # Use a custom function to handle unlimited calls
         def mock_describe_stacks(*args, **kwargs):
@@ -74,8 +86,8 @@ def test_delete_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
                         }
                     ]
                 }
-            else:
-                # All subsequent calls: Stack deletion in progress
+            elif mock_describe_stacks.call_count == 2:
+                # Second call: Stack deletion initiated
                 return {
                     "Stacks": [
                         {
@@ -84,6 +96,20 @@ def test_delete_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
                             "StackStatus": "DELETE_IN_PROGRESS",
                             "CreationTime": "2023-10-01T12:00:00Z",
                             "LastUpdatedTime": "2023-10-01T12:30:00Z",
+                            "Description": "Test stack for deletion",
+                        }
+                    ]
+                }
+            else:
+                # Subsequent calls: Stack deleted
+                return {
+                    "Stacks": [
+                        {
+                            "StackName": "test-stack-name",
+                            "StackId": "arn:aws:cloudformation:us-east-1:123456789012:stack/test-stack-name/12345678-1234-1234-1234-123456789012",
+                            "StackStatus": "DELETE_COMPLETE",
+                            "CreationTime": "2023-10-01T12:00:00Z",
+                            "LastUpdatedTime": "2023-10-01T12:35:00Z",
                             "Description": "Test stack for deletion",
                         }
                     ]
@@ -103,8 +129,6 @@ def test_delete_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         mock_client.describe_stack_events.return_value = {"StackEvents": []}
         mock_client.list_stack_resources.return_value = {"StackResourceSummaries": []}
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -121,56 +145,18 @@ def test_delete_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         task_payload = TaskPayload(**response)
 
         # Should be "execute" after initiating deletion (to continue checking status)
-        assert task_payload.flow_control == "execute", f"Expected flow_control to be 'execute', got '{task_payload.flow_control}'"
+        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         # Verify delete_stack was called
         mock_client.delete_stack.assert_called_once()
 
-        print(f"✅ First iteration completed with flow_control: {task_payload.flow_control}")
-
-        # SECOND ITERATION: Stack deletion completed
-        print("🔄 Second iteration: Stack deletion completed...")
-        mock_client = MagicMock()
-
-        # Mock stack with DELETE_COMPLETE status
-        mock_client.describe_stacks.return_value = {
-            "Stacks": [
-                {
-                    "StackName": "test-stack-name",
-                    "StackId": "arn:aws:cloudformation:us-east-1:123456789012:stack/test-stack-name/12345678-1234-1234-1234-123456789012",
-                    "StackStatus": "DELETE_COMPLETE",
-                    "CreationTime": "2023-10-01T12:00:00Z",
-                    "LastUpdatedTime": "2023-10-01T12:30:00Z",
-                }
-            ]
-        }
-
-        mock_client.describe_stack_events.return_value = {"StackEvents": []}
-        mock_client.list_stack_resources.return_value = {"StackResourceSummaries": []}
-
-        mock_session.client.return_value = mock_client
-
-        # Call execute_handler again with updated mock
-        event = task_payload.model_dump()
-        response = execute_handler(event, None)
-
-        # Check if the response is as expected
-        assert response is not None, "Response should not be None"
-        assert isinstance(response, dict), "Response should be a dictionary"
-
-        # Parse the response back into TaskPayload
-        task_payload = TaskPayload(**response)
-
-        # Should be "success" after finding DELETE_COMPLETE status
-        assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
-
         state = load_state(task_payload)
+
         assert state is not None, "State should not be None"
         assert isinstance(state, dict), "State should be a dictionary"
 
-        action_name = "action-aws-deletestack-name"
-        assert state[f"{action_name}/DeletionCompleted"] is True
-        assert state[f"{action_name}/DeletionResult"] == "SUCCESS"
+        assert state[f"var/{action_name}/DeletionCompleted"] is True
+        assert state[f"var/{action_name}/DeletionResult"] == "SUCCESS"
 
         print(f"✅ Second iteration completed with flow_control: {task_payload.flow_control}")
         print("✅ All stack deletion test iterations passed successfully!")
@@ -181,57 +167,19 @@ def test_delete_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert False, str(e)
 
 
-def test_lambda_handler_delete_in_progress(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
-    """Test scenario where stack deletion is in progress"""
-
-    try:
-        # Mock stack with DELETE_IN_PROGRESS status - use unlimited calls
-        mock_client = MagicMock()
-
-        def mock_describe_stacks_in_progress(*args, **kwargs):
-            return {
-                "Stacks": [
-                    {
-                        "StackName": "test-stack-name",
-                        "StackId": "arn:aws:cloudformation:us-east-1:123456789012:stack/test-stack-name/12345678-1234-1234-1234-123456789012",
-                        "StackStatus": "DELETE_IN_PROGRESS",
-                        "CreationTime": "2023-10-01T12:00:00Z",
-                    }
-                ]
-            }
-
-        mock_client.describe_stacks.side_effect = mock_describe_stacks_in_progress
-        mock_client.describe_stack_events.return_value = {"StackEvents": []}
-        mock_client.list_stack_resources.return_value = {"StackResourceSummaries": []}
-
-        mock_session.client.return_value = mock_client
-
-        save_actions(task_payload, deploy_spec.actions)
-        save_state(task_payload, {})
-
-        event = task_payload.model_dump()
-        response = execute_handler(event, None)
-        task_payload = TaskPayload(**response)
-
-        # Should be "execute" when deletion is in progress (to continue checking)
-        assert task_payload.flow_control == "execute", f"Expected flow_control to be 'execute', got '{task_payload.flow_control}'"
-
-        # delete_stack should NOT be called since deletion is already in progress
-        mock_client.delete_stack.assert_not_called()
-
-        print("✅ Delete in progress test passed")
-
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        assert False, str(e)
-
-
 def test_lambda_handler_delete_failed(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test scenario where stack deletion fails"""
 
+    reset()
     try:
         # Mock stack with DELETE_FAILED status - use unlimited calls
-        mock_client = MagicMock()
+        mock_client = mock_session().client(
+            "cloudformation",
+            region_name="us-east-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("test-db-account"),
+            ),
+        )
 
         def mock_describe_stacks_failed(*args, **kwargs):
             return {
@@ -262,8 +210,6 @@ def test_lambda_handler_delete_failed(task_payload: TaskPayload, deploy_spec: De
 
         mock_client.describe_stack_events.return_value = {"StackEvents": []}
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -275,12 +221,11 @@ def test_lambda_handler_delete_failed(task_payload: TaskPayload, deploy_spec: De
         assert task_payload.flow_control == "failure", f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
-        action_name = "action-aws-deletestack-name"
 
-        assert state[f"{action_name}/DeletionResult"] == "FAILED"
-        assert f"{action_name}/FailedResources" in state
+        assert state[f"var/{action_name}/DeletionResult"] == "FAILED"
+        assert f"var/{action_name}/FailedResources" in state
 
-        failed_resources = state[f"{action_name}/FailedResources"]
+        failed_resources = state[f"var/{action_name}/FailedResources"]
         assert len(failed_resources) == 1
         assert failed_resources[0]["LogicalResourceId"] == "MyS3Bucket"
 

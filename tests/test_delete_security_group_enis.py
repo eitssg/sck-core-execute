@@ -1,10 +1,8 @@
-from typing import Any
 import traceback
-from unittest import mock
 import pytest
+
 from unittest.mock import MagicMock
 from datetime import datetime, timezone
-from botocore.exceptions import ClientError
 
 from core_framework.models import TaskPayload, DeploySpec
 
@@ -17,10 +15,12 @@ from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
 
+action_name = "deletesecuritygroupenis-test"
+
 
 # Scope this so it's created fresh for each test
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -39,32 +39,36 @@ def task_payload():
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     Parameters are fore: DeleteSecurityGroupEnisActionSpec
     """
-    spec: dict[str, Any] = {
-        "Spec": {
-            "Account": "154798051514",
-            "Region": "ap-southeast-1",
-            "SecurityGroupId": "sg-1234567890abcdef0",
-        }
+    spec_params = {
+        "Account": "154798051514",
+        "Region": "ap-southeast-1",
+        "SecurityGroupId": "sg-1234567890abcdef0",
     }
+    spec = DeleteSecurityGroupEnisActionSpec.model_validate(spec_params)
 
-    action_resource = DeleteSecurityGroupEnisActionResource(**spec)
+    action_resource = DeleteSecurityGroupEnisActionResource(name=action_name, spec=spec)
 
-    deploy_spec: dict[str, Any] = {"actions": [action_resource]}
-
-    return DeploySpec(**deploy_spec)
+    return DeploySpec(actions=[action_resource])
 
 
 def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
 
     try:
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
-        mock_client = MagicMock()
+
+        mock_client = mock_session().client(
+            "ec2",
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
         # Create a sequence of return values for describe_network_interfaces
         # The execute_handler will call this multiple times internally via _execute() then _check()
@@ -166,8 +170,6 @@ def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: Depl
             }
         }
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -181,16 +183,16 @@ def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: Depl
         assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
 
         state = load_state(task_payload)
-        action_name = "action-aws-deletesecuritygroupenis-name"
 
         # Verify final completion state
-        assert state[f"{action_name}/TotalEnisFound"] == 3
-        assert state[f"{action_name}/DeletedEniCount"] == 2  # Both available ENIs deleted
-        assert state[f"{action_name}/DetachedEniCount"] == 1  # One ENI was detached
-        assert state[f"{action_name}/SkippedEniCount"] == 1  # Hyperplane ENI skipped
-        assert state[f"{action_name}/InUseEniCount"] == 0  # No ENIs waiting anymore
-        assert state[f"{action_name}/DeletionCompleted"] is True
-        assert state[f"{action_name}/DeletionResult"] == "SUCCESS"
+        assert state[f"var/{action_name}/TotalEnisFound"] == 3
+        assert state[f"var/{action_name}/DeletedEniCount"] == 2  # Both available ENIs deleted
+        assert state[f"var/{action_name}/DetachedEniCount"] == 1  # One ENI was detached
+        assert state[f"var/{action_name}/SkippedEniCount"] == 1  # Hyperplane ENI skipped
+        assert state[f"var/{action_name}/InUseEniCount"] == 0  # No ENIs waiting anymore
+        assert state[f"var/{action_name}/DeletionCompleted"] is True
+        assert state[f"var/{action_name}/DeletionResult"] == "SUCCESS"
+
         assert state[f"{action_name}/StatusCode"] == "complete"
 
         # Verify all EC2 operations were called
@@ -207,22 +209,22 @@ def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: Depl
         mock_client.detach_network_interface.assert_called_with(AttachmentId="eni-attach-1234567890abcdef0", Force=True)
 
         # Verify final state tracking
-        deleted_enis = state[f"{action_name}/DeletedEnis"]
+        deleted_enis = state[f"var/{action_name}/DeletedEnis"]
         assert len(deleted_enis) == 2
         deleted_eni_ids = [eni["EniId"] for eni in deleted_enis]
         assert "eni-1234567890abcdef0" in deleted_eni_ids  # Originally available
         assert "eni-0987654321fedcba0" in deleted_eni_ids  # Originally detached
 
-        skipped_enis = state[f"{action_name}/SkippedEnis"]
+        skipped_enis = state[f"var/{action_name}/SkippedEnis"]
         assert len(skipped_enis) == 1
         assert skipped_enis[0]["EniId"] == "eni-abcdef0123456789"
         assert skipped_enis[0]["Reason"] == "Hyperplane-managed"
 
         print("✅ All ENI deletion validations passed")
-        print(f"📊 Security Group: {state.get(f'{action_name}/SecurityGroupId')}")
-        print(f"📊 Total ENIs Found: {state.get(f'{action_name}/TotalEnisFound')}")
-        print(f"📊 ENIs Deleted: {state.get(f'{action_name}/DeletedEniCount')}")
-        print(f"📊 ENIs Skipped: {state.get(f'{action_name}/SkippedEniCount')}")
+        print(f"📊 Security Group: {state.get(f'var/{action_name}/SecurityGroupId')}")
+        print(f"📊 Total ENIs Found: {state.get(f'var/{action_name}/TotalEnisFound')}")
+        print(f"📊 ENIs Deleted: {state.get(f'var/{action_name}/DeletedEniCount')}")
+        print(f"📊 ENIs Skipped: {state.get(f'var/{action_name}/SkippedEniCount')}")
 
     except Exception as e:
         print(f"❌ An error occurred: {e}")
@@ -233,9 +235,18 @@ def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: Depl
 def test_delete_security_group_enis_immediate_completion(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test immediate completion when all ENIs disappear after first iteration"""
 
+    reset()
+
     try:
         creation_time = datetime(2023, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
-        mock_client = MagicMock()
+
+        mock_client = mock_session().client(
+            "ec2",
+            region_name="ap-southeast-1",
+            **get_role_credentials(
+                RoleArn=util.get_provisioning_role_arn("154798051514"),
+            ),
+        )
 
         # First call: 2 ENIs
         first_call_response = {
@@ -295,8 +306,6 @@ def test_delete_security_group_enis_immediate_completion(task_payload: TaskPaylo
             }
         }
 
-        mock_session.client.return_value = mock_client
-
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
 
@@ -308,11 +317,10 @@ def test_delete_security_group_enis_immediate_completion(task_payload: TaskPaylo
         assert task_payload.flow_control == "success"
 
         state = load_state(task_payload)
-        action_name = "action-aws-deletesecuritygroupenis-name"
 
-        assert state[f"{action_name}/DeletionCompleted"] is True
-        assert state[f"{action_name}/DeletionResult"] == "SUCCESS"
-        assert state[f"{action_name}/InUseEniCount"] == 0
+        assert state[f"var/{action_name}/DeletionCompleted"] is True
+        assert state[f"var/{action_name}/DeletionResult"] == "SUCCESS"
+        assert state[f"var/{action_name}/InUseEniCount"] == 0
 
         print("✅ Immediate completion test passed")
 

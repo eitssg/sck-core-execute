@@ -55,15 +55,10 @@ class CreateImageActionResource(ActionResource):
         if not isinstance(values, dict):
             return values
 
-        values.pop("kind", None)
-        values.pop("Kind", None)
-        values["kind"] = "AWS::CreateImage"
+        if "Kind" in values:
+            del values["Kind"]
 
-        spec = values.pop("spec", None) or values.pop("Spec", None)
-        if isinstance(spec, dict):
-            values["spec"] = spec
-        elif isinstance(spec, CreateImageActionSpec):
-            values["spec"] = spec.model_dump()
+        values["kind"] = "AWS::CreateImage"
 
         return values
 
@@ -134,7 +129,7 @@ class CreateImageAction(BaseAction[CreateImageActionSpec]):
         try:
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)
@@ -181,7 +176,7 @@ class CreateImageAction(BaseAction[CreateImageActionSpec]):
         try:
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client: {}", e)
@@ -304,7 +299,7 @@ class CreateImageAction(BaseAction[CreateImageActionSpec]):
         try:
             ec2_client = aws.ec2_client(
                 region=self.spec.region,
-                role=util.get_provisioning_role_arn(self.spec.account),
+                role_arn=util.get_provisioning_role_arn(self.spec.account),
             )
         except Exception as e:
             log.error("Failed to create EC2 client for rollback: {}", e)

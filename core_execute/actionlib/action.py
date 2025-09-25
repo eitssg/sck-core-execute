@@ -805,7 +805,7 @@ class BaseAction(Generic[SpecType]):
         # Clear action-specific state (keep deployment context)
         state_keys_to_clear = []
         for key in self.context.keys():
-            if key.startswith(f"{self.name}/"):
+            if f"var/{self.name}/" in key or f"output/{self.name}/" in key:
                 state_keys_to_clear.append(key)
 
         for key in state_keys_to_clear:

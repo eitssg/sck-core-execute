@@ -1,9 +1,12 @@
 import traceback
+from unittest import mock
 import pytest
 from unittest.mock import MagicMock
 
 import core_framework as util
+
 from core_framework.models import TaskPayload, DeploySpec
+from botocore.exceptions import ClientError
 
 from core_execute.actionlib.actions.aws.empty_bucket import (
     EmptyBucketActionResource,
@@ -16,9 +19,11 @@ from core_execute.handler import handler as execute_handler
 
 from .aws_fixtures import *
 
+action_name = "empty-bucket-test"
+
 
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -37,24 +42,20 @@ def task_payload():
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a sample deploy spec for empty bucket testing.
     """
-    params = {
+    spec_params = {
         "Account": "123456789012",
         "Region": "us-east-1",
         "BucketName": "test-bucket-name",
     }
-    action_resource = EmptyBucketActionResource(
-        **{
-            "name": "test-empty-bucket",
-            "kind": "AWS::EmptyBucket",
-            "params": params,
-            "scope": "build",
-        }
-    )
-    return DeploySpec(**{"actions": [action_resource]})
+    spec = EmptyBucketActionSpec.model_validate(spec_params)
+
+    action_resource = EmptyBucketActionResource(name=action_name, spec=spec)
+
+    return DeploySpec(actions=[action_resource])
 
 
 def test_empty_bucket_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
@@ -65,7 +66,12 @@ def test_empty_bucket_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         mock_bucket = MagicMock()
 
         # Configure the complete mock chain
-        mock_s3_resource = MagicMock()
+        mock_s3_resource = mock_session().resource(
+            's3',
+            client_type="role",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
         mock_s3_resource.Bucket.return_value = mock_bucket
 
         mock_object_versions = MagicMock()
@@ -74,26 +80,26 @@ def test_empty_bucket_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         mock_limited_versions = MagicMock()
         mock_object_versions.limit.return_value = mock_limited_versions
 
-        # FIRST ITERATION: Bucket has objects to delete
-        mock_limited_versions.delete.return_value = [
-            {
-                "Deleted": [
-                    {"Key": "file1.txt", "VersionId": "version1"},
-                    {"Key": "file2.txt", "VersionId": "version2"},
-                    {"Key": "file3.txt", "VersionId": "version3"},
-                    {"Key": "file4.txt", "VersionId": "version4"},
-                    {"Key": "file5.txt", "VersionId": "version5"},
-                ]
-            },
-            {
-                "Deleted": [
-                    {"Key": "file6.txt", "VersionId": "version6"},
-                    {"Key": "file7.txt", "VersionId": "version7"},
-                ]
-            },
+        mock_limited_versions.delete.side_effect = [
+            [
+                {
+                    "Deleted": [
+                        {"Key": "file1.txt", "VersionId": "version1"},
+                        {"Key": "file2.txt", "VersionId": "version2"},
+                        {"Key": "file3.txt", "VersionId": "version3"},
+                        {"Key": "file4.txt", "VersionId": "version4"},
+                        {"Key": "file5.txt", "VersionId": "version5"},
+                    ]
+                },
+                {
+                    "Deleted": [
+                        {"Key": "file6.txt", "VersionId": "version6"},
+                        {"Key": "file7.txt", "VersionId": "version7"},
+                    ]
+                },
+            ],
+            [],  # Second call returns empty list indicating bucket is now empty
         ]
-
-        mock_session.resource.return_value = mock_s3_resource
 
         save_actions(task_payload, deploy_spec.actions)
         save_state(task_payload, {})
@@ -182,17 +188,21 @@ def test_empty_bucket_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
 def test_empty_bucket_action_bucket_not_exists(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the empty bucket action when bucket doesn't exist."""
 
+    reset()
+
     try:
         # Mock S3 resource and bucket
-        mock_s3_resource = MagicMock()
+        mock_s3_resource = mock_session().resource(
+            's3',
+            client_type="role",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
+
         mock_bucket = MagicMock()
 
         # Configure the mock chain
-        mock_session.resource.return_value = mock_s3_resource
         mock_s3_resource.Bucket.return_value = mock_bucket
-
-        # Mock ClientError for non-existent bucket
-        from botocore.exceptions import ClientError
 
         error_response = {
             "Error": {
@@ -236,7 +246,7 @@ def test_empty_bucket_action_bucket_not_exists(task_payload: TaskPayload, deploy
             assert "does not exist" in action_outputs.get("message", "")
 
         # Verify S3 operations were attempted
-        mock_session.resource.assert_called()
+        mock_bucket.object_versions.limit.assert_called()
         mock_s3_resource.Bucket.assert_called_with("test-bucket-name")
 
     except Exception as e:
@@ -247,15 +257,22 @@ def test_empty_bucket_action_bucket_not_exists(task_payload: TaskPayload, deploy
 def test_empty_bucket_action_multiple_batches(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
     """Test the empty bucket action with multiple batches."""
 
+    reset()
+
     try:
         # Mock S3 resource and bucket
-        mock_s3_resource = MagicMock()
+        mock_s3_resource = mock_session().resource(
+            's3',
+            client_type="role",
+            region_name="us-east-1",
+            **get_role_credentials(RoleArn=util.get_provisioning_role_arn("123456789012")),
+        )
+
         mock_bucket = MagicMock()
         mock_object_versions = MagicMock()
         mock_limited_versions = MagicMock()
 
         # Configure the mock chain
-        mock_session.resource.return_value = mock_s3_resource
         mock_s3_resource.Bucket.return_value = mock_bucket
         mock_bucket.object_versions = mock_object_versions
         mock_object_versions.limit.return_value = mock_limited_versions
@@ -277,7 +294,7 @@ def test_empty_bucket_action_multiple_batches(task_payload: TaskPayload, deploy_
         for batch_num, delete_response in enumerate(delete_responses, 1):
             print(f"\n=== BATCH {batch_num} ===")
 
-            mock_limited_versions.delete.return_value = delete_response
+            mock_limited_versions.delete.side_effect = delete_response
 
             event = current_payload.model_dump()
             response = execute_handler(event, None)
