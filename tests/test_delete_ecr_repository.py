@@ -36,7 +36,7 @@ def task_payload() -> TaskPayload:
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -116,7 +116,7 @@ def test_delete_ecr_repository_action(task_payload: TaskPayload, deploy_spec: De
         assert result is not None, "Result should not be None"
         assert isinstance(result, dict), "Result should be a dictionary"
 
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
 
         # Validate the flow control in the task payload
         assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
@@ -174,11 +174,11 @@ def test_delete_ecr_repository_action(task_payload: TaskPayload, deploy_spec: De
         assert f"{action_name}/StatusCode" in state
         assert state[f"{action_name}/StatusCode"] == "complete"
 
-        print("✅ All ECR repository deletion validations passed")
-        print(f"📊 Repository: {state.get(f'var/{action_name}/RepositoryName')}")
-        print(f"📊 Deletion Result: {state.get(f'var/{action_name}/DeletionResult')}")
-        print(f"📊 Images Deleted: {state.get(f'var/{action_name}/ImageCount')}")
-        print(f"📊 Size Deleted: {state.get(f'var/{action_name}/RepositorySize')} bytes")
+        print("All ECR repository deletion validations passed")
+        print(f"Repository: {state.get(f'var/{action_name}/RepositoryName')}")
+        print(f"Deletion Result: {state.get(f'var/{action_name}/DeletionResult')}")
+        print(f"Images Deleted: {state.get(f'var/{action_name}/ImageCount')}")
+        print(f"Size Deleted: {state.get(f'var/{action_name}/RepositorySize')} bytes")
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -219,7 +219,7 @@ def test_delete_ecr_repository_not_found(task_payload: TaskPayload, deploy_spec:
         result = execute_handler(event, None)
 
         assert result is not None, "Result should not be None"
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
 
         # Should still succeed when repository doesn't exist
         assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
@@ -240,7 +240,7 @@ def test_delete_ecr_repository_not_found(task_payload: TaskPayload, deploy_spec:
         assert f"var/{action_name}/DeletionCompleted" in state
         assert state[f"var/{action_name}/DeletionCompleted"] is True
 
-        print("✅ Repository not found test passed")
+        print("Repository not found test passed")
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -298,7 +298,7 @@ def test_delete_ecr_repository_deletion_error(task_payload: TaskPayload, deploy_
         result = execute_handler(event, None)
 
         assert result is not None, "Result should not be None"
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
 
         # Should fail when deletion encounters an error
         assert task_payload.flow_control == "failure", f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
@@ -315,7 +315,7 @@ def test_delete_ecr_repository_deletion_error(task_payload: TaskPayload, deploy_
         assert f"var/{action_name}/FailureReason" in state
         assert "AccessDeniedException" in state[f"var/{action_name}/FailureReason"]
 
-        print("✅ Repository deletion error test passed")
+        print("Repository deletion error test passed")
 
     except Exception as e:
         print(f"An error occurred: {e}")

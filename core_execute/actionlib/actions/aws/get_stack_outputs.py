@@ -80,7 +80,7 @@ class GetStackOutputsAction(BaseAction[GetStackOutputsActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = GetStackOutputsActionSpec(**definition.spec)
+        self.spec = GetStackOutputsActionSpec.model_validate(definition.spec)
 
     def _execute(self):
         """Describe the stack, save outputs to action outputs, and record state.
@@ -145,8 +145,9 @@ class GetStackOutputsAction(BaseAction[GetStackOutputsActionSpec]):
 
         except ClientError as e:
             completion_time = util.get_current_timestamp()
+            error_code, error_message = self.parse_client_error(e)
 
-            if "does not exist" in e.response["Error"]["Message"]:
+            if "does not exist" in error_message:
                 # Stack doesn't exist - treat as success with warning
                 self.set_state("completion_time", completion_time)
                 self.set_state("status", "completed_not_found")
@@ -258,9 +259,9 @@ class GetStackOutputsAction(BaseAction[GetStackOutputsActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> GetStackOutputsActionResource:
         """Factory: create a typed GetStackOutputsActionResource."""
-        return GetStackOutputsActionResource(**kwargs)
+        return GetStackOutputsActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> GetStackOutputsActionSpec:
         """Factory: create typed GetStackOutputsActionSpec."""
-        return GetStackOutputsActionSpec(**kwargs)
+        return GetStackOutputsActionSpec.model_validate(kwargs)

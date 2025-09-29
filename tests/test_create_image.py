@@ -36,7 +36,7 @@ def task_payload():
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -147,7 +147,7 @@ def test_create_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert result is not None, "Result should not be None"
         assert isinstance(result, dict), "Result should be a dictionary"
 
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
 
         # Validate the flow control in the task payload
         assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"

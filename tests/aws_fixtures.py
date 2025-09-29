@@ -256,10 +256,7 @@ def get_session(
 
 def reset():
 
-    global role_creds, clients, sessions
-
     store.reset()
-
     role_creds.clear()
     clients.clear()
     sessions.clear()

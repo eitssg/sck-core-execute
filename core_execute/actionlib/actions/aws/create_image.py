@@ -87,7 +87,7 @@ class CreateImageAction(BaseAction[CreateImageActionSpec]):
         """
         super().__init__(definition, context, deployment_details)
 
-        self.spec = CreateImageActionSpec(**definition.spec)
+        self.spec = CreateImageActionSpec.model_validate(definition.spec)
 
         tags = self.spec.tags or {}
         if deployment_details.delivered_by:
@@ -407,8 +407,8 @@ class CreateImageAction(BaseAction[CreateImageActionSpec]):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CreateImageActionResource:
-        return CreateImageActionResource(**kwargs)
+        return CreateImageActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CreateImageActionSpec:
-        return CreateImageActionSpec(**kwargs)
+        return CreateImageActionSpec.model_validate(kwargs)

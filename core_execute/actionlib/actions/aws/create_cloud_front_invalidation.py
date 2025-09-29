@@ -81,7 +81,7 @@ class CreateCloudFrontInvalidationAction(BaseAction[CreateCloudFrontInvalidation
         super().__init__(definition, context, deployment_details)
 
         # Validate the action definition parameters
-        self.spec = CreateCloudFrontInvalidationActionSpec(**definition.spec)
+        self.spec = CreateCloudFrontInvalidationActionSpec.model_validate(definition.spec)
 
     def _resolve(self):
         """Render templates for region, account, distribution_id, and paths."""
@@ -174,7 +174,7 @@ class CreateCloudFrontInvalidationAction(BaseAction[CreateCloudFrontInvalidation
         self.set_output("InvalidationStarted", True)
 
         log.debug("CloudFront invalidation created successfully: {}", invalidation_id)
-        self.set_complete("Invalidation created successfully")
+        self.set_running("Invalidation started successfully")
 
         log.trace("CreateCloudFrontInvalidationAction completed")
 
@@ -233,9 +233,9 @@ class CreateCloudFrontInvalidationAction(BaseAction[CreateCloudFrontInvalidation
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CreateCloudFrontInvalidationActionResource:
         """Factory: create a typed CreateCloudFrontInvalidationActionResource."""
-        return CreateCloudFrontInvalidationActionResource(**kwargs)
+        return CreateCloudFrontInvalidationActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CreateCloudFrontInvalidationActionSpec:
         """Factory: create typed CreateCloudFrontInvalidationActionSpec."""
-        return CreateCloudFrontInvalidationActionSpec(**kwargs)
+        return CreateCloudFrontInvalidationActionSpec.model_validate(kwargs)

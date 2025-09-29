@@ -36,7 +36,7 @@ def task_payload():
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -244,12 +244,12 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert isinstance(result, dict), "Result should be a dictionary"
 
         # If the first execution doesn't complete, run it again to simulate state machine iterations
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
         if task_payload.flow_control != "success":
-            print("🔄 Stack creation in progress, running second iteration...")
+            print("Stack creation in progress, running second iteration...")
             event = task_payload.model_dump()
             result = execute_handler(event, None)
-            task_payload = TaskPayload(**result)
+            task_payload = TaskPayload.model_validate(result)
 
         # Validate the flow control in the task payload
         assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
@@ -344,13 +344,13 @@ def test_create_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert latest_event["ResourceType"] == "AWS::CloudFormation::Stack"
         assert latest_event["ResourceStatus"] == "CREATE_COMPLETE"
 
-        print("✅ All CloudFormation stack creation validations passed")
-        print(f"📊 Stack ID: {state.get(f'var/{action_name}/StackId')}")
-        print(f"📊 Operation: {state.get(f'var/{action_name}/StackOperation')}")
-        print(f"📊 Status: {state.get(f'var/{action_name}/StackStatus')}")
-        print(f"📊 Resource Count: {state.get(f'var/{action_name}/StackResourceCount')}")
-        print(f"📊 Output Count: {state.get(f'var/{action_name}/StackOutputCount')}")
-        print(f"📊 Events Count: {state.get(f'var/{action_name}/StackEventsCount')}")
+        print("All CloudFormation stack creation validations passed")
+        print(f"Stack ID: {state.get(f'var/{action_name}/StackId')}")
+        print(f"Operation: {state.get(f'var/{action_name}/StackOperation')}")
+        print(f"Status: {state.get(f'var/{action_name}/StackStatus')}")
+        print(f"Resource Count: {state.get(f'var/{action_name}/StackResourceCount')}")
+        print(f"Output Count: {state.get(f'var/{action_name}/StackOutputCount')}")
+        print(f"Events Count: {state.get(f'var/{action_name}/StackEventsCount')}")
 
     except Exception as e:
         traceback.print_exc()

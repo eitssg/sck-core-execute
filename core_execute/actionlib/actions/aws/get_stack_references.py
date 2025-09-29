@@ -89,7 +89,7 @@ class GetStackReferencesAction(BaseAction[GetStackReferencesActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = GetStackReferencesActionSpec(**definition.spec)
+        self.spec = GetStackReferencesActionSpec.model_validate(definition.spec)
 
     def _execute(self):
         """Call CloudFormation ListImports and record referencing stacks.
@@ -167,7 +167,7 @@ class GetStackReferencesAction(BaseAction[GetStackReferencesActionSpec]):
 
         except ClientError as e:
             completion_time = util.get_current_timestamp()
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             if "does not exist" in error_message:
                 # Export doesn't exist - treat as unreferenced
@@ -289,9 +289,9 @@ class GetStackReferencesAction(BaseAction[GetStackReferencesActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> GetStackReferencesActionResource:
         """Factory: create a typed GetStackReferencesActionResource."""
-        return GetStackReferencesActionResource(**kwargs)
+        return GetStackReferencesActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> GetStackReferencesActionSpec:
         """Factory: create typed GetStackReferencesActionSpec."""
-        return GetStackReferencesActionSpec(**kwargs)
+        return GetStackReferencesActionSpec.model_validate(kwargs)

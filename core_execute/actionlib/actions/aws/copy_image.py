@@ -96,11 +96,11 @@ class CopyImageAction(BaseAction[CopyImageActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = CopyImageActionSpec(**definition.spec)
+        self.spec = CopyImageActionSpec.model_validate(definition.spec)
 
-        tags = self.spec.tags
+        tags = self.spec.tags or {}
         if deployment_details.delivered_by:
-            tags["DeliveredBy"] = deployment_details.delivered_by
+            tags["DeliveredBy"] = deployment_details.delivered_by or "unknown"
 
         self.tags = aws.transform_tag_hash(tags)
 
@@ -400,8 +400,9 @@ class CopyImageAction(BaseAction[CopyImageActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CopyImageActionResource:
         """Factory: create a typed CopyImageActionResource."""
-        return CopyImageActionResource(**kwargs)
+        return CopyImageActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CopyImageActionSpec:
         """Factory: create typed CopyImageActionSpec."""
+        return CopyImageActionSpec.model_validate(kwargs)

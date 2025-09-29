@@ -38,7 +38,7 @@ def task_payload():
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -208,7 +208,7 @@ def test_duplicate_image_to_account(
         response = execute_handler(event, None)
 
         # Parse response back to TaskPayload
-        task_payload = TaskPayload(**response)
+        task_payload = TaskPayload.model_validate(response)
 
         # Should be "execute" since AMI duplication continues with _check()
         assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
@@ -237,7 +237,7 @@ def test_duplicate_image_to_account(
         mock_target_ec2_client1.register_image.assert_called()
         mock_target_ec2_client2.register_image.assert_called()
 
-        print("✅ test_duplicate_image_to_account passed - AMI duplicated successfully")
+        print("test_duplicate_image_to_account passed - AMI duplicated successfully")
 
     except Exception as e:
         traceback.print_exc()

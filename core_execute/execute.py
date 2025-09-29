@@ -8,7 +8,7 @@ Provides the core orchestration for Simple Cloud Kit:
 - Robust logging and error handling
 """
 
-from typing import Any
+from typing import Protocol
 import io
 
 import core_logging as log
@@ -16,7 +16,6 @@ import core_framework as util
 
 from core_framework.models import TaskPayload, ActionResource
 from core_framework.constants import CTX_CONTEXT
-from core_framework.merge import deep_merge_in_place
 
 from core_helper.magic import MagicS3Client
 
@@ -25,7 +24,11 @@ from core_db.facter import get_facts
 from .actionlib.helper import Helper
 
 
-def timeout_imminent(context: Any | None = None) -> bool:
+class HasMillis(Protocol):
+    def get_remaining_time_in_millis(self) -> int: ...  # noqa: E704
+
+
+def timeout_imminent(context: HasMillis | None = None) -> bool:
     """Return True if the Lambda invocation is close to timing out.
 
     Uses context.get_remaining_time_in_millis() when available (real Lambda/Step
@@ -40,7 +43,7 @@ def timeout_imminent(context: Any | None = None) -> bool:
         True if fewer than 10,000 ms remain; otherwise False.
     """
     # Timeout threshold is 10 seconds (in milliseconds)
-    timeout_threshold_ms = 10000
+    timeout_threshold_ms: int = 10000
 
     # Check if we're running in Lambda environment
     if context and hasattr(context, "get_remaining_time_in_millis") and callable(context.get_remaining_time_in_millis):

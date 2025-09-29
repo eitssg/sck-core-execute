@@ -110,7 +110,7 @@ class DeleteUserAction(BaseAction[DeleteUserActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the parameters
-        self.spec = DeleteUserActionSpec(**definition.spec)
+        self.spec = DeleteUserActionSpec.model_validate(definition.spec)
 
     def _resolve(self):
         """Render templates for account, region, and user_names."""
@@ -186,8 +186,7 @@ class DeleteUserAction(BaseAction[DeleteUserActionSpec]):
                 deleted_users.append(user_name)
 
             except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                error_message = e.response["Error"]["Message"]
+                error_code, error_message = self.parse_client_error(e)
 
                 log.error(
                     "Failed to delete user '{}': {} - {}",
@@ -299,7 +298,8 @@ class DeleteUserAction(BaseAction[DeleteUserActionSpec]):
             iam_client.get_user(UserName=user_name)
             return True
         except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchEntity":
+            error_code, _ = self.parse_client_error(e)
+            if error_code == "NoSuchEntity":
                 return False
             else:
                 # Re-raise other errors
@@ -378,7 +378,8 @@ class DeleteUserAction(BaseAction[DeleteUserActionSpec]):
             iam_client.delete_login_profile(UserName=user_name)
             log.debug("Deleted login profile for user '{}'", user_name)
         except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchEntity":
+            error_code, _ = self.parse_client_error(e)
+            if error_code == "NoSuchEntity":
                 log.debug("User '{}' has no login profile", user_name)
             else:
                 log.warning("Failed to delete login profile for user '{}': {}", user_name, e)
@@ -437,9 +438,9 @@ class DeleteUserAction(BaseAction[DeleteUserActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteUserActionResource:
         """Factory: create a typed DeleteUserActionResource."""
-        return DeleteUserActionResource(**kwargs)
+        return DeleteUserActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteUserActionSpec:
         """Factory: create a typed DeleteUserActionSpec."""
-        return DeleteUserActionSpec(**kwargs)
+        return DeleteUserActionSpec.model_validate(kwargs)

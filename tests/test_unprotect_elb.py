@@ -111,7 +111,7 @@ def test_unprotect_elb(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse the response back into TaskPayload
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
         assert updated_payload.flow_control == "success", "Flow control should be success"
 
         # Load the saved state to verify completion
@@ -198,7 +198,7 @@ def test_unprotect_elb_skip_none(task_payload: TaskPayload, mock_session):
         response = execute_handler(event, None)
 
         # Parse the response
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
         assert updated_payload.flow_control == "success", "Should complete successfully when skipping"
 
         # Load state
@@ -246,7 +246,7 @@ def test_unprotect_elb_not_found(task_payload: TaskPayload, deploy_spec: DeployS
         response = execute_handler(event, None)
 
         # Parse the response
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
         assert updated_payload.flow_control == "failure", "Should fail when load balancer not found"
 
         # Load state

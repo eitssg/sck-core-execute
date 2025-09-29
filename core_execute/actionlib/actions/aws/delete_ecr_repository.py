@@ -49,7 +49,7 @@ class DeleteEcrRepositoryActionResource(ActionResource):
         return values
 
 
-class DeleteEcrRepositoryAction(BaseAction):
+class DeleteEcrRepositoryAction(BaseAction[DeleteEcrRepositoryActionSpec]):
     """Delete an ECR repository and all images it contains.
 
     Treats missing repositories as success. Records progress and results in state/outputs.
@@ -71,8 +71,8 @@ class DeleteEcrRepositoryAction(BaseAction):
         """
         super().__init__(definition, context, deployment_details)
 
-        # Validate the action parameters
-        self.spec = DeleteEcrRepositoryActionSpec(**definition.spec)
+        # Validate the action parameters (now strongly typed via BaseAction[DeleteEcrRepositoryActionSpec])
+        self.spec = DeleteEcrRepositoryActionSpec.model_validate(definition.spec)
 
     def _resolve(self):
         """Render template variables in account, region, and repository_name."""
@@ -149,16 +149,17 @@ class DeleteEcrRepositoryAction(BaseAction):
                 )
 
         except ClientError as e:
-            if e.response["Error"]["Code"] == "RepositoryNotFoundException":
+            error_code, error_message = self.parse_client_error(e)
+            if error_code == "RepositoryNotFoundException":
                 repository_exists = False
                 log.debug("Repository '{}' does not exist", self.spec.repository_name)
             else:
                 log.error(
                     "Error checking repository '{}': {}",
                     self.spec.repository_name,
-                    e.response["Error"]["Message"],
+                    error_message,
                 )
-                self.set_failed(f"Failed to check repository '{self.spec.repository_name}': {e.response['Error']['Message']}")
+                self.set_failed(f"Failed to check repository '{self.spec.repository_name}': {error_message}")
                 return
         except Exception as e:
             log.error(
@@ -198,8 +199,7 @@ class DeleteEcrRepositoryAction(BaseAction):
                 )
 
             except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                error_message = e.response["Error"]["Message"]
+                error_code, error_message = self.parse_client_error(e)
 
                 if error_code == "RepositoryNotFoundException":
                     # Repository was deleted between our check and delete call
@@ -297,8 +297,9 @@ class DeleteEcrRepositoryAction(BaseAction):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteEcrRepositoryActionResource:
         """Factory: create a typed DeleteEcrRepositoryActionResource."""
-        return DeleteEcrRepositoryActionResource(**kwargs)
+        return DeleteEcrRepositoryActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteEcrRepositoryActionSpec:
         """Factory: create typed DeleteEcrRepositoryActionSpec."""
+        return DeleteEcrRepositoryActionSpec.model_validate(**kwargs)

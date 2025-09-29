@@ -90,7 +90,8 @@ class UploadContextAction(BaseAction[UploadContextActionSpec]):
 
         """
         super().__init__(definition, context, deployment_details)
-        self.spec = UploadContextActionSpec(**definition.spec)
+
+        self.spec = UploadContextActionSpec.model_validate(definition.spec)
 
     def __context_outputs(self) -> dict[str, Any]:
         """Collect output variables from the context.
@@ -313,8 +314,9 @@ class UploadContextAction(BaseAction[UploadContextActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> UploadContextActionResource:
         """Factory: create a typed UploadContextActionResource."""
-        return UploadContextActionResource(**kwargs)
+        return UploadContextActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> UploadContextActionSpec:
         """Factory: create typed UploadContextActionSpec."""
+        return UploadContextActionSpec.model_validate(kwargs)

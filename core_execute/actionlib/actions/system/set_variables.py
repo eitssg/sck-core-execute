@@ -86,7 +86,7 @@ class SetVariablesAction(BaseAction[SetVariablesActionSpec]):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.spec = SetVariablesActionSpec(**definition.spec)
+        self.spec = SetVariablesActionSpec.model_validate(definition.spec)
 
     def _execute(self):
 
@@ -136,8 +136,8 @@ class SetVariablesAction(BaseAction[SetVariablesActionSpec]):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> SetVariablesActionResource:
-        return SetVariablesActionResource(**kwargs)
+        return SetVariablesActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> SetVariablesActionSpec:
-        return SetVariablesActionSpec(**kwargs)
+        return SetVariablesActionSpec.model_validate(kwargs)

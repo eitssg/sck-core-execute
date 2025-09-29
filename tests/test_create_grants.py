@@ -35,7 +35,7 @@ def task_payload():
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -105,7 +105,7 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
 
         # Validate the response structure and content
 
-        task_payload = TaskPayload(**response)
+        task_payload = TaskPayload.model_validate(response)
 
         assert task_payload.task == "deploy"
 

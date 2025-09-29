@@ -35,7 +35,7 @@ def task_payload() -> TaskPayload:
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -174,10 +174,10 @@ def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: Depl
         save_state(task_payload, {})
 
         # SINGLE CALL - execute_handler manages iterations internally
-        print("🔄 Running execute_handler (manages internal iterations)...")
+        print("Running execute_handler (manages internal iterations)...")
         event = task_payload.model_dump()
         result = execute_handler(event, None)
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
 
         # Should be complete after internal iterations
         assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
@@ -220,11 +220,11 @@ def test_delete_security_group_enis(task_payload: TaskPayload, deploy_spec: Depl
         assert skipped_enis[0]["EniId"] == "eni-abcdef0123456789"
         assert skipped_enis[0]["Reason"] == "Hyperplane-managed"
 
-        print("✅ All ENI deletion validations passed")
-        print(f"📊 Security Group: {state.get(f'var/{action_name}/SecurityGroupId')}")
-        print(f"📊 Total ENIs Found: {state.get(f'var/{action_name}/TotalEnisFound')}")
-        print(f"📊 ENIs Deleted: {state.get(f'var/{action_name}/DeletedEniCount')}")
-        print(f"📊 ENIs Skipped: {state.get(f'var/{action_name}/SkippedEniCount')}")
+        print("All ENI deletion validations passed")
+        print(f"Security Group: {state.get(f'var/{action_name}/SecurityGroupId')}")
+        print(f"Total ENIs Found: {state.get(f'var/{action_name}/TotalEnisFound')}")
+        print(f"ENIs Deleted: {state.get(f'var/{action_name}/DeletedEniCount')}")
+        print(f"ENIs Skipped: {state.get(f'var/{action_name}/SkippedEniCount')}")
 
     except Exception as e:
         print(f"❌ An error occurred: {e}")
@@ -312,7 +312,7 @@ def test_delete_security_group_enis_immediate_completion(task_payload: TaskPaylo
         # Single call - execute_handler manages iterations
         event = task_payload.model_dump()
         result = execute_handler(event, None)
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
 
         assert task_payload.flow_control == "success"
 
@@ -322,7 +322,7 @@ def test_delete_security_group_enis_immediate_completion(task_payload: TaskPaylo
         assert state[f"var/{action_name}/DeletionResult"] == "SUCCESS"
         assert state[f"var/{action_name}/InUseEniCount"] == 0
 
-        print("✅ Immediate completion test passed")
+        print("Immediate completion test passed")
 
     except Exception as e:
         print(f"❌ An error occurred: {e}")

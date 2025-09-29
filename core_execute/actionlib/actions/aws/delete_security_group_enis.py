@@ -75,7 +75,7 @@ class DeleteSecurityGroupEnisAction(BaseAction[DeleteSecurityGroupEnisActionSpec
         super().__init__(definition, context, deployment_details)
 
         # Validate and set the parameters
-        self.spec = DeleteSecurityGroupEnisActionSpec(**definition.spec)
+        self.spec = DeleteSecurityGroupEnisActionSpec.model_validate(definition.spec)
 
     def _resolve(self):
         """Render template variables in account, region, and security_group_id."""
@@ -182,8 +182,7 @@ class DeleteSecurityGroupEnisAction(BaseAction[DeleteSecurityGroupEnisActionSpec
             )
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             if error_code == "InvalidGroup.NotFound":
                 log.warning(
@@ -217,18 +216,18 @@ class DeleteSecurityGroupEnisAction(BaseAction[DeleteSecurityGroupEnisActionSpec
             return
 
         # Get previous state for tracking across iterations
-        previous_detached_enis = self.get_state("DetachedEnis", [])
-        previous_deleted_enis = self.get_state("DeletedEnis", [])
-        previous_skipped_enis = self.get_state("SkippedEnis", [])
-        previous_failed_enis = self.get_state("FailedEnis", [])
-        previous_in_use_enis = self.get_state("InUseEnis", [])
+        previous_detached_enis: list[dict] = self.get_state("DetachedEnis", [])
+        previous_deleted_enis: list[dict] = self.get_state("DeletedEnis", [])
+        previous_skipped_enis: list[dict] = self.get_state("SkippedEnis", [])
+        previous_failed_enis: list[dict] = self.get_state("FailedEnis", [])
+        previous_in_use_enis: list[dict] = self.get_state("InUseEnis", [])
 
         # Initialize tracking lists with previous results
-        detached_enis = list(previous_detached_enis)
-        deleted_enis = list(previous_deleted_enis)
-        skipped_enis = list(previous_skipped_enis)
-        failed_enis = list(previous_failed_enis)
-        in_use_enis = list(previous_in_use_enis)
+        detached_enis: list[dict] = previous_detached_enis
+        deleted_enis: list[dict] = previous_deleted_enis
+        skipped_enis: list[dict] = previous_skipped_enis
+        failed_enis: list[dict] = previous_failed_enis
+        in_use_enis: list[dict] = previous_in_use_enis
 
         # Track total ENIs found (first time only)
         if not self.get_state("TotalEnisFound", None):
@@ -296,8 +295,7 @@ class DeleteSecurityGroupEnisAction(BaseAction[DeleteSecurityGroupEnisActionSpec
                         log.debug("Successfully deleted previously detached ENI '{}'", eni_id)
 
                     except ClientError as e:
-                        error_code = e.response["Error"]["Code"]
-                        error_message = e.response["Error"]["Message"]
+                        error_code, error_message = self.parse_client_error(e)
 
                         log.error(
                             "Error deleting previously detached ENI '{}': {} - {}",
@@ -397,8 +395,7 @@ class DeleteSecurityGroupEnisAction(BaseAction[DeleteSecurityGroupEnisActionSpec
                     )
 
             except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                error_message = e.response["Error"]["Message"]
+                error_code, error_message = self.parse_client_error(e)
 
                 log.error(
                     "Error processing ENI '{}': {} - {}",
@@ -479,8 +476,9 @@ class DeleteSecurityGroupEnisAction(BaseAction[DeleteSecurityGroupEnisActionSpec
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteSecurityGroupEnisActionResource:
         """Factory: create a typed DeleteSecurityGroupEnisActionResource."""
-        return DeleteSecurityGroupEnisActionResource(**kwargs)
+        return DeleteSecurityGroupEnisActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteSecurityGroupEnisActionSpec:
         """Factory: create typed DeleteSecurityGroupEnisActionSpec."""
+        return DeleteSecurityGroupEnisActionSpec.model_validate(kwargs)

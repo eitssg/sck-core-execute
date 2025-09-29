@@ -85,7 +85,7 @@ class UnprotectELBAction(BaseAction[UnprotectELBActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = UnprotectELBActionSpec(**definition.spec)
+        self.spec = UnprotectELBActionSpec.model_validate(definition.spec)
 
     def _execute(self):
         """Disable deletion protection on the specified load balancer.
@@ -257,9 +257,9 @@ class UnprotectELBAction(BaseAction[UnprotectELBActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> UnprotectELBActionResource:
         """Factory: create a typed UnprotectELBActionResource."""
-        return UnprotectELBActionResource(**kwargs)
+        return UnprotectELBActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> UnprotectELBActionSpec:
         """Factory: create typed UnprotectELBActionSpec."""
-        return UnprotectELBActionSpec(**kwargs)
+        return UnprotectELBActionSpec.model_validate(kwargs)

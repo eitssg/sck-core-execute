@@ -147,7 +147,6 @@ class CreateGrantsAction(BaseAction[CreateGrantsActionSpec]):
 
         self.spec = CreateGrantsActionSpec(**definition.spec)
 
-        self.name = definition.name
         self.account = self.spec.account
         self.region = self.spec.region
         self.kms_key_id = self.spec.kms_key_id or self.spec.kms_key_arn
@@ -316,7 +315,7 @@ class CreateGrantsAction(BaseAction[CreateGrantsActionSpec]):
         """Verify created grants still exist and mark completion."""
         try:
             # Get the stored grant information
-            created_grants = self.get_output("CreatedGrants", [])
+            created_grants: list[dict] = self.get_output("CreatedGrants") or []
 
             if not created_grants:
                 log.debug("No grants to check for action '{}'", self.name)
@@ -441,7 +440,7 @@ class CreateGrantsAction(BaseAction[CreateGrantsActionSpec]):
         try:
             self.account = self.renderer.render_string(self.account, self.context)
             self.region = self.renderer.render_string(self.region, self.context)
-            self.kms_key_id = self.renderer.render_string(self.kms_key_id, self.context)
+            self.kms_key_id = self.renderer.render_string(self.kms_key_id or '', self.context)
             self.grantee_principals = self.renderer.render_object(self.grantee_principals, self.context)
             self.operations = self.renderer.render_object(self.operations, self.context)
             # Render the ignore_failed_grants template

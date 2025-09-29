@@ -70,7 +70,7 @@ class DeleteChangeSetAction(BaseAction[DeleteChangeSetActionSpec]):
         """
         super().__init__(definition, context, deployment_details)
 
-        self.spec = DeleteChangeSetActionSpec(**definition.spec)
+        self.spec = DeleteChangeSetActionSpec.model_validate(definition.spec)
 
     def _resolve(self):
         """Render templates in account, region, stack_name, and change_set_name."""
@@ -154,7 +154,7 @@ class DeleteChangeSetAction(BaseAction[DeleteChangeSetActionSpec]):
             self.set_state("ChangeSetStatus", change_set_status)
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
+            error_code, error_message = self.parse_client_error(e)
 
             if error_code == "ChangeSetNotFoundException":
                 change_set_exists = False
@@ -164,7 +164,6 @@ class DeleteChangeSetAction(BaseAction[DeleteChangeSetActionSpec]):
                     self.spec.stack_name,
                 )
             else:
-                error_message = e.response["Error"]["Message"]
                 log.error(
                     "Error checking change set '{}': {} - {}",
                     self.spec.change_set_name,
@@ -218,8 +217,7 @@ class DeleteChangeSetAction(BaseAction[DeleteChangeSetActionSpec]):
                 )
 
             except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                error_message = e.response["Error"]["Message"]
+                error_code, error_message = self.parse_client_error(e)
 
                 if error_code == "ChangeSetNotFoundException":
                     # Change set was already deleted (race condition)
@@ -311,9 +309,9 @@ class DeleteChangeSetAction(BaseAction[DeleteChangeSetActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteChangeSetActionResource:
         """Factory: create a typed DeleteChangeSetActionResource."""
-        return DeleteChangeSetActionResource(**kwargs)
+        return DeleteChangeSetActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteChangeSetActionSpec:
         """Factory: create a typed DeleteChangeSetActionSpec."""
-        return DeleteChangeSetActionSpec(**kwargs)
+        return DeleteChangeSetActionSpec.model_validate(kwargs)

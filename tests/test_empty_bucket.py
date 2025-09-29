@@ -38,7 +38,7 @@ def task_payload() -> TaskPayload:
             "DataCenter": "zone-1",
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_empty_bucket_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         mock_limited_versions.delete.assert_called()
 
         # Parse the response back into TaskPayload and check state
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
 
         # Load the saved state to verify progress tracking
         state = load_state(updated_payload)
@@ -156,7 +156,7 @@ def test_empty_bucket_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
 
         # Verify final response
         assert response is not None, "Final response should not be None"
-        final_payload = TaskPayload(**response)
+        final_payload = TaskPayload.model_validate(response)
 
         # Load the final state
         final_state = load_state(final_payload)
@@ -223,7 +223,7 @@ def test_empty_bucket_action_bucket_not_exists(task_payload: TaskPayload, deploy
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse response and check state
-        response_payload = TaskPayload(**response)
+        response_payload = TaskPayload.model_validate(response)
         state = load_state(response_payload)
 
         print(f"\n=== BUCKET NOT EXISTS STATE ===")
@@ -300,7 +300,7 @@ def test_empty_bucket_action_multiple_batches(task_payload: TaskPayload, deploy_
             response = execute_handler(event, None)
 
             assert response is not None, f"Response should not be None for batch {batch_num}"
-            current_payload = TaskPayload(**response)
+            current_payload = TaskPayload.model_validate(response)
 
             # Check state after each batch
             state = load_state(current_payload)

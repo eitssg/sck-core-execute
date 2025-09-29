@@ -1,10 +1,11 @@
-from argparse import Namespace
-from os import name
 import traceback
+
 import pytest
+
 from unittest.mock import MagicMock
 
 import core_framework as util
+
 from core_framework.models import TaskPayload, DeploySpec
 
 from core_execute.actionlib.actions.aws.put_metric_data import (
@@ -15,7 +16,8 @@ from core_execute.actionlib.actions.aws.put_metric_data import (
 from core_execute.execute import save_state, save_actions, load_state
 from core_execute.handler import handler as execute_handler
 
-from .aws_fixtures import *
+from .aws_fixtures import *  # noqa: F403, F401
+from .aws_fixtures import get_role_credentials
 
 action_name = "put-metric-data-test"
 namespace = "event-namespace"
@@ -79,7 +81,7 @@ def deploy_spec() -> DeploySpec:
     spec = PutMetricDataActionSpec.model_validate(params)
 
     # Define the action specification
-    action_resource = PutMetricDataActionResource(label=label, spec=spec)
+    action_resource = PutMetricDataActionResource(label=label, spec=spec)  # type: ignore
 
     return DeploySpec(Actions=[action_resource])
 
@@ -116,7 +118,7 @@ def test_put_metric_data_action(task_payload: TaskPayload, deploy_spec: DeploySp
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse the response back into TaskPayload and check state
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
 
         # Load the saved state to verify completion
         state = load_state(updated_payload)

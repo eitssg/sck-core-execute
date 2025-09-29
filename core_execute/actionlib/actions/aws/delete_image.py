@@ -78,7 +78,7 @@ class DeleteImageAction(BaseAction[DeleteImageActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = DeleteImageActionSpec(**definition.spec)
+        self.spec = DeleteImageActionSpec.model_validate(definition.spec)
 
     def _resolve(self):
         """Render template variables in account, region, and image_name."""
@@ -182,12 +182,13 @@ class DeleteImageAction(BaseAction[DeleteImageActionSpec]):
             )
 
         except ClientError as e:
+            error_code, error_message = self.parse_client_error(e)
             log.error(
                 "Error describing image '{}': {}",
                 self.spec.image_name,
-                e.response["Error"]["Message"],
+                error_message,
             )
-            self.set_failed(f"Failed to describe image '{self.spec.image_name}': {e.response['Error']['Message']}")
+            self.set_failed(f"Failed to describe image '{self.spec.image_name}': {error_message}")
             return
         except Exception as e:
             log.error("Unexpected error describing image '{}': {}", self.spec.image_name, e)
@@ -204,8 +205,7 @@ class DeleteImageAction(BaseAction[DeleteImageActionSpec]):
                 log.debug("Successfully deregistered image '{}'", image_id)
 
             except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                error_message = e.response["Error"]["Message"]
+                error_code, error_message = self.parse_client_error(e)
 
                 if error_code == "InvalidAMIID.Unavailable" or error_code == "InvalidAMIID.NotFound":
                     log.warning(
@@ -250,8 +250,7 @@ class DeleteImageAction(BaseAction[DeleteImageActionSpec]):
                         log.debug("Successfully deleted snapshot '{}'", snapshot_id)
 
                     except ClientError as e:
-                        error_code = e.response["Error"]["Code"]
-                        error_message = e.response["Error"]["Message"]
+                        error_code, error_message = self.parse_client_error(e)
 
                         if error_code == "InvalidSnapshot.NotFound":
                             log.warning(
@@ -370,9 +369,9 @@ class DeleteImageAction(BaseAction[DeleteImageActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteImageActionResource:
         """Factory: create a typed DeleteImageActionResource."""
-        return DeleteImageActionResource(**kwargs)
+        return DeleteImageActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteImageActionSpec:
         """Factory: create typed DeleteImageActionSpec."""
-        return DeleteImageActionSpec(**kwargs)
+        return DeleteImageActionSpec.model_validate(kwargs)

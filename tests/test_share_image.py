@@ -125,7 +125,7 @@ def test_share_image(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_se
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse the response back into TaskPayload
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
         assert updated_payload.flow_control == "success", "Flow control should be success"
 
         # Load the saved state to verify completion
@@ -194,7 +194,7 @@ def test_share_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySpe
         response = execute_handler(event, None)
 
         # Parse the response
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
         assert updated_payload.flow_control == "success", "Should complete successfully even when image not found"
 
         # Load state

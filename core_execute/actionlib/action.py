@@ -1,10 +1,12 @@
 """Defines the BaseActions abstraction for all actions."""
 
-from typing import Any, Generic, Self, Optional, TypeVar
+from typing import Any, Generic, Self, Tuple, TypeVar
 import traceback
 import sys
 import os
 import enum
+
+from botocore.exceptions import ClientError
 
 import core_logging as log
 
@@ -210,6 +212,9 @@ class BaseAction(Generic[SpecType]):
 
         # Extract action details from the definition
         self.definition = definition
+        self.name = definition.action_name
+        self.kind = definition.kind
+        self.namespace = definition.metadata.namespace if definition.metadata else None
         self.context = context
         self.deployment_details = deployment_details
         self.condition = definition.condition or "true"
@@ -225,7 +230,7 @@ class BaseAction(Generic[SpecType]):
         self.name = self.definition.action_key
         self.action_name = self.definition.action_name
         self.output_namespace = self.definition.output_namespace
-        self.state_namespace = self.definition.state_namespace
+        self.state_namespace = self.definition.state_namespace or ""
 
         log.debug("Action name is: {}", self.name)
         log.debug("Action output namespace is: {}", self.output_namespace)
@@ -245,9 +250,9 @@ class BaseAction(Generic[SpecType]):
         # Create metadata if it doesn't exist
         if not self.definition.metadata:
             self.definition.metadata = ActionMetadata(
-                name=action_name,
-                namespace=namespace,
-                description=f"Auto-generated metadata for legacy action: {self.definition.name}",
+                Name=action_name,
+                Namespace=namespace,
+                Description=f"Auto-generated metadata for legacy action: {self.definition.name}",
             )
             log.debug(
                 "Created metadata from legacy name: namespace='{}', name='{}'",
@@ -475,7 +480,7 @@ class BaseAction(Generic[SpecType]):
 
         log.trace("Output '{}' set to '{}'", name, value)
 
-    def get_output(self, name: str, default: Any = NO_DEFAULT_PROVIDED) -> str | None:
+    def get_output(self, name: str, default: Any = NO_DEFAULT_PROVIDED) -> Any | None:
         """Get an output variable from the action's output namespace.
 
         Retrieves a previously set output variable. Returns None if no output
@@ -506,7 +511,7 @@ class BaseAction(Generic[SpecType]):
 
         Args:
             name: Name of the state variable
-            value: Value to store (can be any serializable type)
+            value: Value to store (can be any serializable type. e.g. list, str, dict)
         """
         log.trace("Setting state '{}' = '{}'", name, value)
         self.__set_context(self.state_namespace, name, value)
@@ -519,7 +524,7 @@ class BaseAction(Generic[SpecType]):
         """
         return self.__get_status_code()
 
-    def get_state(self, name: str, default: Any = None) -> str:
+    def get_state(self, name: str, default: Any = None) -> Any:
         """Get an internal state variable for this action.
 
         Retrieves a previously set state variable from the action's
@@ -530,7 +535,7 @@ class BaseAction(Generic[SpecType]):
             default: Default value if variable not found
 
         Returns:
-            Value of the state variable
+            Value of the state variable.  (a serializable type. e.g. list, str, dict)
 
         Raises:
             KeyError: If variable not found and no default provided
@@ -850,10 +855,12 @@ class BaseAction(Generic[SpecType]):
         try:
             log.trace("Executing lifecycle hook '{}' for action '{}'", hook_type, self.name)
 
-            hook_action: ActionHook = HookFactory.load(hook_resource, self.context, self.deployment_details, self.name)
+            hook_action: ActionHook = HookFactory.load(hook_resource, self.deployment_details, self.context, self.name)
 
             # Hooks output details of these **kwargs given their Case or case.  I like Case capetalized.
-            return hook_action.execute(State=hook_type, Reason=reason)
+            hook_action.execute(State=hook_type, Reason=reason)
+
+            return True
 
         except Exception as e:
             log.error(
@@ -862,4 +869,12 @@ class BaseAction(Generic[SpecType]):
                 self.name,
                 str(e),
             )
+
             return False
+
+    def parse_client_error(self, e: ClientError) -> Tuple[str, str]:
+        if "Error" in e.response:
+            error_code = e.response["Error"].get("Code", "Unknown")
+            error_message = e.response["Error"].get("Message", "No error message")
+            return error_code, error_message
+        return "Unknown", "No error message"

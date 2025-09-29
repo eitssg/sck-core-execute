@@ -78,7 +78,7 @@ class EmptyBucketAction(BaseAction[EmptyBucketActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = EmptyBucketActionSpec(**definition.spec)
+        self.spec = EmptyBucketActionSpec.model_validate(definition.spec)
 
     def _execute(self):
         """Start or continue bucket emptying and set the action status."""
@@ -209,7 +209,8 @@ class EmptyBucketAction(BaseAction[EmptyBucketActionSpec]):
                 )
 
         except ClientError as e:
-            if "does not exist" in e.response["Error"]["Message"]:
+            error_code, error_message = self.parse_client_error(e)
+            if "does not exist" in error_message:
                 # Bucket doesn't exist - treat as successfully emptied bucket
                 completion_time = util.get_current_timestamp()
                 self.set_state("completion_time", completion_time)
@@ -258,9 +259,9 @@ class EmptyBucketAction(BaseAction[EmptyBucketActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> EmptyBucketActionResource:
         """Factory: create a typed EmptyBucketActionResource."""
-        return EmptyBucketActionResource(**kwargs)
+        return EmptyBucketActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> EmptyBucketActionSpec:
         """Factory: create typed EmptyBucketActionSpec."""
-        return EmptyBucketActionSpec(**kwargs)
+        return EmptyBucketActionSpec.model_validate(kwargs)

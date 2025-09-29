@@ -32,7 +32,7 @@ def task_payload() -> TaskPayload:
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -113,7 +113,7 @@ def test_put_user(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_sessi
         event = task_payload.model_dump()
         response = execute_handler(event, None)
 
-        task_payload = TaskPayload(**response)
+        task_payload = TaskPayload.model_validate(response)
         assert task_payload.flow_control == "success"
 
         state = load_state(task_payload)
@@ -149,7 +149,7 @@ def test_put_user(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_sessi
         assert "arn:aws:iam::1234567890123:role/Role1" in statement["Resource"]
         assert "arn:aws:iam::1234567890123:role/Role2" in statement["Resource"]
 
-        print("✅ test_put_user passed - User created and policy attached successfully")
+        print("test_put_user passed - User created and policy attached successfully")
 
     except Exception as e:
         # If an exception occurs, print the traceback for debugging

@@ -38,7 +38,7 @@ def task_payload() -> TaskPayload:
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -147,7 +147,7 @@ def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert result is not None, "Result should not be None"
         assert isinstance(result, dict), "Result should be a dictionary"
 
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
 
         # Validate the flow control in the task payload
         assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
@@ -238,11 +238,11 @@ def test_delete_image_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert f"{action_name}/StatusCode" in state
         assert state[f"{action_name}/StatusCode"] == "complete"
 
-        print("✅ All AMI image deletion validations passed")
-        print(f"📊 Image: {state.get(f'var/{action_name}/ImageName')}")
-        print(f"📊 Image ID: {state.get(f'var/{action_name}/ImageId')}")
-        print(f"📊 Deletion Result: {state.get(f'var/{action_name}/DeletionResult')}")
-        print(f"📊 Snapshots Deleted: {state.get(f'var/{action_name}/DeletedSnapshotCount')}")
+        print("All AMI image deletion validations passed")
+        print(f"Image: {state.get(f'var/{action_name}/ImageName')}")
+        print(f"Image ID: {state.get(f'var/{action_name}/ImageId')}")
+        print(f"Deletion Result: {state.get(f'var/{action_name}/DeletionResult')}")
+        print(f"Snapshots Deleted: {state.get(f'var/{action_name}/DeletedSnapshotCount')}")
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -277,7 +277,7 @@ def test_delete_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySp
         result = execute_handler(event, None)
 
         assert result is not None, "Result should not be None"
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
 
         # Should still succeed when image doesn't exist
         assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
@@ -294,7 +294,7 @@ def test_delete_image_not_found(task_payload: TaskPayload, deploy_spec: DeploySp
         assert f"var/{action_name}/DeletionCompleted" in state
         assert state[f"var/{action_name}/DeletionCompleted"] is True
 
-        print("✅ Image not found test passed")
+        print("Image not found test passed")
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -360,7 +360,7 @@ def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spe
         result = execute_handler(event, None)
 
         assert result is not None, "Result should not be None"
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
 
         # Should fail when deregistration encounters an error
         assert task_payload.flow_control == "failure", f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
@@ -377,7 +377,7 @@ def test_delete_image_deregistration_error(task_payload: TaskPayload, deploy_spe
         assert f"var/{action_name}/DeregistrationFailureReason" in state
         assert "UnauthorizedOperation" in state[f"var/{action_name}/DeregistrationFailureReason"]
 
-        print("✅ Image deregistration error test passed")
+        print("Image deregistration error test passed")
 
     except Exception as e:
         print(f"An error occurred: {e}")

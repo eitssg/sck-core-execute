@@ -209,12 +209,13 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
                     created_users.append(user_name)
                     log.info("User '{}' created successfully", user_name)
                 except ClientError as e:
-                    log.error("Failed to create user '{}': {}", user_name, e)
+                    error_code, error_message = self.parse_client_error(e)
+                    log.error("Failed to create user '{}': {} - {}", user_name, error_code, error_message)
                     failed_users.append(
                         {
                             "UserName": user_name,
-                            "ErrorCode": e.response["Error"]["Code"],
-                            "ErrorMessage": e.response["Error"]["Message"],
+                            "ErrorCode": error_code,
+                            "ErrorMessage": error_message,
                             "Operation": "CreateUser",
                         }
                     )
@@ -251,8 +252,7 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
                 }
 
             except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                error_message = e.response["Error"]["Message"]
+                error_code, error_message = self.parse_client_error(e)
                 log.error(
                     "Failed to attach/update role assumption policy for user '{}': {} - {}",
                     user_name,
@@ -363,7 +363,8 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
             iam_client.get_user(UserName=user_name)
             return True
         except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchEntity":
+            error_code, _ = self.parse_client_error(e)
+            if error_code == "NoSuchEntity":
                 return False
             else:
                 raise
@@ -418,7 +419,8 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
                 log.debug("Existing policy: {}", util.to_json(existing_policy))
 
             except ClientError as e:
-                if e.response["Error"]["Code"] == "NoSuchEntity":
+                error_code, _ = self.parse_client_error(e)
+                if error_code == "NoSuchEntity":
                     log.debug(
                         "No existing policy found for user '{}', will create new one",
                         user_name,
@@ -561,9 +563,9 @@ class CreateUserAction(BaseAction[CreateUserActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CreateUserActionResource:
         """Factory: create a typed CreateUserActionResource."""
-        return CreateUserActionResource(**kwargs)
+        return CreateUserActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CreateUserActionSpec:
         """Factory: create typed CreateUserActionSpec."""
-        return CreateUserActionSpec(**kwargs)
+        return CreateUserActionSpec.model_validate(kwargs)

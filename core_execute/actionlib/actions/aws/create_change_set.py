@@ -117,7 +117,7 @@ class CreateChangeSetAction(BaseAction[CreateChangeSetActionSpec]):
         """Initialize the action and validate parameters."""
         super().__init__(definition, context, deployment_details)
 
-        self.spec = CreateChangeSetActionSpec(**definition.spec)
+        self.spec = CreateChangeSetActionSpec.model_validate(definition.spec)
 
     def _resolve(self):
         """Render templates for account, region, names, parameters, and tags."""
@@ -227,7 +227,9 @@ class CreateChangeSetAction(BaseAction[CreateChangeSetActionSpec]):
                 )
 
         except ClientError as e:
-            if e.response["Error"]["Code"] in [
+            error_code, error_message = self.parse_client_error(e)
+
+            if error_code in [
                 "ValidationError",
                 "StackNotFoundException",
             ]:
@@ -237,9 +239,9 @@ class CreateChangeSetAction(BaseAction[CreateChangeSetActionSpec]):
                 log.error(
                     "Error checking stack '{}': {}",
                     self.spec.stack_name,
-                    e.response["Error"]["Message"],
+                    error_message,
                 )
-                self.set_failed(f"Failed to check stack '{self.spec.stack_name}': {e.response['Error']['Message']}")
+                self.set_failed(f"Failed to check stack '{self.spec.stack_name}': {error_message}")
                 return
         except Exception as e:
             log.error("Unexpected error checking stack '{}': {}", self.spec.stack_name, e)
@@ -306,8 +308,7 @@ class CreateChangeSetAction(BaseAction[CreateChangeSetActionSpec]):
             log.info("Change set creation initiated: {}", change_set_arn)
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             log.error(
                 "Error creating change set '{}': {} - {}",
@@ -406,8 +407,7 @@ class CreateChangeSetAction(BaseAction[CreateChangeSetActionSpec]):
                 self.set_running(f"Change set {self.spec.change_set_name} in unknown status: {change_set_status}")
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             if error_code == "ChangeSetNotFoundException":
                 log.error("Change set {} not found", self.spec.change_set_name)
@@ -464,8 +464,7 @@ class CreateChangeSetAction(BaseAction[CreateChangeSetActionSpec]):
             log.info("Change set {} deleted successfully", self.spec.change_set_name)
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             if error_code == "ChangeSetNotFoundException":
                 # Change set already deleted
@@ -505,9 +504,9 @@ class CreateChangeSetAction(BaseAction[CreateChangeSetActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> CreateChangeSetActionResource:
         """Factory: create a typed CreateChangeSetActionResource."""
-        return CreateChangeSetActionResource(**kwargs)
+        return CreateChangeSetActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> CreateChangeSetActionSpec:
         """Factory: create typed CreateChangeSetActionSpec."""
-        return CreateChangeSetActionSpec(**kwargs)
+        return CreateChangeSetActionSpec.model_validate(kwargs)

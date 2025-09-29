@@ -110,7 +110,7 @@ def test_get_stack_outputs_action(task_payload: TaskPayload, deploy_spec: Deploy
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse the response back into TaskPayload and check state
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
 
         # Load the saved state to verify progress tracking
         state = load_state(updated_payload)
@@ -201,7 +201,7 @@ def test_get_stack_outputs_action_stack_not_exists(task_payload: TaskPayload, de
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse response and check state
-        response_payload = TaskPayload(**response)
+        response_payload = TaskPayload.model_validate(response)
         state = load_state(response_payload)
 
         print(f"\n=== STACK NOT EXISTS STATE ===")
@@ -270,7 +270,7 @@ def test_get_stack_outputs_action_no_outputs(task_payload: TaskPayload, deploy_s
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse response and check state
-        response_payload = TaskPayload(**response)
+        response_payload = TaskPayload.model_validate(response)
         state = load_state(response_payload)
 
         print(f"\n=== NO OUTPUTS STATE ===")

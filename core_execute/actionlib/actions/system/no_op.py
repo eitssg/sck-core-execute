@@ -78,7 +78,7 @@ class NoOpAction(BaseAction[NoOpActionSpec]):
     ):
         super().__init__(definition, context, deployment_details)
 
-        self.spec = NoOpActionSpec(**definition.spec)
+        self.spec = NoOpActionSpec.model_validate(definition.spec)
 
     @classmethod
     def generate_spec(cls, action_resource: dict) -> ActionResource:
@@ -148,8 +148,8 @@ class NoOpAction(BaseAction[NoOpActionSpec]):
 
     @classmethod
     def generate_action_resource(cls, **kwargs) -> NoOpActionResource:
-        return NoOpActionResource(**kwargs)
+        return NoOpActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> NoOpActionSpec:
-        return NoOpActionSpec(**kwargs)
+        return NoOpActionSpec.model_validate(kwargs)

@@ -81,7 +81,7 @@ class SendEmailAction(BaseAction[SendEmailActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = SendEmailActionSpec(**definition.spec)
+        self.spec = SendEmailActionSpec.model_validate(definition.spec)
 
         # Initialize template renderer
         template_dir = os.path.join(os.path.dirname(__file__), "templates")
@@ -368,9 +368,9 @@ class SendEmailAction(BaseAction[SendEmailActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> SendEmailActionResource:
         """Generate ActionResource for SendEmailAction."""
-        return SendEmailActionResource(**kwargs)
+        return SendEmailActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_spec(cls, **kwargs) -> SendEmailActionSpec:
         """Generate ActionSpec for SendEmailAction."""
-        return SendEmailActionSpec(**kwargs)
+        return SendEmailActionSpec.model_validate(kwargs)

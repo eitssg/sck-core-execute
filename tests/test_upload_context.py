@@ -15,6 +15,9 @@ from core_execute.execute import save_actions, save_state, load_state
 
 from .aws_fixtures import *
 
+action_name = "upload-context-test"
+action_namespace = "prn:portfolio:app:branch:build"  # e.g. identity
+
 
 @pytest.fixture
 def task_payload():
@@ -32,7 +35,7 @@ def task_payload():
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -41,18 +44,19 @@ def deploy_spec():
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
     """
-    validated_params = UploadContextActionSpec(
-        **{
-            "Account": "123456789012",
-            "BucketName": "my-upload-bucket",
-            "Region": util.get_region(),
-            "Prefix": "uploads/",
-        }
-    )
+    validated_params = {
+        "Account": "123456789012",
+        "BucketName": "my-upload-bucket",
+        "Region": util.get_region(),
+        "Prefix": "uploads/",
+    }
 
-    action_resource = UploadContextActionResource(Name="upload-context", Spec=validated_params.model_dump())
+    spec = UploadContextActionSpec.model_validate(validated_params)
 
-    return DeploySpec(actions=[action_resource])
+    label = f"{action_namespace}:action/{action_name}"
+    action_resource = UploadContextActionResource(Label=label, Spec=spec)  # type: ignore
+
+    return DeploySpec(Actions=[action_resource])
 
 
 def test_upload_context_action(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
@@ -63,19 +67,19 @@ def test_upload_context_action(task_payload: TaskPayload, deploy_spec: DeploySpe
         save_state(
             task_payload,
             {
-                "prn:portfolio:app:branch:build:output/variable1": "value1",
-                "prn:portfolio:app:branch:build:output/variable2": "value2",
-                "prn:portfolio:app:branch:build:output/variable3": "value3",
-                "prn:portfolio:app:branch:build:output/variable4": [
+                f"{action_namespace}:output/variable1": "value1",
+                f"{action_namespace}:output/variable2": "value2",
+                f"{action_namespace}:output/variable3": "value3",
+                f"{action_namespace}:output/variable4": [
                     "value4a",
                     "value4b",
                     "value4c",
                 ],
-                "prn:portfolio:app:branch:build:output/variable5": {
+                f"{action_namespace}:output/variable5": {
                     "key1": "value5a",
                     "key2": "value5b",
                 },
-                "prn:portfolio:app:branch:build:component:output/variable6": {
+                f"{action_namespace}:component:output/variable6": {
                     "key1": "value6a",
                     "key2": "value6b",
                 },
@@ -91,30 +95,31 @@ def test_upload_context_action(task_payload: TaskPayload, deploy_spec: DeploySpe
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse the response back into TaskPayload
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
+
         assert updated_payload.flow_control == "success", "Flow control should be success"
 
         # Load the saved state to verify completion
         state = load_state(updated_payload)
         assert state is not None, "State should not be None"
 
-        # Verify state tracking with namespace
-        action_namespace = "upload-context"
-        assert state.get(f"{action_namespace}/status") == "success", "Should have success status"
-        assert state.get(f"{action_namespace}/variable_count") == 6, "Should track correct number of context variables"
+        assert state.get(f"{action_namespace}:var/{action_name}/status") == "success", "Should have success status"
+        assert (
+            state.get(f"{action_namespace}:var/{action_name}/variable_count") == 6
+        ), "Should track correct number of context variables"
 
         # Verify uploaded files list
-        uploaded_files = state.get(f"{action_namespace}/uploaded_files")
+        uploaded_files = state.get(f"{action_namespace}:var/{action_name}/uploaded_files")
         assert uploaded_files is not None, "Should track uploaded files"
         assert len(uploaded_files) == 2, "Should have uploaded 2 files"
         assert "uploads/context.yaml" in uploaded_files, "Should track YAML file"
         assert "uploads/context.json" in uploaded_files, "Should track JSON file"
 
         # Verify individual file tracking
-        assert state.get(f"{action_namespace}/yaml_file") == "uploads/context.yaml", "Should track YAML file path"
-        assert state.get(f"{action_namespace}/json_file") == "uploads/context.json", "Should track JSON file path"
-        assert state.get(f"{action_namespace}/bucket_name") == "my-upload-bucket", "Should track bucket name"
-        assert state.get(f"{action_namespace}/prefix") == "uploads", "Should track prefix"
+        assert state.get(f"{action_namespace}:var/{action_name}/yaml_file") == "uploads/context.yaml", "Should track YAML file path"
+        assert state.get(f"{action_namespace}:var/{action_name}/json_file") == "uploads/context.json", "Should track JSON file path"
+        assert state.get(f"{action_namespace}:var/{action_name}/bucket_name") == "my-upload-bucket", "Should track bucket name"
+        assert state.get(f"{action_namespace}:var/{action_name}/prefix") == "uploads", "Should track prefix"
 
         account = "123456789012"
         role_arn = util.get_provisioning_role_arn(account)

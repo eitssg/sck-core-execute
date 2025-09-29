@@ -161,7 +161,7 @@ class ShareImageAction(BaseAction[ShareImageActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = ShareImageActionSpec(**definition.spec)
+        self.spec = ShareImageActionSpec.model_validate(definition.spec)
 
         # Add deployment tracking tag if available
         if deployment_details.delivered_by:
@@ -327,8 +327,9 @@ class ShareImageAction(BaseAction[ShareImageActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> ShareImageActionResource:
         """Factory: create a typed ShareImageActionResource."""
-        return ShareImageActionResource(**kwargs)
+        return ShareImageActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> ShareImageActionSpec:
         """Factory: create typed ShareImageActionSpec."""
+        return ShareImageActionSpec.model_validate(kwargs)

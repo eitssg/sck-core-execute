@@ -35,7 +35,7 @@ def task_payload() -> TaskPayload:
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -133,7 +133,7 @@ def test_delete_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         save_state(task_payload, {})
 
         # FIRST ITERATION: Call execute_handler - should initiate deletion and continue executing
-        print("🔄 First iteration: Initiating stack deletion...")
+        print("First iteration: Initiating stack deletion...")
         event = task_payload.model_dump()
         response = execute_handler(event, None)
 
@@ -142,7 +142,7 @@ def test_delete_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse the response back into TaskPayload
-        task_payload = TaskPayload(**response)
+        task_payload = TaskPayload.model_validate(response)
 
         # Should be "execute" after initiating deletion (to continue checking status)
         assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"
@@ -158,8 +158,8 @@ def test_delete_stack_action(task_payload: TaskPayload, deploy_spec: DeploySpec,
         assert state[f"var/{action_name}/DeletionCompleted"] is True
         assert state[f"var/{action_name}/DeletionResult"] == "SUCCESS"
 
-        print(f"✅ Second iteration completed with flow_control: {task_payload.flow_control}")
-        print("✅ All stack deletion test iterations passed successfully!")
+        print(f"Second iteration completed with flow_control: {task_payload.flow_control}")
+        print("All stack deletion test iterations passed successfully!")
 
     except Exception as e:
         print(f"❌ Test failed with error: {e}")
@@ -215,7 +215,7 @@ def test_lambda_handler_delete_failed(task_payload: TaskPayload, deploy_spec: De
 
         event = task_payload.model_dump()
         response = execute_handler(event, None)
-        task_payload = TaskPayload(**response)
+        task_payload = TaskPayload.model_validate(response)
 
         # Should be "failure" when deletion fails
         assert task_payload.flow_control == "failure", f"Expected flow_control to be 'failure', got '{task_payload.flow_control}'"
@@ -229,7 +229,7 @@ def test_lambda_handler_delete_failed(task_payload: TaskPayload, deploy_spec: De
         assert len(failed_resources) == 1
         assert failed_resources[0]["LogicalResourceId"] == "MyS3Bucket"
 
-        print("✅ Delete failed test passed")
+        print("Delete failed test passed")
 
     except Exception as e:
         print(f"❌ Test failed: {e}")

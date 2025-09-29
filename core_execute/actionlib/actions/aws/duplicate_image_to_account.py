@@ -87,10 +87,12 @@ class DuplicateImageToAccountAction(BaseAction[DuplicateImageToAccountActionSpec
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = DuplicateImageToAccountActionSpec(**definition.spec)
+        self.spec = DuplicateImageToAccountActionSpec.model_validate(definition.spec)
 
+        tags = self.spec.tags or {}
         if deployment_details.delivered_by:
-            self.spec.tags["DeliveredBy"] = deployment_details.delivered_by
+            tags["DeliveredBy"] = deployment_details.delivered_by
+        self.spec.tags = tags
 
     def _resolve(self):
         """Render templates in account, image_name, region, kms_key_arn, and targets."""
@@ -810,8 +812,9 @@ class DuplicateImageToAccountAction(BaseAction[DuplicateImageToAccountActionSpec
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DuplicateImageToAccountActionResource:
         """Factory: create a typed DuplicateImageToAccountActionResource."""
-        return DuplicateImageToAccountActionResource(**kwargs)
+        return DuplicateImageToAccountActionResource.model_validate(**kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DuplicateImageToAccountActionSpec:
         """Factory: create typed DuplicateImageToAccountActionSpec."""
+        return DuplicateImageToAccountActionSpec.model_validate(**kwargs)

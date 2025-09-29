@@ -155,8 +155,10 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
         # Validate the action parameters
         self.spec = CreateStackActionSpec(**definition.spec)
 
+        tags = self.spec.tags or {}
         if deployment_details.delivered_by:
-            self.spec.tags["DeliveredBy"] = deployment_details.delivered_by
+            tags["DeliveredBy"] = deployment_details.delivered_by or "unknown"
+        self.spec.tags = tags
 
     def can_initialize(self) -> bool:
         """Return True if the action can be reinitialized (no CFN operation in progress)."""
@@ -225,7 +227,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             if key.startswith(f"{self.name}/") and not key.endswith("/StatusCode"):
                 # Check if it looks like a CloudFormation output
                 base_key = key.replace(f"{self.name}/", "")
-                if base_key not in cf_state_keys and not base_key in [
+                if base_key not in cf_state_keys and base_key not in [
                     "Account",
                     "Region",
                     "StackName",
@@ -335,7 +337,6 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
         # Enhanced stack existence check for reruns
         stack_id = None
         stack_exists = False
-        describe_stack_response = None
 
         try:
             describe_stack_response = cfn_client.describe_stacks(StackName=self.spec.stack_name)
@@ -368,7 +369,9 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
                     self.set_state("StackExists", False)
 
         except ClientError as e:
-            if "does not exist" in e.response["Error"]["Message"]:
+            _, error_message = self.parse_client_error(e)
+
+            if "does not exist" in error_message:
                 stack_exists = False
                 self.set_state("StackExists", False)
                 log.info(
@@ -379,9 +382,9 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
                 log.error(
                     "Error describing stack '{}': {}",
                     self.spec.stack_name,
-                    e.response["Error"]["Message"],
+                    error_message,
                 )
-                self.set_failed(f"Failed to describe stack '{self.spec.stack_name}': {e.response['Error']['Message']}")
+                self.set_failed(f"Failed to describe stack '{self.spec.stack_name}': {error_message}")
                 return
         except Exception as e:
             log.error("Unexpected error describing stack '{}': {}", self.spec.stack_name, e)
@@ -389,7 +392,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             return
 
         # Execute appropriate operation
-        if stack_exists:
+        if stack_exists and stack_id:
             self.__update_stack(cfn_client, stack_id, describe_stack_response)
         else:
             self.__create_stack(cfn_client)
@@ -406,8 +409,10 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
                 cfn_client.validate_template(TemplateURL=self.spec.template_url)
                 log.debug("Template validation successful for: {}", self.spec.template_url)
             except ClientError as e:
-                log.error("Template validation failed: {}", e.response["Error"]["Message"])
-                self.set_failed(f"Template validation failed: {e.response['Error']['Message']}")
+                error_code, error_message = self.parse_client_error(e)
+
+                log.error("Template validation failed: {}", error_message)
+                self.set_failed(f"Template validation failed: {error_message}")
                 return
 
             args = {
@@ -431,7 +436,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
                 self.spec.stack_name,
                 self.spec.template_url,
                 len(self.spec.parameters),
-                len(self.spec.tags),
+                len(self.spec.tags or {}),
             )
 
             cfn_response = cfn_client.create_stack(**args)
@@ -451,8 +456,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             log.debug("Stack creation initiated with ID: {}", stack_id)
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             # Handle specific CloudFormation errors
             if error_code == "AlreadyExistsException":
@@ -564,10 +568,8 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
                 log.debug("Stack update initiated via change set for: {}", stack_id)
 
             except ClientError as cs_error:
-                if (
-                    "No updates" in cs_error.response["Error"]["Message"]
-                    or "didn't contain changes" in cs_error.response["Error"]["Message"]
-                ):
+                error_code, error_message = self.parse_client_error(cs_error)
+                if "No updates" in error_message or "didn't contain changes" in error_message:
                     log.debug("No updates required for stack '{}'", self.spec.stack_name)
                     self.set_state("StackOperation", "NO_UPDATE")
                     self.set_state("NoUpdatesRequired", True)
@@ -578,8 +580,7 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
                     raise cs_error
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
             log.error(
                 "Error updating stack '{}': {} - {}",
                 self.spec.stack_name,
@@ -707,12 +708,14 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
                 self.set_running(f"Stack in unknown state: {stack_status}")
 
         except ClientError as e:
+            error_code, error_message = self.parse_client_error(e)
             log.error(
-                "Failed to describe stack '{}': {}",
+                "Failed to describe stack '{}': {} - {}",
                 stack_id,
-                e.response["Error"]["Message"],
+                error_code,
+                error_message,
             )
-            self.set_failed(f"Failed to describe stack '{stack_id}': {e.response['Error']['Message']}")
+            self.set_failed(f"Failed to describe stack '{stack_id}': {error_code} - {error_message}")
             return
         except Exception as e:
             log.error("Unexpected error describing stack '{}': {}", stack_id, e)
@@ -749,12 +752,14 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             self.set_running(f"Deleting stack '{self.spec.stack_name}'")
 
         except ClientError as e:
+            error_code, error_message = self.parse_client_error(e)
             log.error(
-                "Failed to delete stack '{}': {}",
+                "Failed to delete stack '{}': {} - {}",
                 stack_id,
-                e.response["Error"]["Message"],
+                error_code,
+                error_message,
             )
-            self.set_failed(f"Failed to delete stack '{stack_id}': {e.response['Error']['Message']}")
+            self.set_failed(f"Failed to delete stack '{stack_id}': {error_code} - {error_message}")
         except Exception as e:
             log.error("Unexpected error deleting stack '{}': {}", stack_id, e)
             self.set_failed(f"Unexpected error deleting stack '{stack_id}': {e}")
@@ -781,13 +786,15 @@ class CreateStackAction(BaseAction[CreateStackActionSpec]):
             self.set_complete("Stack operation cancelled")
 
         except ClientError as e:
-            if "No updates are currently in progress" in e.response["Error"]["Message"]:
+            error_code, error_message = self.parse_client_error(e)
+            if "No updates are currently in progress" in error_message:
                 self.set_complete("No stack operation in progress to cancel")
             else:
                 log.warning(
-                    "Failed to cancel stack operation '{}': {}",
+                    "Failed to cancel stack operation '{}': {} - {}",
                     stack_id,
-                    e.response["Error"]["Message"],
+                    error_code,
+                    error_message,
                 )
                 self.set_complete("Stack operation cancellation failed")
         except Exception as e:

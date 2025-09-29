@@ -1,6 +1,7 @@
 """Record an event in the Core Execute database and log it."""
 
 from typing import Any
+from core_db.event.models import EventItem
 from pydantic import Field, model_validator
 
 import core_logging as log
@@ -99,7 +100,7 @@ class PutEventAction(BaseAction[PutEventActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = PutEventActionSpec(**definition.spec)
+        self.spec = PutEventActionSpec.model_validate(definition.spec)
 
         self.item_type = deployment_details.scope
 
@@ -109,7 +110,6 @@ class PutEventAction(BaseAction[PutEventActionSpec]):
 
         # Create a unique timestamp label for this event instance
         start_time = util.get_current_timestamp()
-        datetime_label = start_time.replace(":", "-").replace(".", "-")  # Make filesystem/key safe
 
         # Track this event instance in general state
         self.set_state("last_event_time", start_time)
@@ -137,23 +137,25 @@ class PutEventAction(BaseAction[PutEventActionSpec]):
                 log.fatal("Invalid event type: {}", t)
                 raise ValueError("Invalid event type. Must be one of: STATUS, DEBUG, INFO, WARN, ERROR")
 
-            event = EventActions.create(
-                self.spec.identity,
-                event_type=self.spec.type,
-                item_type=self.item_type,
-                status=self.spec.status,
-                message=self.spec.message,
+            item = EventItem(
+                Prn=self.spec.identity,
+                ItemType=self.item_type,
+                EventType=self.spec.type,
+                Status=self.spec.status,
+                Message=self.spec.message,
             )
-            log.debug("Event created: {}", event)
+            event: EventItem = EventActions.create(client=self.deployment_details.client, record=item)
+            log.debug("Event created: {}", details=event.model_dump())
 
             # Set success state for this specific event instance
             events = self.get_state("events", {})
             completion_time = util.get_current_timestamp()
             events[completion_time] = {
+                "prn": self.spec.identity,
+                "item_type": self.item_type,
                 "type": self.spec.type,
                 "status": self.spec.status,
                 "message": self.spec.message,
-                "identity": self.spec.identity,
             }
             # use set_output to respect the save_outputs flag
             self.set_output("events", events)
@@ -212,9 +214,9 @@ class PutEventAction(BaseAction[PutEventActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> PutEventActionResource:
         """Factory: create a typed PutEventActionResource."""
-        return PutEventActionResource(**kwargs)
+        return PutEventActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> PutEventActionSpec:
         """Factory: create typed PutEventActionSpec."""
-        return PutEventActionSpec(**kwargs)
+        return PutEventActionSpec.model_validate(kwargs)

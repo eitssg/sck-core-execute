@@ -169,7 +169,7 @@ class PutMetricDataAction(BaseAction[PutMetricDataActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the action parameters
-        self.spec = PutMetricDataActionSpec(**definition.spec)
+        self.spec = PutMetricDataActionSpec.model_validate(definition.spec)
 
         # Processed metric data ready for CloudWatch API
         self.metric_data: list[dict[str, Any]] = []
@@ -290,6 +290,9 @@ class PutMetricDataAction(BaseAction[PutMetricDataActionSpec]):
 
                 # Add timestamp if provided
                 if metric.timestamp:
+                    if isinstance(metric.timestamp, datetime):
+                        metric_entry["Timestamp"] = metric.timestamp
+                        continue
                     timestamp_str = self.renderer.render_string(metric.timestamp, self.context)
                     try:
                         # Parse ISO 8601 timestamp
@@ -325,9 +328,9 @@ class PutMetricDataAction(BaseAction[PutMetricDataActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> PutMetricDataActionResource:
         """Factory: create a typed PutMetricDataActionResource."""
-        return PutMetricDataActionResource(**kwargs)
+        return PutMetricDataActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> PutMetricDataActionSpec:
         """Factory: create typed PutMetricDataActionSpec."""
-        return PutMetricDataActionSpec(**kwargs)
+        return PutMetricDataActionSpec.model_validate(kwargs)

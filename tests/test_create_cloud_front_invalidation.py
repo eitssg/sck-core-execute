@@ -1,9 +1,10 @@
-from typing import Any
+import io
 import traceback
-from unittest import mock
 import pytest
-from unittest.mock import MagicMock
 from datetime import datetime, timezone
+
+import core_framework as util
+import core_logging as log
 
 from core_framework.models import TaskPayload, DeploySpec
 
@@ -14,13 +15,14 @@ from core_execute.actionlib.actions.aws.create_cloud_front_invalidation import (
 from core_execute.handler import handler as execute_handler
 from core_execute.execute import save_actions, save_state, load_state
 
-from .aws_fixtures import *
+from .aws_fixtures import *  # noqa: F403, F401
+from .aws_fixtures import get_role_credentials
 
 action_name = "create-cloudfront-invalidation-test"
 
 
 @pytest.fixture
-def task_payload():
+def task_payload() -> TaskPayload:
     """
     Fixture to provide a sample payload data for testing.
     This can be used to mock the payload in tests.
@@ -35,11 +37,11 @@ def task_payload():
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
-def deploy_spec():
+def deploy_spec() -> DeploySpec:
     """
     Fixture to provide a deployspec data for testing.
     This can be used to mock the deployspec in tests.
@@ -55,9 +57,9 @@ def deploy_spec():
 
     spec = CreateCloudFrontInvalidationActionSpec.model_validate(spec_params)
 
-    action_resource = CreateCloudFrontInvalidationActionResource(name=action_name, spec=spec)
+    action_resource = CreateCloudFrontInvalidationActionResource(name=action_name, spec=spec)  # type: ignore
 
-    return DeploySpec(actions=[action_resource])
+    return DeploySpec(Actions=[action_resource])
 
 
 def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock_session):
@@ -119,7 +121,7 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
 
         response = execute_handler(event, None)
 
-        task_payload = TaskPayload(**response)
+        task_payload = TaskPayload.model_validate(response)
 
         # Add assertions to verify the test passed
         assert response is not None, "Response should not be None"
@@ -191,11 +193,13 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
         if f"var/{action_name}/InvalidationCompleted" in state:
             assert isinstance(state[f"var/{action_name}/InvalidationCompleted"], bool), "InvalidationCompleted should be boolean"
 
-        print(f"✅ All state validations passed. Found {len(state)} state items.")
+        print(f"All state validations passed. Found {len(state)} state items.")
         print(
-            f"📊 Key state items: InvalidationId={state.get(f'var/{action_name}/InvalidationId')}, Status={state.get(f'var/{action_name}/InvalidationStatus')}"
+            f"Key state items: InvalidationId={state.get(f'var/{action_name}/InvalidationId')}, Status={state.get(f'var/{action_name}/InvalidationStatus')}"
         )
 
     except Exception as e:
-        traceback.print_exc()
+        sb = io.StringIO()
+        traceback.print_exc(file=sb)
+        log.error("Exception during test execution: {}\n{}", e, sb.getvalue())
         assert False, f"Exception occurred: {e}"

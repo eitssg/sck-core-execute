@@ -11,6 +11,7 @@ from core_framework.models import DeploymentDetails, ActionResource, ActionSpec
 import core_helper.aws as aws
 
 import core_framework as util
+
 from core_execute.actionlib.action import BaseAction
 
 
@@ -87,7 +88,7 @@ class PutUserAction(BaseAction[PutUserActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate the parameters
-        self.spec = PutUserActionSpec(**definition.spec)
+        self.spec = PutUserActionSpec.model_validate(definition.spec)
 
     def _resolve(self):
         """Render template variables in parameters (account, region, users, roles)."""
@@ -206,11 +207,12 @@ class PutUserAction(BaseAction[PutUserActionSpec]):
                     log.info("User '{}' created successfully", user_name)
                 except ClientError as e:
                     log.error("Failed to create user '{}': {}", user_name, e)
+                    error_code, error_message = self.parse_client_error(e)
                     failed_users.append(
                         {
                             "UserName": user_name,
-                            "ErrorCode": e.response["Error"]["Code"],
-                            "ErrorMessage": e.response["Error"]["Message"],
+                            "ErrorCode": error_code,
+                            "ErrorMessage": error_message,
                             "Operation": "CreateUser",
                         }
                     )
@@ -249,8 +251,7 @@ class PutUserAction(BaseAction[PutUserActionSpec]):
                 }
 
             except ClientError as e:
-                error_code = e.response["Error"]["Code"]
-                error_message = e.response["Error"]["Message"]
+                error_code, error_message = self.parse_client_error(e)
                 log.error(
                     "Failed to attach/update role assumption policy for user '{}': {} - {}",
                     user_name,
@@ -365,11 +366,11 @@ class PutUserAction(BaseAction[PutUserActionSpec]):
             iam_client.get_user(UserName=user_name)
             return True
         except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchEntity":
+            error_code, _ = self.parse_client_error(e)
+            if error_code == "NoSuchEntity":
                 return False
-            else:
-                # Re-raise other errors
-                raise
+
+            raise
 
     def _attach_inline_policy_to_user(self, iam_client, user_name: str, roles: list[str]) -> tuple[str, dict]:
         """Create or update the user's inline assume-role policy.
@@ -424,12 +425,15 @@ class PutUserAction(BaseAction[PutUserActionSpec]):
                 log.debug("Existing policy: {}", util.to_json(existing_policy))
 
             except ClientError as e:
-                if e.response["Error"]["Code"] == "NoSuchEntity":
-                    log.debug(
-                        "No existing policy found for user '{}', will create new one",
-                        user_name,
-                    )
-                    existing_policy = None
+                if "Error" in e.response and "Code" in e.response["Error"]:
+                    if e.response["Error"]["Code"] == "NoSuchEntity":
+                        log.debug(
+                            "No existing policy found for user '{}', will create new one",
+                            user_name,
+                        )
+                        existing_policy = None
+                    else:
+                        raise
                 else:
                     raise
 
@@ -474,7 +478,7 @@ class PutUserAction(BaseAction[PutUserActionSpec]):
             )
             raise
 
-    def _replace_assume_role_resources(self, existing_policy: dict, new_role_arms: set) -> dict:
+    def _replace_assume_role_resources(self, existing_policy: dict, new_role_arns: set) -> dict:
         """Replace resources in sts:AssumeRole statements, keep other statements.
 
         Args:
@@ -578,9 +582,9 @@ class PutUserAction(BaseAction[PutUserActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> PutUserActionResource:
         """Factory: create a typed PutUserActionResource."""
-        return PutUserActionResource(**kwargs)
+        return PutUserActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> PutUserActionSpec:
         """Factory: create typed PutUserActionSpec."""
-        return PutUserActionSpec(**kwargs)
+        return PutUserActionSpec.model_validate(kwargs)

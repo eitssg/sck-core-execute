@@ -32,7 +32,7 @@ def task_payload() -> TaskPayload:
             "DataCenter": "zone-1",  # name of the data center ('availability zone' in AWS)
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -139,7 +139,7 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec, mock
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse the response back into TaskPayload
-        task_payload = TaskPayload(**response)
+        task_payload = TaskPayload.model_validate(response)
 
         # Validate the flow control in the task payload
         assert task_payload.flow_control == "success", "Expected flow_control to be 'success'"

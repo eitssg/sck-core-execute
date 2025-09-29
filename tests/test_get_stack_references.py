@@ -37,7 +37,7 @@ def task_payload() -> TaskPayload:
             "DataCenter": "zone-1",
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -84,7 +84,7 @@ def test_get_stack_references_action_with_references(task_payload: TaskPayload, 
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse the response back into TaskPayload and check state
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
 
         # Load the saved state to verify progress tracking
         state = load_state(updated_payload)
@@ -177,7 +177,7 @@ def test_get_stack_references_action_export_not_found(task_payload: TaskPayload,
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse response and check state
-        response_payload = TaskPayload(**response)
+        response_payload = TaskPayload.model_validate(response)
         state = load_state(response_payload)
 
         print(f"\n=== EXPORT NOT FOUND STATE ===")
@@ -243,7 +243,7 @@ def test_get_stack_references_action_no_references(task_payload: TaskPayload, de
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse response and check state
-        response_payload = TaskPayload(**response)
+        response_payload = TaskPayload.model_validate(response)
         state = load_state(response_payload)
 
         print(f"\n=== NO REFERENCES STATE ===")
@@ -318,7 +318,7 @@ def test_get_stack_references_action_custom_output_name(task_payload: TaskPayloa
         assert isinstance(response, dict), "Response should be a dictionary"
 
         # Parse the response back into TaskPayload and check state
-        updated_payload = TaskPayload(**response)
+        updated_payload = TaskPayload.model_validate(response)
 
         # Load the saved state to verify progress tracking
         state = load_state(updated_payload)

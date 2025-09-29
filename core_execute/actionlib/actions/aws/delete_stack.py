@@ -74,7 +74,7 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
         super().__init__(definition, context, deployment_details)
 
         # Validate and set the parameters
-        self.spec = DeleteStackActionSpec(**definition.spec)
+        self.spec = DeleteStackActionSpec.model_validate(definition.spec)
 
     def _resolve(self):
         """Render template variables in account, region, and stack_name."""
@@ -295,8 +295,7 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
             self.set_running(f"Teardown: Deleting stack '{self.spec.stack_name}'")
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             # Handle common teardown errors gracefully
             if error_code == "ValidationError" and "does not exist" in error_message:
@@ -506,8 +505,7 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
             }
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             if "does not exist" in error_message or error_code == "ValidationError":
                 log.debug("Stack '{}' does not exist", self.spec.stack_name)
@@ -600,9 +598,9 @@ class DeleteStackAction(BaseAction[DeleteStackActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> DeleteStackActionResource:
         """Factory: create a typed DeleteStackActionResource."""
-        return DeleteStackActionResource(**kwargs)
+        return DeleteStackActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> DeleteStackActionSpec:
         """Factory: create typed DeleteStackActionSpec."""
-        return DeleteStackActionSpec(**kwargs)
+        return DeleteStackActionSpec.model_validate(kwargs)

@@ -77,7 +77,7 @@ def test_lambda_handler(task_payload: TaskPayload, deploy_spec: DeploySpec):
 
         # Validate the response structure and content
 
-        task_payload = TaskPayload(**response)
+        task_payload = TaskPayload.model_validate(response)
 
         assert task_payload.task == "deploy"
 

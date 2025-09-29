@@ -85,7 +85,7 @@ class ApplyChangeSetAction(BaseAction[ApplyChangeSetActionSpec]):
         """Initialize the action and validate parameters."""
         super().__init__(definition, context, deployment_details)
 
-        self.spec = ApplyChangeSetActionSpec(**definition.spec)
+        self.spec = ApplyChangeSetActionSpec.model_validate(definition.spec)
 
     def _resolve(self):
         """Render templates for account, region, stack_name, and change_set_name."""
@@ -178,8 +178,7 @@ class ApplyChangeSetAction(BaseAction[ApplyChangeSetActionSpec]):
             self.set_output("StackId", stack_id)
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             if error_code == "ChangeSetNotFoundException":
                 log.error(
@@ -230,9 +229,7 @@ class ApplyChangeSetAction(BaseAction[ApplyChangeSetActionSpec]):
             log.info("Change set execution initiated for stack {}", self.spec.stack_name)
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
-
+            error_code, error_message = self.parse_client_error(e)
             log.error(
                 "Error executing change set '{}': {} - {}",
                 self.spec.change_set_name,
@@ -361,8 +358,7 @@ class ApplyChangeSetAction(BaseAction[ApplyChangeSetActionSpec]):
                 self.set_running(f"Stack {self.spec.stack_name} in status: {stack_status}")
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             if error_code == "StackNotFoundException":
                 log.error("Stack {} not found", self.spec.stack_name)
@@ -454,8 +450,7 @@ class ApplyChangeSetAction(BaseAction[ApplyChangeSetActionSpec]):
                 self.set_complete(f"Stack {self.spec.stack_name} rollback not applicable for status: {stack_status}")
 
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            error_message = e.response["Error"]["Message"]
+            error_code, error_message = self.parse_client_error(e)
 
             if error_code == "StackNotFoundException":
                 log.info("Stack {} not found during rollback", self.spec.stack_name)
@@ -539,9 +534,9 @@ class ApplyChangeSetAction(BaseAction[ApplyChangeSetActionSpec]):
     @classmethod
     def generate_action_resource(cls, **kwargs) -> ApplyChangeSetActionResource:
         """Factory: create a typed ApplyChangeSetActionResource."""
-        return ApplyChangeSetActionResource(**kwargs)
+        return ApplyChangeSetActionResource.model_validate(kwargs)
 
     @classmethod
     def generate_action_parameters(cls, **kwargs) -> ApplyChangeSetActionSpec:
         """Factory: create typed ApplyChangeSetActionSpec."""
-        return ApplyChangeSetActionSpec(**kwargs)
+        return ApplyChangeSetActionSpec.model_validate(kwargs)

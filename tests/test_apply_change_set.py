@@ -37,7 +37,7 @@ def task_payload() -> TaskPayload:
             "DataCenter": "zone-1",
         },
     }
-    return TaskPayload(**data)
+    return TaskPayload.model_validate(data)
 
 
 @pytest.fixture
@@ -209,7 +209,7 @@ def test_apply_change_set_action(task_payload: TaskPayload, deploy_spec: DeployS
         assert result is not None, "Result should not be None"
         assert isinstance(result, dict), "Result should be a dictionary"
 
-        task_payload = TaskPayload(**result)
+        task_payload = TaskPayload.model_validate(result)
 
         # Validate the flow control in the task payload
         assert task_payload.flow_control == "success", f"Expected flow_control to be 'success', got '{task_payload.flow_control}'"

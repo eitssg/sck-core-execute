@@ -60,9 +60,9 @@ def handler(event: dict, context: Any | None = None) -> dict:
 
     try:
         # Task payload is a model object should have been created with TaskPayload.model_dump()
-        task_payload = TaskPayload(**event)
+        task_payload = TaskPayload.model_validate(event)
 
-        log.set_correlation_id(task_payload.correlation_id)
+        log.set_correlation_id(task_payload.correlation_id)  # type: ignore
 
         log.setup(task_payload.identity)
 
@@ -149,7 +149,7 @@ def handler(event: dict, context: Any | None = None) -> dict:
         else:
             message = f"Error parsing event into TaskPayload ({errortype}): {str(e)}"
 
-        error_details = {"Message": message}
+        error_details: dict[str, Any] = {"Message": message}
         if validation_errors:
             error_details["ValidationErrors"] = validation_errors
 
@@ -175,8 +175,15 @@ def invoke_execute_handler(task_payload: TaskPayload) -> None:
         # Call the main handler function with the task payload
         response = handler(task_payload.model_dump())
     else:
+        arn = util.get_execute_lambda_arn()
+
+        if not arn:
+            raise Exception("Cannot determine execute Lambda ARN.  Is the environment configured correctly?")
+
+        log.debug("Invoking Lambda function: {}", arn)
+
         aws.invoke_lambda(
-            arn=util.get_execute_lambda_arn(),
+            arn=arn,
             request_payload=task_payload.model_dump(),
             role_arn=util.get_provisioning_role_arn(),
             invocation_type="Event",  # Use Event for async execution

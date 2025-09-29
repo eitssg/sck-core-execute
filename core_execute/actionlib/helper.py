@@ -49,7 +49,7 @@ class Helper:
         # Calling a class method within __init__ is generally not recommended, it's really bad practice.
         self._load_actions(resources)
 
-    def _load_actions(self, resources: List[ActionResource]) -> Dict[str, BaseAction]:
+    def _load_actions(self, resources: List[ActionResource]) -> None:
 
         for action_resource in resources:
             try:
@@ -184,6 +184,10 @@ class Helper:
 
         action = self.actions.get(action_resource.action_key)
 
+        if action is None:
+            log.error("Action {} not found in helper", action_resource.action_name)
+            return
+
         if not action.can_execute():
             log.debug(
                 "Action {} cannot be executed in its current state: {}",
@@ -200,7 +204,7 @@ class Helper:
             )
             return
 
-        if self.use_threading:
+        if self.use_threading and self.executor is not None:
             with self.action_lock:
                 future = self.executor.submit(self._execute_action_wrapper, action)
                 future.add_done_callback(lambda f: self.slots.release())
