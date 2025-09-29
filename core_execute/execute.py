@@ -8,7 +8,7 @@ Provides the core orchestration for Simple Cloud Kit:
 - Robust logging and error handling
 """
 
-from typing import Protocol
+from typing import Any, Protocol
 import io
 
 import core_logging as log
@@ -206,7 +206,7 @@ def load_actions(task_payload: TaskPayload) -> list[ActionResource]:
         raise Exception(f"Failed to parse actions data: {str(e)}") from e
 
 
-def load_state(task_payload: TaskPayload) -> dict:
+def load_state(task_payload: TaskPayload) -> dict[str, Any]:
     """Load the execution state from S3 (or create a new one).
 
     Downloads and parses the state file based on content type (YAML/JSON). If

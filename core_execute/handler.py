@@ -116,6 +116,8 @@ def handler(event: dict, context: Any | None = None) -> dict:
 
         # Save state back to S3
         log.debug("Saving state for task: {}", task_payload.task)
+
+        context_state["flow_control"] = task_payload.flow_control
         save_state(task_payload, context_state)
 
         log.debug("Exiting handler with flow_control state: {}", task_payload.flow_control)

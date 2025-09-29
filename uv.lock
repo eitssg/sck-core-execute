@@ -865,7 +865,7 @@ wheels = [
 
 [[package]]
 name = "sck-core-db"
-version = "0.1.2rc12+2fec456"
+version = "1.3.0"
 source = { editable = "../sck-core-db" }
 dependencies = [
     { name = "boto3" },

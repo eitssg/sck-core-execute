@@ -30,7 +30,7 @@ dev = [
 
 
 [tool.hatch.build.targets.wheel]
-packages = ["core_db"]
+packages = ["core_execute"]
 
 [tool.black]
 line-length = 132
