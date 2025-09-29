@@ -54,3 +54,7 @@ exclude = '''
 [tool.uv.sources]
 sck-core-framework = { path = "../sck-core-framework", editable = true }
 sck-core-db = { path = "../sck-core-db", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
