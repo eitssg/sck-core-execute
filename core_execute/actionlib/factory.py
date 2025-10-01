@@ -1,6 +1,6 @@
 """Factory module for creating action instances from action definitions."""
 
-from typing import Any
+from typing import Any, Type
 
 import importlib
 import re
@@ -251,7 +251,7 @@ class ActionFactory:
             return module_path, class_name
 
     @staticmethod
-    def get_action_class(action_type: str) -> type[BaseAction]:
+    def get_action_class(action_type: str) -> Type[BaseAction]:
         """Dynamically load and return the action class for the specified kind.
 
         Resolves the action kind to a module path, imports the module,
