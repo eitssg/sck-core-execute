@@ -1,5 +1,8 @@
 # Copilot Instructions (Submodule: sck-core-execute)
 
+## Plan → Approval → Execute (Mandatory)
+Provide plan → await approval → execute for all edits, builds, tests, or structural changes. Reference root instructions for exceptions & reporting format.
+
 - Tech: Python package (execution engine).
 - Precedence: Local first; then root docs at `../../.github/`.
 - Conventions: See `../sck-core-ui/docs/backend-code-style.md` for AWS/S3/Lambda patterns.
