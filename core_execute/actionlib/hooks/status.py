@@ -144,7 +144,7 @@ class StatusHook(ActionHook):
 
             client = self.deployment_details.client
 
-            scope = self.deployment_details.get_scope()
+            scope = self.deployment_details.scope
             prn = self.deployment_details.get_prn()
 
             identity = self.parameters.identity or prn

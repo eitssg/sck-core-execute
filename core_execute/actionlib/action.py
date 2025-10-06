@@ -713,7 +713,7 @@ class BaseAction(Generic[SpecType]):
             # Log the status
             log.set_identity(identity)
 
-            scope = self.deployment_details.get_scope()
+            scope = self.deployment_details.scope
             # Build PRN
             if scope == SCOPE_BUILD:
 
