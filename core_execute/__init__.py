@@ -1,5 +1,7 @@
 from .execute import load_state, load_actions, save_state, save_actions
 
-__version__ = "0.1.2-pre.14+faf21ee"
+from importlib.metadata import version
+
+__version__ = version("sck-core-execute")
 
 __all__ = ["load_state", "load_actions", "save_state", "save_actions"]

@@ -33,8 +33,8 @@ class SendEmailActionSpec(ActionSpec):
     """
 
     to_email: str = Field(..., description="Email recipient address", alias="ToEmail")
-    cc: Optional[str] = Field(None, description="CC email address", alias="CcEmail")
-    bcc: Optional[str] = Field(None, description="BCC email address", alias="BccEmail")
+    cc: Optional[str] = Field(default=None, description="CC email address", alias="CcEmail")
+    bcc: Optional[str] = Field(default=None, description="BCC email address", alias="BccEmail")
     subject: str = Field(..., description="Email subject", alias="Subject")
     template_type: str = Field(..., description="Type of email template", alias="TemplateType")
     template_data: Dict[str, Any] = Field(
